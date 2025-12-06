@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"esp32 thermostat": "cpp",
+			"cmath": "cpp"
+		}
+	}
+}
