@@ -28,7 +28,7 @@ A comprehensive, feature-rich smart thermostat system built on the ESP32 platfor
 - DS18B20 Temperature Sensor (optional, for hydronic heating)
 - LD2410 24GHz mmWave Motion Sensor (optional, for display wake)
 - 5x Relay Module for HVAC control
-- Custom PCB by Stefan Meisner (files included)
+- Custom PCB that can use either onboard relay or external relays via pin header
 
 ### Software Setup
 1. Install [PlatformIO](https://platformio.org/) IDE
