@@ -19,7 +19,7 @@ A comprehensive, feature-rich smart thermostat system built on the ESP32 platfor
 
 ## 🚀 Quick Start
 
-![Hardware-Main-Display](img/KIMG20251201_111834902.JPG)
+![Hardware-Main-Display](pcb/ESP32-DevKitC3-Simple-Thermostat-PCB_front.png)
 
 ### Hardware Requirements
 - ESP32-S3-WROOM-1-N16 (16MB Flash, No PSRAM) 
