@@ -37,9 +37,9 @@
         "other_text_thickness": 0.15,
         "other_text_upright": false,
         "pads": {
-          "drill": 3.2,
-          "height": 6.0,
-          "width": 6.0
+          "drill": 1.0,
+          "height": 1.7,
+          "width": 1.7
         },
         "silk_line_width": 0.1,
         "silk_text_italic": false,
@@ -464,7 +464,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "ESP32-Simple-Thermostat-PCB.kicad_pro",
+    "filename": "ESP32-DevKitC3-Simple-Thermostat-PCB.kicad_pro",
     "version": 3
   },
   "net_settings": {
@@ -511,6 +511,9 @@
         "Contacts"
       ],
       "PUMP": [
+        "Contacts"
+      ],
+      "RLY-C": [
         "Contacts"
       ],
       "VAC-C": [
