@@ -1,5 +1,7 @@
 # ESP32-S3 Smart Thermostat Case Assembly Guide
 
+⚠️ **WORK IN PROGRESS** - This design is actively being tested and refined. Dimensions and assembly procedures may change.
+
 Complete step-by-step assembly and installation instructions for the 3D printed thermostat case.
 
 ## Table of Contents

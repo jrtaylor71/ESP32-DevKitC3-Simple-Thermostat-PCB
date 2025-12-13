@@ -1,5 +1,7 @@
 # ESP32-S3 Smart Thermostat - 3D Printable Case
 
+⚠️ **WORK IN PROGRESS** - This case design is actively being refined. Dimensions, screw placement, and hole positions may change as the design is tested and validated.
+
 This directory contains the 3D printable case design for the ESP32-S3 Smart Thermostat.
 
 ## Design Overview
