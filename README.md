@@ -99,6 +99,40 @@ Automatic discovery and integration with Home Assistant:
 - **On**: Continuous fan operation
 - **Cycle**: Scheduled fan operation (configurable minutes per hour)
 
+## 🖨️ 3D Printable Case
+
+A professional two-part case design is included for clean wall-mount installation:
+
+### Case Features
+- **Two-part snap-fit design**: Front (wall-facing) and back (display) halves
+- **Integrated PCB mounting**: Built-in standoffs (3mm height) for secure PCB installation
+- **Keyhole wall mounting**: Easy installation without removing case
+- **Display opening**: Precise 52mm x 70mm opening for 3.2" ILI9341 touchscreen
+- **AHT20 sensor cutout**: Opening for ambient temperature/humidity sensing
+- **Wire management**: Large pass-through (20mm) plus side routing openings
+- **Ventilation**: Strategically placed slots for optimal heat dissipation
+- **Professional finish**: Smooth surfaces and rounded edges
+
+### Files Included
+- `case/thermostat_case.scad` - OpenSCAD source (fully parametric)
+- `case/thermostat_case_front.stl` - Front half for 3D printing
+- `case/thermostat_case_back.stl` - Back half for 3D printing
+- `case/README.md` - Design details and printing instructions
+- `case/ASSEMBLY.md` - Complete assembly and installation guide
+- `case/generate_stl.sh` - Script to regenerate STL files
+
+### Print Specifications
+- **Material**: PLA or PETG recommended
+- **Layer height**: 0.2mm
+- **Infill**: 15-20%
+- **Supports**: None required
+- **Print time**: ~6-8 hours total
+- **Dimensions**: 139mm x 95.5mm x ~38mm (assembled)
+  - Front: 24.1mm (accommodates ESP32, headers, relays)
+  - Back: 14.5mm (accommodates display module)
+
+See `case/README.md` for detailed printing instructions and `case/ASSEMBLY.md` for installation guide.
+
 ### Motion Detection
 - **LD2410 24GHz mmWave Sensor**: Automatic display wake on motion detection
 - **Hardware Pins**: RX=15, TX=16, Motion=18
