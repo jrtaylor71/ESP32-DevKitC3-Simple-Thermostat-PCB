@@ -4,7 +4,7 @@
 
 The Firmware is a comprehensive, feature-rich smart thermostat system built on the ESP32-S3 platform with professional PCB design.
 
-**Current Version**: 1.3.5 (December 2025)
+**Current Version**: 1.3.6 (December 2025)
 **Hardware**: ESP32-S3-WROOM-1-N16 (16MB Flash)
 **Architecture**: Dual-core FreeRTOS with Option C display management
 **Status**: Production-ready with comprehensive testing, scheduling, weather integration, and enhanced OTA updates

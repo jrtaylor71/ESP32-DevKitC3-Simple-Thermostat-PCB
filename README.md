@@ -2,6 +2,8 @@
 
 A comprehensive, feature-rich smart thermostat system built on the ESP32 platform with professional PCB design. Perfect for DIY smart home automation with full Home Assistant integration.
 
+![Main-Display](img/KIMG20251212_231454862.JPG)
+
 ## 🌟 Key Features
 
 - **📱 Local Touch Control**: ILI9341 TFT LCD with intuitive touch interface
@@ -104,17 +106,19 @@ Automatic discovery and integration with Home Assistant:
 A professional two-part case design is included for clean wall-mount installation:
 
 ### Case Features
-- **Two-part snap-fit design**: Front (wall-facing) and back (display) halves
-- **Integrated PCB mounting**: Built-in standoffs (3mm height) for secure PCB installation
-- **Keyhole wall mounting**: Easy installation without removing case
-- **Display opening**: Precise 52mm x 70mm opening for 3.2" ILI9341 touchscreen
-- **AHT20 sensor cutout**: Opening for ambient temperature/humidity sensing
-- **Wire management**: Large pass-through (20mm) plus side routing openings
+- **Two-part screw-retained design**: Front (display side) and back (wall-mount side) halves
+- **Integrated PCB mounting**: Built-in standoffs (13mm height) for secure PCB installation
+- **Countersunk front screws**: 4× M2.5 countersunk (DIN 7991), 10–12mm length, 7mm inset
+- **Keyhole wall mounting**: Easy installation without removing case (83mm spacing)
+- **Display opening**: Precise 50mm × 68mm opening for 3.2" ILI9341 touchscreen (rotated 90°)
+- **AHT20 sensor + LDR cutouts**: 12.5×6mm rectangle (rotated 90°) and Ø5.5mm hole
+- **Wire management**: 22mm back pass-through plus side ventilation slots
 - **Ventilation**: Strategically placed slots for optimal heat dissipation
 - **Professional finish**: Smooth surfaces and rounded edges
 
 ### Files Included
-- `case/thermostat_case.scad` - OpenSCAD source (fully parametric)
+- `case/front_case_display.scad` - Front case (display side) OpenSCAD source
+- `case/back_case_wall.scad` - Back case (wall-mount side) OpenSCAD source
 - `case/thermostat_case_front.stl` - Front half for 3D printing
 - `case/thermostat_case_back.stl` - Back half for 3D printing
 - `case/README.md` - Design details and printing instructions
@@ -126,10 +130,10 @@ A professional two-part case design is included for clean wall-mount installatio
 - **Layer height**: 0.2mm
 - **Infill**: 15-20%
 - **Supports**: None required
-- **Print time**: ~6-8 hours total
-- **Dimensions**: 139mm x 95.5mm x ~38mm (assembled)
-  - Front: 24.1mm (accommodates ESP32, headers, relays)
-  - Back: 14.5mm (accommodates display module)
+- **Print time**: ~7–9 hours total
+- **Dimensions**: 149.0mm × 105.5mm × ~47mm (assembled)
+  - Front: ~17.1mm (2.5mm wall; 13mm standoffs; front walls 1.6mm above standoffs)
+  - Back: ~30.1mm (2.5mm wall; 20mm component clearance; bosses/keyholes)
 
 See `case/README.md` for detailed printing instructions and `case/ASSEMBLY.md` for installation guide.
 
@@ -172,7 +176,7 @@ Contributions welcome! Please:
 
 ## ⭐ Version
 
-**Current Version**: 1.3.5 (December 2025)
+**Current Version**: 1.3.6 (December 2025)
 - **Weather Integration**: Dual-source weather support (OpenWeatherMap and Home Assistant)
 - **Weather Display**: Color-coded standard OWM icons with temperature, conditions, and high/low display
 - **Weather Web Interface**: Dedicated weather tab with AJAX form submission
