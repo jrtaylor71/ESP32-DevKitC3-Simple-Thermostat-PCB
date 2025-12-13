@@ -23,8 +23,8 @@ J1,PINHD_1x18_Male,PinHeader_1x18_P2.54mm_Vertical,128.5,-64.11,0.0,top
 J2,Screw_Terminal_9_P3.50mm,"TerminalBlock_Phoenix_PT-1,5-9-3.5-H_1x09_P3.50mm_Horizontal",35.5,-74.5,-90.0,top
 J3,DS18B20,PinHeader_1x03_P2.54mm_Vertical,129.46,-96.0,90.0,top
 J4,3.2 lcd tft,PinSocket_1x14_P2.54mm_Vertical,66.0,-68.53,180.0,bottom
-J5,AHT20 Board,PinSocket_1x04_P2.54mm_Vertical,33.0,-98.23,0.0,top
-J6,LD2410C,PinHeader_1x05_P2.54mm_Vertical,75.54,-31.5,-90.0,top
+J5,AHT20 Board,PinSocket_1x04_P2.54mm_Vertical,33.0,-98.23,0.0,bottom
+J6,LD2410C,PinHeader_1x05_P2.54mm_Vertical,75.58,-31.5,270.0,bottom
 K1,G5Q-1A,Relay_SPST_Omron-G5Q-1A,51.485,-37.51,180.0,top
 K2,G5Q-1A,Relay_SPST_Omron-G5Q-1A,51.39,-49.81,180.0,top
 K3,G5Q-1A,Relay_SPST_Omron-G5Q-1A,51.39,-62.31,180.0,top
@@ -42,7 +42,7 @@ Q7,2N7002,SOT-23,146.5625,-51.5,180.0,top
 R1,4.7k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,79.81,-42.5,0.0,top
 R10,10k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,91.0,-31.5,0.0,top
 R11,1k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,34.5,-51.0,90.0,top
-R12,LDR07,R_LDR_5.1x4.3mm_P3.4mm_Vertical,128.0,-34.5,0.0,top
+R12,LDR07,R_LDR_5.1x4.3mm_P3.4mm_Vertical,124.6,-34.5,0.0,bottom
 R13,1k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,38.0,-45.0,90.0,top
 R14,1k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,34.5,-37.5,90.0,top
 R2,4.7k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,79.81,-52.0,0.0,top
