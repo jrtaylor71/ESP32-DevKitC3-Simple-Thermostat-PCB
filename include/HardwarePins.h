@@ -51,11 +51,21 @@
 #define TOUCH_IRQ_PIN    -1  // Touch interrupt (not used)
 
 // =============================================================================
-// I2C BUS - AHT20 Temperature/Humidity Sensor
+// I2C BUS - Temperature/Humidity Sensors (AHT20, DHT11, BME280)
 // =============================================================================
 
 #define I2C_SDA_PIN      36  // I2C Data
 #define I2C_SCL_PIN      35  // I2C Clock
+
+// Temperature/Humidity Sensor Configuration
+// - AHT20: I2C address 0x38 (uses both SDA and SCL)
+// - BME280: I2C address 0x76 or 0x77 (uses both SDA and SCL)
+// - DHT11: Uses GPIO35 (SCL pin) as 1-wire data line, GPIO36 unused
+//
+// Note: Only ONE sensor should be populated on the PCB at a time
+// Sensor type is auto-detected at startup:
+//   1. Try I2C sensors first (AHT20, then BME280)
+//   2. If no I2C response, disable I2C and try DHT11 on GPIO35
 
 // =============================================================================
 // ONEWIRE BUS - DS18B20 Hydronic Temperature Sensor

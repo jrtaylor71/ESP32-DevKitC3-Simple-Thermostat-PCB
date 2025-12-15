@@ -30,6 +30,8 @@
 #include <Preferences.h>
 #include <Wire.h>
 #include <Adafruit_AHTX0.h>
+#include <DHT.h>
+#include <Adafruit_BME280.h>
 #include <TFT_eSPI.h>
 #include <HTTPClient.h>
 #include <PubSubClient.h> // Include the MQTT library
@@ -50,8 +52,23 @@
 const int SECONDS_PER_HOUR = 3600;
 const int WDT_TIMEOUT = 10; // Watchdog timer timeout in seconds
 
-// AHT20 sensor setup (I2C)
+// Temperature/Humidity Sensor Configuration
+enum SensorType {
+    SENSOR_NONE = 0,
+    SENSOR_AHT20 = 1,
+    SENSOR_DHT11 = 2,
+    SENSOR_BME280 = 3
+};
+
+// Sensor instances (only one will be active based on auto-detection)
 Adafruit_AHTX0 aht;
+DHT dht(I2C_SCL_PIN, DHT11); // DHT11 uses GPIO35 (SCL pin) as data line
+Adafruit_BME280 bme;
+
+// Active sensor tracking
+SensorType activeSensor = SENSOR_NONE;
+String sensorName = "None";
+float currentPressure = 0.0; // Barometric pressure (BME280 only, in hPa)
 
 // Hardware pin definitions moved to HardwarePins.h
 // BOOT_BUTTON, LD2410 pins, ONE_WIRE_BUS, LIGHT_SENSOR_PIN, TFT_BACKLIGHT_PIN all defined there
@@ -323,6 +340,11 @@ void activateHeating();
 void activateCooling();
 void handleFanControl();
 
+// Sensor abstraction function prototypes
+SensorType detectSensor();
+bool initializeSensor(SensorType sensor);
+bool readTemperatureHumidity(float &temp, float &humidity, float &pressure);
+
 // Option C - Centralized Display Update System
 void displayUpdateTaskFunction(void* parameter);
 void updateDisplayIndicators();
@@ -377,60 +399,37 @@ unsigned long otaLastUpdateLog = 0;       // For throttled serial logging
 
 // Sensor reading task (runs on core 1)
 void sensorTaskFunction(void *parameter) {
-    unsigned long lastI2CError = 0;
-    const unsigned long I2C_ERROR_COOLDOWN = 30000; // 30 second cooldown between reinits
+    unsigned long lastSensorError = 0;
+    const unsigned long SENSOR_ERROR_COOLDOWN = 30000; // 30 second cooldown between reinits
     
     for (;;) {
-        // Read AHT20 sensor every 60 seconds to minimize processing load
-        sensors_event_t humidity, temp;
+        // Read sensor every 60 seconds to minimize processing load
+        float tempReading, humidityReading, pressureReading;
         
-        // Acquire I2C mutex with timeout
-        if (i2cMutex == NULL || xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("[SENSOR] Failed to acquire I2C mutex, skipping read");
-            vTaskDelay(pdMS_TO_TICKS(60000));
-            continue;
-        }
+        // Try to read sensor using abstraction layer
+        bool readSuccess = readTemperatureHumidity(tempReading, humidityReading, pressureReading);
         
-        // Try to read sensor
-        bool readSuccess = false;
-        if (aht.getEvent(&humidity, &temp)) {
-            float rawTemp = temp.temperature;
-            float rawHumidity = humidity.relative_humidity;
-            readSuccess = true;
-            xSemaphoreGive(i2cMutex);
-        } else {
-            xSemaphoreGive(i2cMutex);
-            Serial.println("[SENSOR] AHT20 read failed!");
+        if (!readSuccess) {
+            Serial.println("[SENSOR] Read failed!");
             
             // Try to reinitialize if cooldown has passed
             unsigned long now = millis();
-            if (now - lastI2CError > I2C_ERROR_COOLDOWN) {
-                Serial.println("[SENSOR] Attempting AHT20 reinit...");
-                if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                    if (aht.begin()) {
-                        Serial.println("[SENSOR] AHT20 reinitialized successfully");
-                    } else {
-                        Serial.println("[SENSOR] AHT20 reinit failed");
-                    }
-                    xSemaphoreGive(i2cMutex);
+            if (now - lastSensorError > SENSOR_ERROR_COOLDOWN) {
+                Serial.printf("[SENSOR] Attempting %s reinit...\n", sensorName.c_str());
+                if (initializeSensor(activeSensor)) {
+                    Serial.printf("[SENSOR] %s reinitialized successfully\n", sensorName.c_str());
+                } else {
+                    Serial.printf("[SENSOR] %s reinit failed\n", sensorName.c_str());
                 }
-                lastI2CError = now;
+                lastSensorError = now;
             }
             vTaskDelay(pdMS_TO_TICKS(60000));
             continue;
         }
         
-        if (!readSuccess) {
-            vTaskDelay(pdMS_TO_TICKS(60000));
-            continue;
-        }
-        
-        float rawTemp = temp.temperature;
-        float rawHumidity = humidity.relative_humidity;
-        
         // Apply calibration offsets
-        float calibratedTemp = getCalibratedTemperature(rawTemp);
-        float calibratedHumidity = getCalibratedHumidity(rawHumidity);
+        float calibratedTemp = getCalibratedTemperature(tempReading);
+        float calibratedHumidity = getCalibratedHumidity(humidityReading);
         
         float newTemp = useFahrenheit ? (calibratedTemp * 9.0 / 5.0 + 32.0) : calibratedTemp;
         float newHumidity = calibratedHumidity;
@@ -450,6 +449,11 @@ void sensorTaskFunction(void *parameter) {
             
             currentTemp = filteredTemp;
             currentHumidity = filteredHumidity;
+            
+            // Update pressure if BME280 sensor and valid reading
+            if (activeSensor == SENSOR_BME280 && !isnan(pressureReading)) {
+                currentPressure = pressureReading;
+            }
         }
         
         // Read DS18B20 hydronic temperature sensor if present
@@ -557,6 +561,163 @@ void setDisplayUpdateFlag() {
         Serial.println("[DISPLAY_FLAG_SET] Display update requested from controlRelays");
     } else {
         Serial.println("[DISPLAY_FLAG_FAILED] Could not acquire mutex");
+    }
+}
+
+// =============================================================================
+// TEMPERATURE/HUMIDITY SENSOR ABSTRACTION LAYER
+// =============================================================================
+
+// Auto-detect which sensor is connected
+SensorType detectSensor() {
+    Serial.println("[SENSOR] Starting sensor auto-detection...");
+    
+    // Initialize I2C bus first
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+    delay(100);
+    
+    // Try AHT20 (I2C address 0x38)
+    Serial.println("[SENSOR] Checking for AHT20 at I2C address 0x38...");
+    if (aht.begin()) {
+        Serial.println("[SENSOR] AHT20 detected!");
+        return SENSOR_AHT20;
+    }
+    
+    // Try BME280 (I2C addresses 0x76 or 0x77)
+    Serial.println("[SENSOR] Checking for BME280 at I2C address 0x76...");
+    if (bme.begin(0x76)) {
+        Serial.println("[SENSOR] BME280 detected at address 0x76!");
+        return SENSOR_BME280;
+    }
+    
+    Serial.println("[SENSOR] Checking for BME280 at I2C address 0x77...");
+    if (bme.begin(0x77)) {
+        Serial.println("[SENSOR] BME280 detected at address 0x77!");
+        return SENSOR_BME280;
+    }
+    
+    // No I2C sensor found, try DHT11 on GPIO35
+    Serial.println("[SENSOR] No I2C sensors found, trying DHT11...");
+    Serial.println("[SENSOR] Disabling I2C, switching GPIO35 to DHT11 mode...");
+    Wire.end();
+    pinMode(I2C_SCL_PIN, INPUT_PULLUP); // Configure GPIO35 as regular GPIO
+    dht.begin();
+    delay(2000); // DHT11 needs time to stabilize
+    
+    // Try reading from DHT11
+    float testTemp = dht.readTemperature();
+    float testHum = dht.readHumidity();
+    
+    if (!isnan(testTemp) && !isnan(testHum)) {
+        Serial.println("[SENSOR] DHT11 detected!");
+        return SENSOR_DHT11;
+    }
+    
+    Serial.println("[SENSOR] ERROR: No temperature/humidity sensor detected!");
+    return SENSOR_NONE;
+}
+
+// Initialize the detected sensor
+bool initializeSensor(SensorType sensor) {
+    Serial.printf("[SENSOR] Initializing %s sensor...\n", 
+                  sensor == SENSOR_AHT20 ? "AHT20" : 
+                  sensor == SENSOR_DHT11 ? "DHT11" : 
+                  sensor == SENSOR_BME280 ? "BME280" : "NONE");
+    
+    switch(sensor) {
+        case SENSOR_AHT20:
+            Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+            if (aht.begin()) {
+                Serial.println("[SENSOR] AHT20 initialized successfully");
+                sensorName = "AHT20";
+                return true;
+            }
+            Serial.println("[SENSOR] AHT20 initialization failed");
+            return false;
+            
+        case SENSOR_DHT11:
+            Wire.end(); // Make sure I2C is disabled
+            pinMode(I2C_SCL_PIN, INPUT_PULLUP);
+            dht.begin();
+            delay(2000);
+            Serial.println("[SENSOR] DHT11 initialized successfully");
+            sensorName = "DHT11";
+            return true;
+            
+        case SENSOR_BME280:
+            Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+            if (bme.begin(0x76) || bme.begin(0x77)) {
+                // Configure BME280 for indoor monitoring
+                bme.setSampling(Adafruit_BME280::MODE_NORMAL,
+                               Adafruit_BME280::SAMPLING_X2,  // temperature
+                               Adafruit_BME280::SAMPLING_X16, // pressure
+                               Adafruit_BME280::SAMPLING_X1,  // humidity
+                               Adafruit_BME280::FILTER_X16,
+                               Adafruit_BME280::STANDBY_MS_500);
+                Serial.println("[SENSOR] BME280 initialized successfully");
+                sensorName = "BME280";
+                return true;
+            }
+            Serial.println("[SENSOR] BME280 initialization failed");
+            return false;
+            
+        default:
+            sensorName = "None";
+            return false;
+    }
+}
+
+// Read temperature, humidity, and pressure from active sensor
+bool readTemperatureHumidity(float &temp, float &humidity, float &pressure) {
+    pressure = NAN; // Default to NAN for sensors without pressure
+    
+    switch(activeSensor) {
+        case SENSOR_AHT20: {
+            if (i2cMutex == NULL || xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+                return false;
+            }
+            
+            sensors_event_t humidityEvent, tempEvent;
+            bool success = aht.getEvent(&humidityEvent, &tempEvent);
+            xSemaphoreGive(i2cMutex);
+            
+            if (success) {
+                temp = tempEvent.temperature;
+                humidity = humidityEvent.relative_humidity;
+                return true;
+            }
+            return false;
+        }
+        
+        case SENSOR_DHT11: {
+            // DHT11 doesn't need mutex (not on I2C bus)
+            temp = dht.readTemperature();
+            humidity = dht.readHumidity();
+            
+            if (isnan(temp) || isnan(humidity)) {
+                return false;
+            }
+            return true;
+        }
+        
+        case SENSOR_BME280: {
+            if (i2cMutex == NULL || xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+                return false;
+            }
+            
+            temp = bme.readTemperature();
+            humidity = bme.readHumidity();
+            pressure = bme.readPressure() / 100.0F; // Convert Pa to hPa
+            xSemaphoreGive(i2cMutex);
+            
+            if (isnan(temp) || isnan(humidity)) {
+                return false;
+            }
+            return true;
+        }
+        
+        default:
+            return false;
     }
 }
 
@@ -813,19 +974,18 @@ void setup()
         Serial.println("I2C mutex created successfully");
     }
     
-    // Initialize I2C for AHT20 sensor (pins defined in HardwarePins.h)
-    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN); // SDA=36, SCL=35 per schematic
-    
-    // Initialize AHT20 sensor with mutex protection
-    if (i2cMutex != NULL && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
-        if (!aht.begin()) {
-            Serial.println("Could not find AHT20 sensor!");
+    // Auto-detect and initialize temperature/humidity sensor
+    activeSensor = detectSensor();
+    if (activeSensor != SENSOR_NONE) {
+        if (!initializeSensor(activeSensor)) {
+            Serial.println("ERROR: Sensor initialization failed!");
+            activeSensor = SENSOR_NONE;
+            sensorName = "None";
         } else {
-            Serial.println("AHT20 sensor initialized successfully");
+            Serial.printf("SUCCESS: %s sensor ready\n", sensorName.c_str());
         }
-        xSemaphoreGive(i2cMutex);
     } else {
-        Serial.println("ERROR: Failed to acquire I2C mutex for AHT20 init!");
+        Serial.println("ERROR: No temperature/humidity sensor detected!");
     }
 
     // Initialize the TFT display
@@ -984,12 +1144,27 @@ void setup()
 
     // Read initial temperature and humidity
     // Read initial temperature and humidity from AHT20
-    sensors_event_t humidity, temp;
-    aht.getEvent(&humidity, &temp);
-    float calibratedTemp = getCalibratedTemperature(temp.temperature);
-    float calibratedHumidity = getCalibratedHumidity(humidity.relative_humidity);
-    currentTemp = useFahrenheit ? (calibratedTemp * 9.0 / 5.0 + 32.0) : calibratedTemp;
-    currentHumidity = calibratedHumidity;
+    // Get initial sensor reading to initialize temperature and humidity values
+    float tempReading, humidityReading, pressureReading;
+    if (readTemperatureHumidity(tempReading, humidityReading, pressureReading)) {
+        float calibratedTemp = getCalibratedTemperature(tempReading);
+        float calibratedHumidity = getCalibratedHumidity(humidityReading);
+        currentTemp = useFahrenheit ? (calibratedTemp * 9.0 / 5.0 + 32.0) : calibratedTemp;
+        currentHumidity = calibratedHumidity;
+        
+        // Store pressure if BME280 detected
+        if (activeSensor == SENSOR_BME280 && !isnan(pressureReading)) {
+            currentPressure = pressureReading;
+            Serial.printf("Initial pressure reading: %.1f hPa\n", currentPressure);
+        }
+        
+        Serial.printf("Initial readings - Temp: %.1f, Humidity: %.1f%%\n", currentTemp, currentHumidity);
+    } else {
+        Serial.println("WARNING: Failed to get initial sensor reading");
+        // Use fallback values
+        currentTemp = 72.0;
+        currentHumidity = 50.0;
+    }
     
     // Initialize filters with first reading
     filteredTemp = currentTemp;
@@ -2009,6 +2184,33 @@ void publishHomeAssistantDiscovery()
             
             Serial.println("Published LD2410 motion sensor discovery to Home Assistant");
         }
+        
+        // Publish barometric pressure sensor discovery if BME280 is active
+        if (activeSensor == SENSOR_BME280) {
+            StaticJsonDocument<512> pressureDoc;
+            String pressureConfigTopic = "homeassistant/sensor/" + hostname + "_pressure/config";
+            
+            pressureDoc["name"] = hostname + " Barometric Pressure";
+            pressureDoc["device_class"] = "pressure";
+            pressureDoc["state_topic"] = hostname + "/barometric_pressure";
+            pressureDoc["unit_of_measurement"] = "hPa";
+            pressureDoc["unique_id"] = hostname + "_pressure";
+            pressureDoc["state_class"] = "measurement";
+            
+            // Link to same device as main thermostat
+            JsonObject device = pressureDoc.createNestedObject("device");
+            device["identifiers"][0] = hostname;
+            device["name"] = hostname;
+            device["model"] = "Simple Thermostat Alt Firmware";
+            device["manufacturer"] = "TDC";
+            device["sw_version"] = sw_version;
+            
+            char pressureBuffer[512];
+            serializeJson(pressureDoc, pressureBuffer);
+            mqttClient.publish(pressureConfigTopic.c_str(), pressureBuffer, true);
+            
+            Serial.println("Published BME280 pressure sensor discovery to Home Assistant");
+        }
     }
     else
     {
@@ -2133,6 +2335,18 @@ void sendMQTTData()
             String currentHumidityTopic = hostname + "/current_humidity";
             mqttClient.publish(currentHumidityTopic.c_str(), String(currentHumidity, 1).c_str(), true);
             lastHumidity = currentHumidity;
+        }
+        
+        // Publish barometric pressure if BME280 sensor is active
+        if (activeSensor == SENSOR_BME280 && !isnan(currentPressure))
+        {
+            static float lastPressure = 0.0;
+            if (currentPressure != lastPressure)
+            {
+                String pressureTopic = hostname + "/barometric_pressure";
+                mqttClient.publish(pressureTopic.c_str(), String(currentPressure, 1).c_str(), true);
+                lastPressure = currentPressure;
+            }
         }
 
         // Publish target temperature (set temperature for heating, cooling, or auto)
@@ -3435,6 +3649,18 @@ void updateDisplay(float currentTemp, float currentHumidity)
         dtostrf(currentHumidity, 4, 1, humidityStr); // Convert humidity to string with 1 decimal place
         tft.print(humidityStr);
         tft.println("%");
+        
+        // Display pressure if BME280 sensor is active
+        if (activeSensor == SENSOR_BME280 && !isnan(currentPressure)) {
+            tft.setCursor(240, 110); // Position below humidity
+            char pressureStr[7];
+            dtostrf(currentPressure, 5, 1, pressureStr); // Format as "XXX.X"
+            tft.print(pressureStr);
+            tft.println(" hPa");
+        } else {
+            // Clear pressure area if not BME280 or invalid
+            tft.fillRect(240, 110, 80, 20, COLOR_BACKGROUND);
+        }
 
         // Update previous values
         previousTemp = currentTemp;
@@ -3448,22 +3674,29 @@ void updateDisplay(float currentTemp, float currentHumidity)
     // if (hydronicHeatingEnabled && ds18b20SensorPresent) {
     if (hydronicHeatingEnabled) {
         if (hydronicTemp != previousHydronicTemp || !prevHydronicDisplayState) {
-            // Display hydronic temperature on right side
+            // Display hydronic temperature on right side (shift down if BME280 active)
+            int yPos = (activeSensor == SENSOR_BME280 && !isnan(currentPressure)) ? 150 : 110;
             tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
             tft.setTextSize(2);
-            tft.setCursor(240, 110); // Move hydronic temp down a bit
+            tft.setCursor(240, yPos);
             char hydronicTempStr[6];
             dtostrf(hydronicTemp, 4, 1, hydronicTempStr);
             tft.print(hydronicTempStr);
             tft.println(useFahrenheit ? "F" : "C");
+            
+            // Clear old position if it moved
+            if (yPos == 150) {
+                tft.fillRect(240, 110, 80, 40, COLOR_BACKGROUND);
+            }
             
             previousHydronicTemp = hydronicTemp;
             prevHydronicDisplayState = true;
         }
     } 
     else if (prevHydronicDisplayState) {
-        // If hydronic heating is disabled or sensor not present, clear the area
+        // If hydronic heating is disabled or sensor not present, clear both possible areas
         tft.fillRect(240, 110, 80, 40, COLOR_BACKGROUND);
+        tft.fillRect(240, 150, 80, 40, COLOR_BACKGROUND);
         prevHydronicDisplayState = false;
     }
 
