@@ -44,27 +44,25 @@
 #include <Update.h> // For OTA firmware update
 #include "esp_heap_caps.h" // Heap diagnostics
 #include "Weather.h" // Weather integration module
+#include "HardwarePins.h" // Hardware pin definitions
 
 // Constants
 const int SECONDS_PER_HOUR = 3600;
 const int WDT_TIMEOUT = 10; // Watchdog timer timeout in seconds
+
 // AHT20 sensor setup (I2C)
 Adafruit_AHTX0 aht;
-#define BOOT_BUTTON 0 // Define the GPIO pin connected to the boot button
 
-// LD2410 Motion Sensor pins
-#define LD2410_RX_PIN 16  // ESP32 RX (connect to LD2410 TX) - SWAPPED to test physical wiring
-#define LD2410_TX_PIN 15  // ESP32 TX (connect to LD2410 RX) - SWAPPED to test physical wiring
-#define LD2410_MOTION_PIN 18  // Digital motion output pin
+// Hardware pin definitions moved to HardwarePins.h
+// BOOT_BUTTON, LD2410 pins, ONE_WIRE_BUS, LIGHT_SENSOR_PIN, TFT_BACKLIGHT_PIN all defined there
 
 // Settings for factory reset
 unsigned long bootButtonPressStart = 0; // When the boot button was pressed
 const unsigned long FACTORY_RESET_PRESS_TIME = 10000; // 10 seconds in milliseconds
 bool bootButtonPressed = false; // Track if boot button is being pressed
 
-// DS18B20 sensor setup
-#define ONE_WIRE_BUS 34 // Define the pin where the DS18B20 is connected (ESP32-S3)
-OneWire oneWire(ONE_WIRE_BUS);
+// DS18B20 sensor setup (pin defined in HardwarePins.h as ONEWIRE_PIN)
+OneWire oneWire(ONEWIRE_PIN);
 DallasTemperature ds18b20(&oneWire);
 float hydronicTemp = 0.0;
 bool hydronicHeatingEnabled = false;
@@ -78,16 +76,10 @@ bool hydronicLowTempAlertSent = false; // Track if low temp alert has been sent
 unsigned long lastHydronicAlertTime = 0; // Track last alert time to prevent spam
 bool hydronicLockout = false; // Track hydronic safety lockout state
 
-// Light sensor and display dimming setup
-#define LIGHT_SENSOR_PIN 8 // Photocell/light sensor pin
-#define TFT_BACKLIGHT_PIN 14 // TFT backlight control pin
-const int PWM_CHANNEL = 0; // PWM channel for backlight control
-const int PWM_CHANNEL_HEAT = 1; // PWM channel for heat LED
-const int PWM_CHANNEL_COOL = 2; // PWM channel for cool LED
-const int PWM_CHANNEL_FAN = 3; // PWM channel for fan LED
-const int PWM_CHANNEL_BUZZER = 4; // PWM channel for buzzer
-const int PWM_FREQ = 5000; // PWM frequency
-const int PWM_RESOLUTION = 8; // 8-bit resolution (0-255)
+// Light sensor and display dimming setup (PWM constants now in HardwarePins.h)
+// LIGHT_SENSOR_PIN and TFT_BACKLIGHT_PIN are defined in HardwarePins.h
+// PWM_CHANNEL, PWM_CHANNEL_HEAT, PWM_CHANNEL_COOL, PWM_CHANNEL_FAN, PWM_CHANNEL_BUZZER defined in HardwarePins.h
+// PWM_FREQ and PWM_RESOLUTION defined in HardwarePins.h
 const int MIN_BRIGHTNESS = 30; // Minimum backlight brightness (0-255)
 const int MAX_BRIGHTNESS = 255; // Maximum backlight brightness (0-255)
 const int LIGHT_SENSOR_MIN = 100; // Minimum useful light sensor reading
@@ -128,7 +120,7 @@ String owmCountry = "";
 String haUrl = "";
 String haToken = "";
 String haEntityId = "";
-int weatherUpdateInterval = 10; // Update interval in minutes (default 10)
+int weatherUpdateInterval = 5; // Update interval in minutes (default 5)
 Weather weather; // Weather object
 
 // Hybrid staging settings
@@ -179,20 +171,7 @@ const int KEYBOARD_Y_OFFSET = 75;
 // Dual-core task handle
 TaskHandle_t sensorTask;
 
-// GPIO pins for relays - ESP32-S3 schematic verified
-const int heatRelay1Pin = 5;   // Heat Stage 1
-const int heatRelay2Pin = 7;   // Heat Stage 2  
-const int coolRelay1Pin = 6;   // Cool Stage 1
-const int coolRelay2Pin = 39;  // Cool Stage 2
-const int fanRelayPin = 4;     // Fan Control
-
-// GPIO pins for status LEDs
-const int ledFanPin = 37;      // Fan status LED
-const int ledHeatPin = 38;     // Heat status LED
-const int ledCoolPin = 2;      // Cool status LED
-
-// GPIO pin for buzzer (5V buzzer through 2N7002 MOSFET)
-const int buzzerPin = 17;      // Buzzer pin
+// GPIO pin definitions moved to HardwarePins.h for centralized hardware abstraction
 
 // Settings
 float setTempHeat = 72.0; // Default set temperature for heating in Fahrenheit
@@ -834,8 +813,8 @@ void setup()
         Serial.println("I2C mutex created successfully");
     }
     
-    // Initialize I2C for AHT20 sensor (ESP32-S3 pins)
-    Wire.begin(36, 35); // SDA=36, SCL=35 per schematic
+    // Initialize I2C for AHT20 sensor (pins defined in HardwarePins.h)
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN); // SDA=36, SCL=35 per schematic
     
     // Initialize AHT20 sensor with mutex protection
     if (i2cMutex != NULL && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
@@ -876,30 +855,30 @@ void setup()
     calibrateTouchScreen();
 
     // Initialize relay pins
-    pinMode(heatRelay1Pin, OUTPUT);
-    pinMode(heatRelay2Pin, OUTPUT);
-    pinMode(coolRelay1Pin, OUTPUT);
-    pinMode(coolRelay2Pin, OUTPUT);
-    pinMode(fanRelayPin, OUTPUT);
+    pinMode(HEAT_RELAY_1_PIN, OUTPUT);
+    pinMode(HEAT_RELAY_2_PIN, OUTPUT);
+    pinMode(COOL_RELAY_1_PIN, OUTPUT);
+    pinMode(COOL_RELAY_2_PIN, OUTPUT);
+    pinMode(FAN_RELAY_PIN, OUTPUT);
 
     // Initialize LED pins with PWM for dimmed operation
     ledcSetup(PWM_CHANNEL_HEAT, PWM_FREQ, PWM_RESOLUTION);
     ledcSetup(PWM_CHANNEL_COOL, PWM_FREQ, PWM_RESOLUTION);
     ledcSetup(PWM_CHANNEL_FAN, PWM_FREQ, PWM_RESOLUTION);
-    ledcAttachPin(ledHeatPin, PWM_CHANNEL_HEAT);
-    ledcAttachPin(ledCoolPin, PWM_CHANNEL_COOL);
-    ledcAttachPin(ledFanPin, PWM_CHANNEL_FAN);
+    ledcAttachPin(LED_HEAT_PIN, PWM_CHANNEL_HEAT);
+    ledcAttachPin(LED_COOL_PIN, PWM_CHANNEL_COOL);
+    ledcAttachPin(LED_FAN_PIN, PWM_CHANNEL_FAN);
 
     // Initialize buzzer with dedicated PWM channel
     ledcSetup(PWM_CHANNEL_BUZZER, 4000, PWM_RESOLUTION); // 4kHz for buzzer
-    ledcAttachPin(buzzerPin, PWM_CHANNEL_BUZZER);
+    ledcAttachPin(BUZZER_PIN, PWM_CHANNEL_BUZZER);
 
     // Ensure all relays are off during bootup
-    digitalWrite(heatRelay1Pin, LOW);
-    digitalWrite(heatRelay2Pin, LOW);
-    digitalWrite(coolRelay1Pin, LOW);
-    digitalWrite(coolRelay2Pin, LOW);
-    digitalWrite(fanRelayPin, LOW);
+    digitalWrite(HEAT_RELAY_1_PIN, LOW);
+    digitalWrite(HEAT_RELAY_2_PIN, LOW);
+    digitalWrite(COOL_RELAY_1_PIN, LOW);
+    digitalWrite(COOL_RELAY_2_PIN, LOW);
+    digitalWrite(FAN_RELAY_PIN, LOW);
 
     // Ensure all LEDs are off during bootup
     ledcWrite(PWM_CHANNEL_HEAT, 0);
@@ -936,6 +915,8 @@ void setup()
         if (WiFi.status() == WL_CONNECTED)
         {
             Serial.println("\nConnected to WiFi");
+            Serial.print("IP Address: ");
+            Serial.println(WiFi.localIP());
             wifiConnected = true;
             
             // Only start web server and MQTT if connected
@@ -1339,6 +1320,8 @@ void setupWiFi()
         if (WiFi.status() == WL_CONNECTED)
         {
             Serial.println("Connected to WiFi");
+            Serial.print("IP Address: ");
+            Serial.println(WiFi.localIP());
         }
         else
         {
@@ -1376,6 +1359,8 @@ void connectToWiFi()
         if (WiFi.status() == WL_CONNECTED)
         {
             Serial.println("Connected to WiFi");
+            Serial.print("IP Address: ");
+            Serial.println(WiFi.localIP());
         }
         else
         {
@@ -1585,6 +1570,8 @@ void handleKeyPress(int row, int col)
                     tft.setCursor(30, 130);
                     tft.println("Restarting...");
                     Serial.println("Connected to WiFi");
+                    Serial.print("IP Address: ");
+                    Serial.println(WiFi.localIP());
                     delay(2000);
                     ESP.restart();
                 }
@@ -2295,10 +2282,10 @@ void controlRelays(float currentTemp)
         Serial.println("[DEBUG] In OFF mode - turning off heating and cooling relays");
         // Turn off heating and cooling relays, but don't turn off fan
         // This allows the fan to operate in "on" or "cycle" mode even when thermostat is off
-        digitalWrite(heatRelay1Pin, LOW);
-        digitalWrite(heatRelay2Pin, LOW);
-        digitalWrite(coolRelay1Pin, LOW);
-        digitalWrite(coolRelay2Pin, LOW);
+        digitalWrite(HEAT_RELAY_1_PIN, LOW);
+        digitalWrite(HEAT_RELAY_2_PIN, LOW);
+        digitalWrite(COOL_RELAY_1_PIN, LOW);
+        digitalWrite(COOL_RELAY_2_PIN, LOW);
         heatingOn = false;
         coolingOn = false;
         stage1Active = false;
@@ -2307,13 +2294,13 @@ void controlRelays(float currentTemp)
         // Handle fan separately based on fanMode
         if (fanMode == "on") {
             if (!fanOn) {
-                digitalWrite(fanRelayPin, HIGH);
+                digitalWrite(FAN_RELAY_PIN, HIGH);
                 fanOn = true;
                 Serial.println("Fan on while thermostat is off");
             }
         }
         else if (fanMode == "auto") {
-            digitalWrite(fanRelayPin, LOW);
+            digitalWrite(FAN_RELAY_PIN, LOW);
             fanOn = false;
         }
         // Note: "cycle" fan mode is handled by controlFanSchedule()
@@ -2332,8 +2319,8 @@ void controlRelays(float currentTemp)
         // Turn off cooling relays when entering heat mode
         if (coolingOn) {
             Serial.println("[DEBUG] Turning off cooling relays in heat mode");
-            digitalWrite(coolRelay1Pin, LOW);
-            digitalWrite(coolRelay2Pin, LOW);
+            digitalWrite(COOL_RELAY_1_PIN, LOW);
+            digitalWrite(COOL_RELAY_2_PIN, LOW);
             coolingOn = false;
             // Reset staging flags to allow heating to start fresh
             stage1Active = false;
@@ -2372,8 +2359,8 @@ void controlRelays(float currentTemp)
         // Turn off heating relays when entering cool mode
         if (heatingOn) {
             Serial.println("[DEBUG] Turning off heating relays in cool mode");
-            digitalWrite(heatRelay1Pin, LOW);
-            digitalWrite(heatRelay2Pin, LOW);
+            digitalWrite(HEAT_RELAY_1_PIN, LOW);
+            digitalWrite(HEAT_RELAY_2_PIN, LOW);
             heatingOn = false;
             // Reset staging flags to allow cooling to start fresh
             stage1Active = false;
@@ -2467,11 +2454,11 @@ void controlRelays(float currentTemp)
     }
     
     // Debug: Verify actual relay pin states
-    bool actualHeat1 = digitalRead(heatRelay1Pin) == HIGH;
-    bool actualHeat2 = digitalRead(heatRelay2Pin) == HIGH;
-    bool actualCool1 = digitalRead(coolRelay1Pin) == HIGH;
-    bool actualCool2 = digitalRead(coolRelay2Pin) == HIGH;
-    bool actualFan = digitalRead(fanRelayPin) == HIGH;
+    bool actualHeat1 = digitalRead(HEAT_RELAY_1_PIN) == HIGH;
+    bool actualHeat2 = digitalRead(HEAT_RELAY_2_PIN) == HIGH;
+    bool actualCool1 = digitalRead(COOL_RELAY_1_PIN) == HIGH;
+    bool actualCool2 = digitalRead(COOL_RELAY_2_PIN) == HIGH;
+    bool actualFan = digitalRead(FAN_RELAY_PIN) == HIGH;
     
     Serial.printf("[DEBUG] controlRelays EXIT: RelayPins H1=%d H2=%d C1=%d C2=%d F=%d | Flags heat=%d cool=%d fan=%d stage1=%d stage2=%d\n", 
                  actualHeat1, actualHeat2, actualCool1, actualCool2, actualFan, 
@@ -2483,10 +2470,10 @@ void controlRelays(float currentTemp)
 void turnOffAllRelays()
 {
     Serial.println("[DEBUG] turnOffAllRelays() - Turning off heating/cooling relays");
-    digitalWrite(heatRelay1Pin, LOW);
-    digitalWrite(heatRelay2Pin, LOW);
-    digitalWrite(coolRelay1Pin, LOW);
-    digitalWrite(coolRelay2Pin, LOW);
+    digitalWrite(HEAT_RELAY_1_PIN, LOW);
+    digitalWrite(HEAT_RELAY_2_PIN, LOW);
+    digitalWrite(COOL_RELAY_1_PIN, LOW);
+    digitalWrite(COOL_RELAY_2_PIN, LOW);
     heatingOn = false;
     coolingOn = false;
     stage1Active = false; // Reset stage 1 active flag
@@ -2496,7 +2483,7 @@ void turnOffAllRelays()
     if (fanMode == "on") {
         // Keep fan running in "on" mode
         if (!fanOn) {
-            digitalWrite(fanRelayPin, HIGH);
+            digitalWrite(FAN_RELAY_PIN, HIGH);
             fanOn = true;
             Serial.println("[DEBUG] turnOffAllRelays() - Keeping fan ON (fanMode=on)");
         }
@@ -2504,7 +2491,7 @@ void turnOffAllRelays()
         // Turn off fan in auto mode when heating/cooling stops
         if (fanRelayNeeded) {
             // Only control fan if fanRelayNeeded is true
-            digitalWrite(fanRelayPin, LOW);
+            digitalWrite(FAN_RELAY_PIN, LOW);
             fanOn = false;
             Serial.println("[DEBUG] turnOffAllRelays() - Turning fan OFF (fanMode=auto)");
         }
@@ -2543,8 +2530,8 @@ void activateHeating() {
                          hydronicTempHigh, hydronicTemp);
             
             // Turn off heating relays
-            digitalWrite(heatRelay1Pin, LOW);
-            digitalWrite(heatRelay2Pin, LOW);
+            digitalWrite(HEAT_RELAY_1_PIN, LOW);
+            digitalWrite(HEAT_RELAY_2_PIN, LOW);
             heatingOn = false;
             stage1Active = false;
             stage2Active = false;
@@ -2553,7 +2540,7 @@ void activateHeating() {
             if (fanMode == "on" || fanMode == "cycle") {
                 if (!fanOn) {
                     Serial.println("[LOCKOUT] Keeping fan on for air circulation");
-                    digitalWrite(fanRelayPin, HIGH);
+                    digitalWrite(FAN_RELAY_PIN, HIGH);
                     fanOn = true;
                 }
             }
@@ -2571,24 +2558,24 @@ void activateHeating() {
     coolingOn = false;
     
     // Turn off cooling relays when activating heating
-    digitalWrite(coolRelay1Pin, LOW);
-    digitalWrite(coolRelay2Pin, LOW);
+    digitalWrite(COOL_RELAY_1_PIN, LOW);
+    digitalWrite(COOL_RELAY_2_PIN, LOW);
     
     // Check if stage 1 is not active yet
     if (!stage1Active) {
         Serial.println("[DEBUG] Activating heating stage 1 relay");
-        digitalWrite(heatRelay1Pin, HIGH); // Activate stage 1
+        digitalWrite(HEAT_RELAY_1_PIN, HIGH); // Activate stage 1
         stage1Active = true;
         stage1StartTime = millis(); // Record the start time
         stage2Active = false; // Ensure stage 2 is off initially
-        Serial.printf("[DEBUG] Stage 1 heating activated - relay pin %d set HIGH\n", heatRelay1Pin);
+        Serial.printf("[DEBUG] Stage 1 heating activated - relay pin %d set HIGH\n", HEAT_RELAY_1_PIN);
     } 
     // Check if it's time to activate stage 2 based on hybrid approach
     else if (!stage2Active && 
              ((millis() - stage1StartTime) / 1000 >= stage1MinRuntime) && // Minimum run time condition
              (currentTemp < setTempHeat - tempSwing - stage2TempDelta) && // Temperature delta condition
              stage2HeatingEnabled) { // Check if stage 2 heating is enabled
-        digitalWrite(heatRelay2Pin, HIGH); // Activate stage 2
+        digitalWrite(HEAT_RELAY_2_PIN, HIGH); // Activate stage 2
         stage2Active = true;
         Serial.println("Stage 2 heating activated");
     }
@@ -2596,14 +2583,14 @@ void activateHeating() {
     // Control fan based on fanRelayNeeded setting
     if (fanRelayNeeded) {
         if (!fanOn) {
-            digitalWrite(fanRelayPin, HIGH);
+            digitalWrite(FAN_RELAY_PIN, HIGH);
             fanOn = true;
             Serial.println("Fan activated with heat");
         }
     } else {
         // HVAC controls its own fan, turn ours off
         if (fanOn) {
-            digitalWrite(fanRelayPin, LOW);
+            digitalWrite(FAN_RELAY_PIN, LOW);
             fanOn = false;
             Serial.println("Fan turned off during heat - HVAC controls fan");
         }
@@ -2621,17 +2608,17 @@ void activateCooling()
     heatingOn = false;
     
     // Turn off heating relays when activating cooling
-    digitalWrite(heatRelay1Pin, LOW);
-    digitalWrite(heatRelay2Pin, LOW);
+    digitalWrite(HEAT_RELAY_1_PIN, LOW);
+    digitalWrite(HEAT_RELAY_2_PIN, LOW);
     
     // Check if stage 1 is not active yet
     if (!stage1Active) {
         Serial.println("[DEBUG] Activating cooling stage 1 relay");
-        digitalWrite(coolRelay1Pin, HIGH); // Activate stage 1
+        digitalWrite(COOL_RELAY_1_PIN, HIGH); // Activate stage 1
         stage1Active = true;
         stage1StartTime = millis(); // Record the start time
         stage2Active = false; // Ensure stage 2 is off initially
-        Serial.printf("[DEBUG] Stage 1 cooling activated - relay pin %d set HIGH\n", coolRelay1Pin);
+        Serial.printf("[DEBUG] Stage 1 cooling activated - relay pin %d set HIGH\n", COOL_RELAY_1_PIN);
     } else {
         Serial.printf("[DEBUG] Cooling stage 1 already active (stage1Active=%d)\n", stage1Active);
     }
@@ -2640,7 +2627,7 @@ void activateCooling()
             ((millis() - stage1StartTime) / 1000 >= stage1MinRuntime) && // Minimum run time condition
             (currentTemp > setTempCool + tempSwing + stage2TempDelta) && // Temperature delta condition
             stage2CoolingEnabled) { // Check if stage 2 cooling is enabled
-        digitalWrite(coolRelay2Pin, HIGH); // Activate stage 2
+        digitalWrite(COOL_RELAY_2_PIN, HIGH); // Activate stage 2
         stage2Active = true;
         Serial.println("Stage 2 cooling activated");
     }
@@ -2648,14 +2635,14 @@ void activateCooling()
     // Control fan based on fanRelayNeeded setting
     if (fanRelayNeeded) {
         if (!fanOn) {
-            digitalWrite(fanRelayPin, HIGH);
+            digitalWrite(FAN_RELAY_PIN, HIGH);
             fanOn = true;
             Serial.println("Fan activated with cooling");
         }
     } else {
         // HVAC controls its own fan, turn ours off
         if (fanOn) {
-            digitalWrite(fanRelayPin, LOW);
+            digitalWrite(FAN_RELAY_PIN, LOW);
             fanOn = false;
             Serial.println("Fan turned off during cool - HVAC controls fan");
         }
@@ -2690,7 +2677,7 @@ void handleFanControl()
     
     // Only write GPIO if state actually changed (state guard)
     if (newFanState != fanOn) {
-        digitalWrite(fanRelayPin, newFanState ? HIGH : LOW);
+        digitalWrite(FAN_RELAY_PIN, newFanState ? HIGH : LOW);
         fanOn = newFanState;
         Serial.printf("[FAN] Fan state changed via handleFanControl: %s\n", fanOn ? "ON" : "OFF");
     }
@@ -2715,7 +2702,7 @@ void controlFanSchedule()
         // Don't run cycle schedule if heating or cooling is active
         if (heatingOn || coolingOn) {
             if (!fanRelayNeeded && fanOn) {
-                digitalWrite(fanRelayPin, LOW);
+                digitalWrite(FAN_RELAY_PIN, LOW);
                 fanOn = false;
                 Serial.println("[FAN SCHEDULE] Stopping fan - heating/cooling active, fanRelayNeeded=false");
             }
@@ -2752,7 +2739,7 @@ void controlFanSchedule()
         
         // Only write GPIO if state actually changed
         if (shouldRun != fanOn) {
-            digitalWrite(fanRelayPin, shouldRun ? HIGH : LOW);
+            digitalWrite(FAN_RELAY_PIN, shouldRun ? HIGH : LOW);
             fanOn = shouldRun;
             Serial.printf("[FAN SCHEDULE] Cycle mode: increment %lu/%lu, fan %s\n", 
                          currentIncrement, totalIncrements, fanOn ? "ON" : "OFF");
@@ -2774,8 +2761,8 @@ void handleWebRequests()
         String html = generateStatusPage(currentTemp, currentHumidity, hydronicTemp, 
                                        thermostatMode, fanMode, version_info, hostname, 
                                        useFahrenheit, hydronicHeatingEnabled,
-                                       heatRelay1Pin, heatRelay2Pin, coolRelay1Pin, 
-                                       coolRelay2Pin, fanRelayPin,
+                                       HEAT_RELAY_1_PIN, HEAT_RELAY_2_PIN, COOL_RELAY_1_PIN, 
+                                       COOL_RELAY_2_PIN, FAN_RELAY_PIN,
                                        setTempHeat, setTempCool, setTempAuto,
                                        tempSwing, autoTempSwing,
                                        fanRelayNeeded, stage1MinRuntime, 
@@ -3015,8 +3002,8 @@ void handleWebRequests()
         if (request->hasParam("heating", true)) {
             String heatingState = request->getParam("heating", true)->value();
             heatingOn = heatingState == "on";
-            digitalWrite(heatRelay1Pin, heatingOn ? HIGH : LOW);
-            digitalWrite(heatRelay2Pin, heatingOn ? HIGH : LOW);
+            digitalWrite(HEAT_RELAY_1_PIN, heatingOn ? HIGH : LOW);
+            digitalWrite(HEAT_RELAY_2_PIN, heatingOn ? HIGH : LOW);
             request->send(200, "application/json", "{\"heating\": \"" + heatingState + "\"}");
         } else {
             request->send(400, "application/json", "{\"error\": \"Invalid request\"}");
@@ -3027,8 +3014,8 @@ void handleWebRequests()
         if (request->hasParam("cooling", true)) {
             String coolingState = request->getParam("cooling", true)->value();
             coolingOn = coolingState == "on";
-            digitalWrite(coolRelay1Pin, coolingOn ? HIGH : LOW);
-            digitalWrite(coolRelay2Pin, coolingOn ? HIGH : LOW);
+            digitalWrite(COOL_RELAY_1_PIN, coolingOn ? HIGH : LOW);
+            digitalWrite(COOL_RELAY_2_PIN, coolingOn ? HIGH : LOW);
             request->send(200, "application/json", "{\"cooling\": \"" + coolingState + "\"}");
         } else {
             request->send(400, "application/json", "{\"error\": \"Invalid request\"}");
@@ -3039,7 +3026,7 @@ void handleWebRequests()
         if (request->hasParam("fan", true)) {
             String fanState = request->getParam("fan", true)->value();
             fanOn = fanState == "on";
-            digitalWrite(fanRelayPin, fanOn ? HIGH : LOW);
+            digitalWrite(FAN_RELAY_PIN, fanOn ? HIGH : LOW);
             request->send(200, "application/json", "{\"fan\": \"" + fanState + "\"}");
         } else {
             request->send(400, "application/json", "{\"error\": \"Invalid request\"}");
@@ -3334,6 +3321,12 @@ void handleWebRequests()
         }
         
         request->send(200, "text/plain", "Schedule settings updated!");
+    });
+
+    // Weather refresh endpoint for manual force update
+    server.on("/weather_refresh", HTTP_POST, [](AsyncWebServerRequest *request) {
+        weather.forceUpdate();
+        request->send(200, "text/plain", "Weather update forced");
     });
 }
 
