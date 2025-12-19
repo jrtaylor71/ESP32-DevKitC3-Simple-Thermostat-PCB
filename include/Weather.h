@@ -53,6 +53,7 @@ public:
     
     // Update weather data
     bool update();
+    void forceUpdate();
     
     // Get weather data
     WeatherData getData();

@@ -24,8 +24,8 @@
 #define UART0_RX_PIN 44  // Connected to USB-UART bridge chip
 
 // UART1 - LD2410 Motion Sensor (configurable)
-#define LD2410_TX_PIN 16  // ESP32 TX -> LD2410 RX (data to sensor)
-#define LD2410_RX_PIN 15  // ESP32 RX -> LD2410 TX (data from sensor)
+#define LD2410_TX_PIN 16  // ESP32 TX -> LD2410 RX (data to sensor) - LD_TX=GPIO16
+#define LD2410_RX_PIN 15  // ESP32 RX -> LD2410 TX (data from sensor) - LD_RX=GPIO15
 
 // UART2 - Available but pins conflict with other peripherals
 // NOTE: UART2 default pins (GPIO17 TX, GPIO18 RX) are used for buzzer and motion detect
@@ -35,27 +35,27 @@
 // TFT DISPLAY - ILI9341 (SPI Interface)
 // =============================================================================
 
-#define TFT_CS_PIN       10  // Chip select
-#define TFT_DC_PIN       11  // Data/Command
-#define TFT_RST_PIN      12  // Reset
-#define TFT_MOSI_PIN     13  // SPI MOSI
-#define TFT_SCLK_PIN     14  // SPI Clock
-#define TFT_MISO_PIN     9   // SPI MISO
-#define TFT_BACKLIGHT_PIN 33 // PWM backlight control
+#define TFT_CS_PIN        9  // Chip select (CS_9)
+#define TFT_DC_PIN       11  // Data/Command (DC_11)
+#define TFT_RST_PIN      10  // Reset (TFT_REST -> GPIO10)
+#define TFT_MOSI_PIN     12  // SPI MOSI (MOSI_12)
+#define TFT_SCLK_PIN     13  // SPI Clock (SCK_13)
+#define TFT_MISO_PIN     21  // SPI MISO (MISO_21)
+#define TFT_BACKLIGHT_PIN 14 // PWM backlight control (TFT_LED -> GPIO14)
 
 // =============================================================================
 // TOUCH CONTROLLER - XPT2046 (SPI Interface, shared with TFT)
 // =============================================================================
 
-#define TOUCH_CS_PIN     21  // Touch chip select
-#define TOUCH_IRQ_PIN    -1  // Touch interrupt (not used)
+#define TOUCH_CS_PIN     47  // Touch chip select (T_CS_47)
+#define TOUCH_IRQ_PIN    48  // Touch interrupt (GPIO48)
 
 // =============================================================================
 // I2C BUS - Temperature/Humidity Sensors (AHT20, DHT11, BME280)
 // =============================================================================
 
-#define I2C_SDA_PIN      36  // I2C Data
-#define I2C_SCL_PIN      35  // I2C Clock
+#define I2C_SDA_PIN      36  // I2C Data (SDA)
+#define I2C_SCL_PIN      35  // I2C Clock (SCL)
 
 // Temperature/Humidity Sensor Configuration
 // - AHT20: I2C address 0x38 (uses both SDA and SCL)
@@ -71,24 +71,25 @@
 // ONEWIRE BUS - DS18B20 Hydronic Temperature Sensor
 // =============================================================================
 
-#define ONEWIRE_PIN      34  // DS18B20 data line
+#define ONEWIRE_PIN      41  // DS18B20 data line (GPIO41)
 
 // =============================================================================
 // RELAY OUTPUTS - HVAC Control (Active HIGH)
 // =============================================================================
 
-#define HEAT_RELAY_1_PIN  5   // Heat Stage 1
-#define HEAT_RELAY_2_PIN  7   // Heat Stage 2
-#define COOL_RELAY_1_PIN  6   // Cool Stage 1
-#define COOL_RELAY_2_PIN  39  // Cool Stage 2
-#define FAN_RELAY_PIN     4   // Fan Control
+#define HEAT_RELAY_1_PIN  5   // Heat Stage 1 (HEAT_W_5)
+#define HEAT_RELAY_2_PIN  7   // Heat Stage 2 (HEAT_W_7)
+#define COOL_RELAY_1_PIN  6   // Cool Stage 1 (COOL_Y_6)
+#define COOL_RELAY_2_PIN  39  // Cool Stage 2 (COOL-STAGE2_Y2_39)
+#define FAN_RELAY_PIN     4   // Fan Control (FAN_G_4)
+#define PUMP_RELAY_PIN    40  // Pump Control (PUMP_40)
 
 // =============================================================================
 // STATUS LED OUTPUTS - PWM Capable for Dimming
 // =============================================================================
 
-#define LED_FAN_PIN      37  // Fan status LED (green)
-#define LED_HEAT_PIN     38  // Heat status LED (red)
+#define LED_FAN_PIN      37  // Fan status LED (green) - GPIO37
+#define LED_HEAT_PIN     38  // Heat status LED (red) - GPIO38
 #define LED_COOL_PIN     2   // Cool status LED (blue)
 
 // =============================================================================

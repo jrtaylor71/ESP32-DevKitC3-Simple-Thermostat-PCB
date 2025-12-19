@@ -777,6 +777,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// Force weather update
+function forceWeatherUpdate() {
+    fetch('/weather_refresh', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.text())
+    .then(data => {
+        alert('Weather update triggered! Checking for new data...');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to trigger weather update');
+    });
+}
+
 // Handle page visibility for auto-refresh
 document.addEventListener('visibilitychange', function() {
     if (document.hidden) {

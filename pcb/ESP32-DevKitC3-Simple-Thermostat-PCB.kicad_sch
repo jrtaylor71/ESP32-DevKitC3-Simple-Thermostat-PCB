@@ -9760,7 +9760,7 @@
 			)
 		)
 	)
-	(global_label "MOSI_23"
+	(global_label "MOSI_12"
 		(shape input)
 		(at 204.47 27.94 0)
 		(fields_autoplaced yes)

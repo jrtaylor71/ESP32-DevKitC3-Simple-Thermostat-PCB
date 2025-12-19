@@ -743,6 +743,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     
     html += "<div class='button-group' style='padding: 16px;'>";
     html += "<button type='submit' class='btn btn-primary'>💾 Save Weather Settings</button>";
+    html += "<button type='button' class='btn btn-secondary' onclick='forceWeatherUpdate()'>🔄 Force Update Now</button>";
     html += "</div>";
     html += "</form>";
     html += "</div>"; // End weather-content tab

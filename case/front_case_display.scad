@@ -18,13 +18,13 @@ pcb_mount_holes = [
 // Case parameters
 wall_thickness = 2.5;
 pcb_clearance = 8.0;
-standoff_height = 13.0;
+standoff_height = 17.3;  // Updated for display pin header clearance
 standoff_diameter = 7.0;
 hole_diameter = 2.7;  // tighter fit for M2.5
 
 // Component clearance on display side
 // Set so case wall sits 1.6mm ABOVE standoff tops (standoff_height + 1.6)
-display_clearance = 14.6;  // 2.5 wall + 14.6 = 17.1mm overall height
+display_clearance = 18.9;  // 2.5 wall + 18.9 = 21.4mm overall height
 
 // Display module mounting hole centers (relative to PCB origin at lower-left)
 display_holes = [
@@ -54,11 +54,14 @@ ldr_diameter = 5.5;           // Light entry hole for photoresistor
 ldr_x = pcb_clearance + 104.8; // Relative X in case
 ldr_y = pcb_clearance + 6.5;   // Relative Y in case
 
-// AHT20 (J5) - rectangular hole 12.5mm x 6mm, rotated 90°
-aht20_width = 12.5;
-aht20_height = 6.0;
-aht20_x = pcb_clearance + 11.5; // Relative X in case
-aht20_y = pcb_clearance + 66.42; // Relative Y in case
+// Temperature/Humidity Sensor (J5) - protective box with airflow holes
+// Supports AHT20, DHT11, BME280 - all use same footprint
+sensor_box_width = 20.0;      // Width of box frame
+sensor_box_height = 15.0;     // Height of box frame
+sensor_box_depth = 16.0;      // Protrudes from case front
+sensor_box_wall = 1.5;        // Wall thickness of sensor box
+sensor_x = pcb_clearance + 11.5; // Relative X in case (J5 center)
+sensor_y = pcb_clearance + 66.42; // Relative Y in case (J5 center)
 
 // Screw fasteners (front-through holes, back bosses)
 screw_hole_dia = 3.0;        // clearance for M2.5
@@ -78,12 +81,38 @@ $fn = 64;
 
 // === MODULES ===
 
+// Rounded rectangle for outer shell
 module rounded_rect(l, w, h, r) {
     hull() {
         translate([r, r, 0]) cylinder(r=r, h=h);
         translate([l-r, r, 0]) cylinder(r=r, h=h);
         translate([r, w-r, 0]) cylinder(r=r, h=h);
         translate([l-r, w-r, 0]) cylinder(r=r, h=h);
+    }
+}
+
+// Rounded bottom edge version - cylinders at bottom for front edge rounding
+module rounded_edge_box(l, w, h, corner_r, edge_r) {
+    hull() {
+        // Bottom corners with edge radius (creates rounded front/bottom edge)
+        translate([corner_r, corner_r, edge_r]) 
+            sphere(r=edge_r, $fn=32);
+        translate([l - corner_r, corner_r, edge_r]) 
+            sphere(r=edge_r, $fn=32);
+        translate([corner_r, w - corner_r, edge_r]) 
+            sphere(r=edge_r, $fn=32);
+        translate([l - corner_r, w - corner_r, edge_r]) 
+            sphere(r=edge_r, $fn=32);
+        
+        // Top corners maintain full dimensions
+        translate([corner_r, corner_r, h]) 
+            cylinder(r=corner_r, h=0.1);
+        translate([l - corner_r, corner_r, h]) 
+            cylinder(r=corner_r, h=0.1);
+        translate([corner_r, w - corner_r, h]) 
+            cylinder(r=corner_r, h=0.1);
+        translate([l - corner_r, w - corner_r, h]) 
+            cylinder(r=corner_r, h=0.1);
     }
 }
 
@@ -95,6 +124,59 @@ module vent_grid(rows, cols) {
                 cylinder(d=3.0, h=20, center=true);
         }
     }
+}
+
+// Short vent slots - cleaner look than long slots
+module short_vent_slots(count, slot_length=12.0, slot_width=2.0, spacing=8.0) {
+    for (i = [0:count-1]) {
+        translate([i*spacing - (count-1)*spacing/2, 0, 0])
+            cube([slot_length, slot_width, 20], center=true);
+    }
+}
+
+// Protective sensor box with airflow holes
+module sensor_protection_box() {
+    // 4-wall rectangular frame rotated 90° around sensor center; no recess
+    translate([sensor_x, sensor_y, 0])
+        rotate([0,0,90])
+            difference() {
+                // Outer frame flush on front face
+                translate([-sensor_box_width/2, -sensor_box_height/2, 0])
+                    cube([sensor_box_width, sensor_box_height, sensor_box_depth]);
+
+                // Inner cavity through full depth to leave only four side walls
+                translate([-(sensor_box_width/2 - sensor_box_wall),
+                           -(sensor_box_height/2 - sensor_box_wall),
+                           -0.1])
+                    cube([sensor_box_width - 2*sensor_box_wall,
+                          sensor_box_height - 2*sensor_box_wall,
+                          sensor_box_depth + 0.2]);
+
+                // Vent holes through the outer walls themselves
+                // Top wall vents (penetrate full wall thickness)
+                for (i = [0:3]) {
+                    translate([-(sensor_box_width/2 - 1), -(sensor_box_height/2), 2 + i*2.5])
+                        cube([sensor_box_width - 2, 4.0, 1.5]);
+                }
+
+                // Bottom wall vents (penetrate full wall thickness)
+                for (i = [0:3]) {
+                    translate([-(sensor_box_width/2 - 1), (sensor_box_height/2 - 4.0), 2 + i*2.5])
+                        cube([sensor_box_width - 2, 4.0, 1.5]);
+                }
+
+                // Left wall vents (penetrate full wall thickness)
+                for (i = [0:2]) {
+                    translate([-(sensor_box_width/2), -(sensor_box_height/2 - 1), 2 + i*3])
+                        cube([4.0, sensor_box_height - 2, 1.5]);
+                }
+
+                // Right wall vents (penetrate full wall thickness)
+                for (i = [0:2]) {
+                    translate([(sensor_box_width/2 - 4.0), -(sensor_box_height/2 - 1), 2 + i*3])
+                        cube([4.0, sensor_box_height - 2, 1.5]);
+                }
+            }
 }
 
 module pcb_standoff() {
@@ -109,19 +191,19 @@ module pcb_standoff() {
 
 module front_shell() {
     difference() {
-        // Outer shell
-        rounded_rect(case_length, case_width, case_height, 4);
+        // Outer shell with rounded bottom/front edges (2mm)
+        rounded_edge_box(case_length, case_width, case_height, 4, 2);
         
         // CUT SENSOR HOLES THROUGH OUTER PANEL FIRST (z=0 face)
         // LDR07 hole - light entry through front face
         translate([ldr_x, ldr_y, -1])
             cylinder(d=ldr_diameter, h=wall_thickness + 2);
         
-        // AHT20 sensor hole - rectangular 12.5mm x 6mm through front face, rotated 90°
-        translate([aht20_x, aht20_y, -1])
+        // Temp/Humidity sensor front opening - match AHT20 footprint 12.5 x 6.0, rotated 90°
+        translate([sensor_x, sensor_y, -0.1])
             rotate([0,0,90])
-                translate([-aht20_width/2, -aht20_height/2, 0])
-                    cube([aht20_width, aht20_height, wall_thickness + 2]);
+                translate([-12.5/2, -6.0/2, 0])
+                    cube([12.5, 6.0, wall_thickness + 0.2]);
         
         // THEN cut hollow interior (z >= wall_thickness)
         translate([wall_thickness, wall_thickness, wall_thickness])
@@ -135,14 +217,27 @@ module front_shell() {
         translate([display_x, display_y, -0.1])
             cube([display_width, display_height, wall_thickness + 0.2]);
         
-        // Ventilation on top and bottom edges
+        // Top edge ventilation - short slots instead of long grid
         translate([case_length/2, wall_thickness/2, case_height/2])
             rotate([90, 0, 0])
-                vent_grid(2, 12);
+                short_vent_slots(15, slot_length=8.0, slot_width=2.0, spacing=8.5);
         
+        // Bottom edge ventilation - short slots
         translate([case_length/2, case_width - wall_thickness/2, case_height/2])
             rotate([90, 0, 0])
-                vent_grid(2, 12);
+                short_vent_slots(15, slot_length=8.0, slot_width=2.0, spacing=8.5);
+        
+        // Left edge ventilation (short end)
+        translate([wall_thickness/2, case_width/2, case_height/2])
+            rotate([90, 0, 90])
+                short_vent_slots(10, slot_length=8.0, slot_width=2.0, spacing=8.5);
+        
+        // Right edge ventilation (short end)
+        translate([case_length - wall_thickness/2, case_width/2, case_height/2])
+            rotate([90, 0, 90])
+                short_vent_slots(10, slot_length=8.0, slot_width=2.0, spacing=8.5);
+
+        // Short-end ventilation TBD: will add precise slots aligned to the front panel thickness
     }
 }
 
@@ -158,6 +253,10 @@ module front_case() {
                 translate([hole[0] + pcb_clearance, hole[1] + pcb_clearance, wall_thickness])
                     pcb_standoff();
             }
+            // Add sensor protection box on the outward front face using same mirror/translate
+            translate([0, 0, case_height])
+                mirror([0, 0, 1])
+                    sensor_protection_box();
         }
         // Screw clearance holes through entire assembly
         for (pos = screw_positions) {

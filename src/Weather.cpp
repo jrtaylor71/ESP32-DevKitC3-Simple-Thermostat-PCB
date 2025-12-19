@@ -11,7 +11,7 @@
 
 Weather::Weather() {
     _source = WEATHER_DISABLED;
-    _updateInterval = 600000; // Default: 10 minutes
+    _updateInterval = 300000; // Default: 5 minutes
     _useFahrenheit = true;
     _data.valid = false;
     _lastUpdateAttempt = 0;
@@ -101,6 +101,11 @@ bool Weather::update() {
     return success;
 }
 
+void Weather::forceUpdate() {
+    _forceNextUpdate = true;
+    update();
+}
+
 bool Weather::updateFromOpenWeatherMap() {
     Serial.println("[Weather] updateFromOpenWeatherMap() - starting");
     
@@ -136,6 +141,7 @@ bool Weather::updateFromOpenWeatherMap() {
     Serial.println("[Weather] OWM - URL: " + url);
     
     http.begin(url);
+    http.setTimeout(5000);
     Serial.println("[Weather] OWM - Sending HTTP GET request...");
     int httpCode = http.GET();
     Serial.printf("[Weather] OWM - HTTP response code: %d\n", httpCode);
@@ -206,6 +212,7 @@ bool Weather::updateFromHomeAssistant() {
     Serial.println("[Weather] HA - URL: " + url);
     
     http.begin(url);
+    http.setTimeout(5000);
     http.addHeader("Authorization", "Bearer " + _haToken);
     http.addHeader("Content-Type", "application/json");
     Serial.println("[Weather] HA - Headers set, sending HTTP GET request...");
@@ -477,7 +484,8 @@ void Weather::displayOnTFT(TFT_eSPI &tft, int x, int y, bool useFahrenheit) {
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
 
     // Draw high/low if available (moved right 5px, down 5px)
-    if (_data.tempHigh > 0 || _data.tempLow > 0) {
+    // Check if values are not the sentinel value (-999) instead of checking > 0
+    if (_data.tempHigh > -900 || _data.tempLow > -900) {
         tft.setTextSize(1);
         tft.setCursor(x + 10, y + 30);
         char hiLoStr[16];

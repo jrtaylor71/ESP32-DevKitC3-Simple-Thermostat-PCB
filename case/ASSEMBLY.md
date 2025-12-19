@@ -57,26 +57,30 @@ Complete step-by-step assembly and installation instructions for the 3D printed 
 
 **Dimensions:** 149mm × 105.5mm × 30.1mm  
 **Features:**
-- 4× screw bosses at corners (7mm inset, Ø8mm, 10mm tall, Ø2.5mm pilot)
-- 2× keyhole slots on back face for wall mounting (83mm spacing)
+### 3D Printed Parts
+- [ ] Front case (display side, with standoffs)
+- [ ] Back case (wall-mount side, keyholes and bosses)
 - 1.5mm seating lip around top interior perimeter
 - 22mm wire entry hole (centered on back face)
-- Ventilation slots on left/right edges
-- 20mm clearance for ESP32 stack (15.2mm component + margin)
+### Hardware Required
+- [ ] 4× M2.5 × 6mm screws (PCB to front case standoffs)
+- [ ] 4× M2.5 × 10–12mm countersunk screws (front case to back case, DIN 7991 or similar)
 
 ### Front Case (Display Side)
-```
+3. **Test fit cases together:**
+   - Align front bezel over back case seating lip
 ┌─────────────────────────────────────┐
 │  ⊙                             ⊙    │  ← Countersunk screw
 │                                      │     holes (⊙)
-│    ┌─────────────────────────┐     │
+   - Cases should mate without gaps; final retention is by screws
 │    │                         │     │  ← Display cutout
 │    │     DISPLAY AREA        │     │     (50mm × 68mm)
 │  ● │                         │ ●   │  ← Sensor holes
+2. **Position back case:**
 │    └─────────────────────────┘     │     (LDR ●, AHT20 rect)
 │                                      │
 │  ⊙          ═══  ═══  ═══       ⊙   │  ← Ventilation slots
-└─────────────────────────────────────┘
+   Back Case (display outward)  Front Case
 ```
 
 **Dimensions:** 149mm × 105.5mm × 17.1mm  
@@ -87,30 +91,36 @@ Complete step-by-step assembly and installation instructions for the 3D printed 
 - LDR photoresistor hole: Ø5.5mm (lower-right area)
 - AHT20 sensor cutout: 12.5mm × 6mm rectangle (rotated 90°, upper-left area)
 - Top/bottom edge ventilation slots
-
----
-
-## Assembly Instructions
-
+3. **Close case:**
+   - Hold back case above front case (display facing out)
+   - Align edges using lip as guide
+   - Lower gently, keeping alignment
+   - Press evenly around perimeter until seated
+   - You should feel a slight resistance as the lip seats; secure with the four countersunk screws
 ### Step 1: Prepare 3D Printed Parts
 
+1. **Pre-flight check:**
 1. **Inspect back case:**
    - Check that all 4 screw bosses are intact (8mm dia cylinders)
    - Verify Ø2.5mm pilot holes in bosses are clear
    - Test-fit an M2.5 screw (should thread smoothly into pilot)
+   - Verify component stack height ≤ 20mm
    - Remove any support material from keyhole slots on back face
    - Verify 1.5mm seating lip around top interior is clean
-
-2. **Inspect front case:**
-   - Ensure all 4 standoffs are intact (Ø7mm, 13mm tall)
-   - Check Ø2.7mm holes in standoffs are clear
+If you need to modify the case:
+- Edit `front_case_display.scad` and `back_case_wall.scad` in OpenSCAD
+- Adjust parameters as needed
+- Regenerate STL files with `./generate_stl.sh`
+- Re-print modified parts
    - Verify countersunk screw holes have smooth taper (3mm → 7mm)
    - Check display cutout and sensor holes are clean
    - Remove any stringing from interior
-
-3. **Test fit cases together:**
-   - Align front bezel over back case seating lip
-   - Verify screw holes align with bosses (7mm inset from corners)
+**Problem:** PCB doesn't fit  
+**Solutions:**
+- Verify correct PCB orientation (ESP32 down)
+- Check standoff height (should be 13mm)
+- Ensure no warping from print
+- May need to enlarge case cavity slightly
    - Lip should provide ~1.5mm gap between case halves
    - The lip should guide proper positioning
    - Cases should mate without gaps

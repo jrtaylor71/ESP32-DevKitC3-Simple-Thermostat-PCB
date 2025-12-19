@@ -218,7 +218,7 @@ String timeZone = "CST6CDT,M3.2.0,M11.1.0"; // Default time zone (Central Standa
 String hostname = "ESP32-S3-Simple-Thermostat"; // Default hostname
 
 // Version control information
-const String sw_version = "1.3.5"; // Software version
+const String sw_version = "1.3.7"; // Software version
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -922,7 +922,7 @@ void setup()
     // Print version information at startup
     Serial.println();
     Serial.println("========================================");
-    Serial.println("ESP32-S3 Simple Thermostat Firmware");
+    Serial.println("ESP32-S3 Simple Thermostat");
     Serial.print("Version: ");
     Serial.println(sw_version);
     Serial.print("Build Date: ");
@@ -2795,7 +2795,15 @@ void activateHeating() {
     }
     
     // Control fan based on fanRelayNeeded setting
-    if (fanRelayNeeded) {
+    // BUT: Never override manual "on" mode - user takes priority
+    if (fanMode == "on") {
+        // User has manually set fan to always on - respect that
+        if (!fanOn) {
+            digitalWrite(FAN_RELAY_PIN, HIGH);
+            fanOn = true;
+            Serial.println("Fan activated with heat (manual 'on' mode)");
+        }
+    } else if (fanRelayNeeded) {
         if (!fanOn) {
             digitalWrite(FAN_RELAY_PIN, HIGH);
             fanOn = true;
@@ -2847,7 +2855,15 @@ void activateCooling()
     }
     
     // Control fan based on fanRelayNeeded setting
-    if (fanRelayNeeded) {
+    // BUT: Never override manual "on" mode - user takes priority
+    if (fanMode == "on") {
+        // User has manually set fan to always on - respect that
+        if (!fanOn) {
+            digitalWrite(FAN_RELAY_PIN, HIGH);
+            fanOn = true;
+            Serial.println("Fan activated with cooling (manual 'on' mode)");
+        }
+    } else if (fanRelayNeeded) {
         if (!fanOn) {
             digitalWrite(FAN_RELAY_PIN, HIGH);
             fanOn = true;

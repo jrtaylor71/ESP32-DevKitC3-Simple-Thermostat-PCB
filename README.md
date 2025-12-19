@@ -176,7 +176,7 @@ Contributions welcome! Please:
 
 ## ⭐ Version
 
-**Current Version**: 1.3.6 (December 2025)
+**Current Version**: 1.3.7 (December 2025)
 - **Weather Integration**: Dual-source weather support (OpenWeatherMap and Home Assistant)
 - **Weather Display**: Color-coded standard OWM icons with temperature, conditions, and high/low display
 - **Weather Web Interface**: Dedicated weather tab with AJAX form submission

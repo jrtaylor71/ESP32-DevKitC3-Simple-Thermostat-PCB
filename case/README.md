@@ -7,8 +7,8 @@ This directory contains the 3D printable case design for the ESP32-S3 Smart Ther
 ## Design Overview
 
 The case is a two-part design:
-- **Back Case (Wall Side)**: Mounts to wall via keyholes, provides component clearance, ventilation
 - **Front Case (Display Side)**: Holds PCB on standoffs, display/sensor cutouts, screws to back
+- **Back Case (Wall-Mount Side)**: Mounts to wall via keyholes, provides component clearance, ventilation
 
 ### Specifications
 
@@ -21,21 +21,31 @@ The case is a two-part design:
 **Case Dimensions:**
 - Outer: 149.0mm × 105.5mm (16mm margin around PCB)
 - Back case height: 30.1mm (2.5mm wall + 4mm standoff + 1.6mm PCB + 20mm component clearance for ESP32)
-- Front case height: 17.1mm (2.5mm wall + 14.6mm display clearance, standoffs 13mm tall + 1.6mm above)
-- Total assembled: ~47mm
+- Front case height: 21.4mm (2.5mm wall + standoffs 17.3mm tall for display pin headers, front walls 1.6mm above standoffs)
+- Total assembled: ~51mm
 
 **Fastening:**
-- 4× M2.5 screws secure front to back (countersunk on front face)
+- 4× M2.5 countersunk screws secure front to back (countersunk on front face, DIN 7991 or similar, 10–12mm length)
 - Screw positions: 7mm inset from each corner
-- 1.5mm seating lip prevents full nesting
+- 1.5mm seating lip prevents full nesting; retention is by screws
 - 2× wall-mount keyholes on back (83mm spacing)
 
 **Display:**
 - 3.2" ILI9341 TFT LCD (320×240 pixels)
 - Display opening: 50mm × 68mm (rotated 90°, centered on display holes)
 - Located on PCB component side (front case interior)
+
+**Sensors:**
 - LDR photoresistor: 5.5mm hole for ambient light
-- AHT20 temp/humidity sensor: 12.5×6mm rectangular cutout (rotated 90°)
+- Temp/Humidity sensor (J5): 18mm × 12mm × 8mm protective box with airflow slots
+  - Supports AHT20, DHT11, or BME280 sensors (universal footprint)
+  - Multiple small airflow slots on all four sides for proper ventilation
+  - Protects sensor while allowing accurate ambient measurements
+
+**Ventilation:**
+- Front case: 15 short slots on top and bottom edges (8mm × 2mm each, 8.5mm spacing)
+- Back case: 8 short slots on left and right sides (10mm × 2.5mm each, 10mm spacing)
+- Cleaner appearance than long grid patterns
 
 ## Files
 
@@ -150,12 +160,12 @@ The OpenSCAD file is fully parametric. You can modify:
 To view or modify the design in OpenSCAD:
 
 1. Install OpenSCAD (https://openscad.org/)
-2. Open `thermostat_case.scad`
+2. Open `front_case_display.scad` or `back_case_wall.scad`
 3. Select render mode at bottom of file:
    - `assembly_view()` - See assembled case with PCB
    - `print_layout()` - Both parts laid out for printing
-   - `front_case()` - Front half only
-   - `back_case()` - Back half only
+   - `front_case_display.scad` - Front half only
+   - `back_case_wall.scad` - Back half only
 4. Press F5 to preview, F6 to render
 
 ## Generating STL Files
@@ -164,8 +174,8 @@ If you modify the design and need to regenerate STL files:
 
 ```bash
 # Using OpenSCAD command line
-openscad -o thermostat_case_front.stl -D 'front_case();' thermostat_case.scad
-openscad -o thermostat_case_back.stl -D 'back_case();' thermostat_case.scad
+openscad -o thermostat_case_front.stl case/front_case_display.scad
+openscad -o thermostat_case_back.stl case/back_case_wall.scad
 
 # Or use the provided script
 ./generate_stl.sh
@@ -173,24 +183,23 @@ openscad -o thermostat_case_back.stl -D 'back_case();' thermostat_case.scad
 
 ## Design Features
 
-### Front Case (Wall Side)
-- Integrated PCB standoffs (3mm height) with M2.5 mounting holes
-- Keyhole mounting slots for easy wall installation
-- Large wire pass-through opening at bottom center (20mm diameter)
-- Side wire routing openings (12mm diameter each side)
-- Ventilation slots on sides for heat dissipation
-- Alignment lip for precise back case positioning
-- Wall thickness: 2.5mm for strength
-- Total height: 24.1mm (accommodates ESP32 + pin headers + relays)
+### Front Case (Display Side)
+- Integrated PCB standoffs (13mm height) with M2.5 mounting holes (Ø2.7mm)
+- Countersunk screw holes (3mm → 7mm taper, ~3mm deep), 7mm inset from corners
+- Display/sensor cutouts (ILI9341 opening 50×68mm; LDR Ø5.5mm; AHT20 12.5×6mm rotated 90°)
+- Ventilation slots on top/bottom edges
+- Alignment over back case seating lip; front walls 1.6mm above standoffs
+- Wall thickness: 2.5mm
+- Height: ~17.1mm
 
-### Back Case (Display Side)
-- Rectangular display opening (52mm x 70mm) for LCD viewing
-- Recessed bezel area for display to sit flush
-- AHT20 sensor cutout (16mm x 12mm) for ambient temperature/humidity sensing
-- Alignment lip recess for snap-fit assembly
-- Top and bottom edge ventilation for airflow
-- Smooth finish for professional appearance
-- Height: 14.5mm (accommodates display connector pins + LCD module)
+### Back Case (Wall-Mount Side)
+- 4 screw bosses (Ø8mm, ~10mm tall) with Ø2.5mm pilot holes
+- 2 wall-mount keyholes (83mm spacing), centered horizontally
+- Perimeter seating lip (1.5mm × 1.5mm) on interior
+- 22mm wire entry hole on back face; side ventilation slots
+- 20mm component clearance for ESP32 stack
+- Wall thickness: 2.5mm
+- Height: ~30.1mm
 
 ### Ventilation
 - Side slots in front case (both sides)
@@ -208,7 +217,7 @@ openscad -o thermostat_case_back.stl -D 'back_case();' thermostat_case.scad
 **PCB doesn't fit:**
 - Verify PCB dimensions match design
 - Check `case_clearance` parameter
-- Ensure standoffs aren't too tall (should be 5mm)
+- Ensure standoffs aren't too tall (should be 13mm)
 
 **Display cutout wrong size:**
 - Measure your actual display bezel

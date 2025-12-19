@@ -6,15 +6,15 @@
 #define ILI9341_DRIVER     // Generic driver for common displays
 
 // ESP32-S3 pin definitions for smart-thermostat hardware compatibility
-#define TFT_MISO 13   // SPI MISO
-#define TFT_MOSI 11   // SPI MOSI  
-#define TFT_SCLK 12   // SPI Clock
-#define TFT_CS   10   // Chip select control pin
-#define TFT_DC    9   // Data Command control pin
-#define TFT_RST  14   // Reset pin (could connect to RST pin)
-#define TFT_BL   15   // Backlight control pin
+#define TFT_MISO 21   // SPI MISO (MISO_21)
+#define TFT_MOSI 12   // SPI MOSI (MOSI_12)
+#define TFT_SCLK 13   // SPI Clock (SCK_13)
+#define TFT_CS    9   // Chip select control pin (CS_9)
+#define TFT_DC   11   // Data Command control pin (DC_11)
+#define TFT_RST  10   // Reset pin (TFT_REST -> GPIO10)
+#define TFT_BL   14   // Backlight control pin (TFT_LED -> GPIO14)
 
-#define TOUCH_CS 21   // Touch screen chip select
+#define TOUCH_CS 47   // Touch screen chip select (T_CS_47)
 
 // Font loading - load the fonts you need
 #define LOAD_GLCD   // Font 1. Original Adafruit 8 pixel font needs ~1820 bytes in FLASH

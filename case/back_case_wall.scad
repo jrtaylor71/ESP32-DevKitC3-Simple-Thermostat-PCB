@@ -95,6 +95,14 @@ module vent_grid(rows, cols) {
     }
 }
 
+// Short vent slots - cleaner look than long grid
+module short_vent_slots(count, slot_length=12.0, slot_width=2.0, spacing=8.0) {
+    for (i = [0:count-1]) {
+        translate([i*spacing - (count-1)*spacing/2, 0, 0])
+            cube([slot_length, slot_width, 20], center=true);
+    }
+}
+
 // === BACK CASE (wall-mounting side) ===
 
 module front_case() {
@@ -124,14 +132,14 @@ module front_case() {
                 cylinder(d=keyhole_head_dia, h=wall_thickness + 1.0, center=false);
         }
         
-        // Ventilation on left and right sides
+        // Ventilation on left and right sides - short slots instead of grid
         translate([wall_thickness/2, case_width/2, case_height*0.6])
             rotate([0, 90, 0])
-                vent_grid(3, 8);
+                short_vent_slots(8, slot_length=10.0, slot_width=2.5, spacing=10.0);
         
         translate([case_length - wall_thickness/2, case_width/2, case_height*0.6])
             rotate([0, 90, 0])
-                vent_grid(3, 8);
+                short_vent_slots(8, slot_length=10.0, slot_width=2.5, spacing=10.0);
     }
     
     // Perimeter seating lip near top to support front bezel
