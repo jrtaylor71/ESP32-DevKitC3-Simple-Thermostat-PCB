@@ -47,6 +47,7 @@
 #include "esp_heap_caps.h" // Heap diagnostics
 #include "Weather.h" // Weather integration module
 #include "HardwarePins.h" // Hardware pin definitions
+#include "SettingsUI.h"
 
 // Constants
 const int SECONDS_PER_HOUR = 3600;
@@ -160,6 +161,13 @@ bool isEnteringSSID = true;
 
 // Add a new global flag to track WiFi setup mode
 bool inWiFiSetupMode = false;
+
+// Keyboard context to reuse keypad for WiFi and hostname entry (enum in SettingsUI.h)
+KeyboardMode keyboardMode = KB_WIFI_SSID;
+bool keyboardReturnToSettings = false;
+
+// Settings UI state
+bool inSettingsMenu = false;
 
 // Keyboard layout constants
 const char* KEYBOARD_UPPER[5][10] = {
@@ -282,6 +290,9 @@ bool thermostatModeChanged = false;
 bool fanModeChanged = false;
 bool handlingMQTTMessage = false; // Add this flag
 
+// Force a full display redraw (clears cached values)
+bool forceFullDisplayRefresh = false;
+
 // Add declarations to support hydronic temperature display and sensor error checking
 float previousHydronicTemp = 0.0;
 bool ds18b20SensorPresent = false;
@@ -306,6 +317,8 @@ void handleKeyboardTouch(uint16_t x, uint16_t y, bool isUpperCaseKeyboard);
 void connectToWiFi();
 void enterWiFiCredentials();
 void calibrateTouchScreen();
+void startWiFiSetupUI(bool returnToSettings);
+void exitKeyboardToPreviousScreen();
 void restoreDefaultSettings();
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 void sendMQTTData();
@@ -1331,7 +1344,13 @@ void loop()
         return;
     }
 
-    // The rest of the loop function only runs when NOT in WiFi setup mode
+    // If in Settings UI, pause normal loop to keep touch responsive
+    if (inSettingsMenu) {
+        settingsLoopTick();
+        return;
+    }
+
+    // The rest of the loop function only runs when NOT in WiFi/setup/settings modes
     // Sensor reading now handled by background task on core 1
 
     // Control fan based on schedule - only check every 30 seconds
@@ -1590,7 +1609,24 @@ void drawKeyboard(bool isUpperCaseKeyboard)
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
     tft.setTextSize(2);
     tft.setCursor(10, 10);
-    tft.println(isEnteringSSID ? "Enter SSID:" : "Enter Password:");
+    const char* header = "Enter SSID:";
+    if (keyboardMode == KB_WIFI_PASS) {
+        header = "Enter Password:";
+    } else if (keyboardMode == KB_HOSTNAME) {
+        header = "Enter Hostname:";
+    }
+    tft.println(header);
+
+    // Back button to exit to main/settings
+    int backX = 250, backY = 5, backW = 60, backH = 25;
+    tft.fillRect(backX, backY, backW, backH, COLOR_WARNING);
+    tft.drawRect(backX, backY, backW, backH, COLOR_TEXT);
+    tft.setTextColor(TFT_BLACK, COLOR_WARNING);
+    tft.setTextSize(1);
+    tft.setCursor(backX + 10, backY + 9);
+    tft.print("Back");
+    tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
+    tft.setTextSize(2);
     
     // Draw input text area with border
     tft.drawRect(5, 35, 310, 30, COLOR_TEXT);
@@ -1694,12 +1730,20 @@ void handleKeyPress(int row, int col)
     }
     else if (strcmp(keyLabel, "OK") == 0)
     {
-        if (isEnteringSSID)
-        {
+        // Context-aware OK handling: WiFi SSID/Pass or Hostname
+        if (keyboardMode == 2) { // KB_HOSTNAME
+            if (inputText.length() > 0) {
+                hostname = inputText;
+                saveSettings();
+                exitKeyboardToPreviousScreen();
+                return;
+            }
+        } else if (isEnteringSSID) {
             if (inputText.length() > 0) {
                 wifiSSID = inputText;
                 inputText = "";
                 isEnteringSSID = false;
+                keyboardMode = (KeyboardMode)1; // KB_WIFI_PASS
                 drawKeyboard(isUpperCaseKeyboard);
                 return; // Early return to avoid input update
             }
@@ -1809,14 +1853,13 @@ void drawButtons()
     tft.setTextSize(2);
     tft.print("-");
 
-    // Draw the WiFi settings button between minus and mode buttons
+    // Draw the Settings button between minus and mode buttons
     tft.fillRect(47, 200, 68, 40, COLOR_SECONDARY);
-    tft.setCursor(50, 208);
     tft.setTextColor(TFT_BLACK);
-    tft.setTextSize(2);
-    tft.print("WiFi");
-    tft.setCursor(55, 220);
-    tft.print("Setup");
+    tft.setTextSize(1);
+    // Center "Settings" text on button (button center x=81, text width ~42px at size 1)
+    tft.setCursor(57, 214);
+    tft.print("Settings");
 
     // Draw the thermostat mode button
     tft.fillRect(125, 200, 60, 40, COLOR_PRIMARY);
@@ -1873,37 +1916,24 @@ void handleButtonPress(uint16_t x, uint16_t y)
     
     lastButtonPressTime = currentTime;
     
-    // WiFi setup button - should work even in WiFi setup mode to allow cancellation
-    if (x > 45 && x < 125 && y > 195 && y < 245) // WiFi button with slightly increased touch area
-    {
-        if (inWiFiSetupMode) {
-            // Cancel WiFi setup and return to main screen
-            inWiFiSetupMode = false;
-            tft.fillScreen(COLOR_BACKGROUND);
-            updateDisplay(currentTemp, currentHumidity);
-            drawButtons();
-            return;
-        }
-        
-        // Handle WiFi setup button press - enter WiFi setup mode
-        inWiFiSetupMode = true;
-        tft.fillScreen(COLOR_BACKGROUND);
-        tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
-        tft.setTextSize(2);
-        tft.setCursor(10, 10);
-        tft.println("WiFi Setup");
-        
-        // Reset entering state to SSID first
-        inputText = "";
-        isEnteringSSID = true;
-        
-        // Draw keyboard for WiFi setup
-        drawKeyboard(isUpperCaseKeyboard);
+    // If keyboard is active, ignore main button handling (keyboard/back handles its own touches)
+    if (inWiFiSetupMode) {
         return;
     }
     
-    // If in WiFi setup mode, don't process other buttons
-    if (inWiFiSetupMode) {
+    // Route touches to settings UI when active
+    if (inSettingsMenu) {
+        if (settingsHandleTouch(x, y)) {
+            return;
+        }
+        // If not consumed, ignore to avoid falling through to main controls
+        return;
+    }
+    
+    // Settings button (formerly WiFi) to open settings menu
+    if (x > 45 && x < 125 && y > 195 && y < 245) // Settings button area
+    {
+        enterSettingsMenu();
         return;
     }
     
@@ -2191,7 +2221,7 @@ void publishHomeAssistantDiscovery()
             pressureDoc["name"] = hostname + " Barometric Pressure";
             pressureDoc["device_class"] = "pressure";
             pressureDoc["state_topic"] = hostname + "/barometric_pressure";
-            pressureDoc["unit_of_measurement"] = "hPa";
+            pressureDoc["unit_of_measurement"] = "inHg";
             pressureDoc["unique_id"] = hostname + "_pressure";
             pressureDoc["state_class"] = "measurement";
             
@@ -2342,7 +2372,8 @@ void sendMQTTData()
             if (currentPressure != lastPressure)
             {
                 String pressureTopic = hostname + "/barometric_pressure";
-                mqttClient.publish(pressureTopic.c_str(), String(currentPressure, 1).c_str(), true);
+                float pressureInHg = currentPressure / 33.8639; // Convert hPa to inHg
+                mqttClient.publish(pressureTopic.c_str(), String(pressureInHg, 2).c_str(), true);
                 lastPressure = currentPressure;
             }
         }
@@ -3564,6 +3595,17 @@ void updateDisplay(float currentTemp, float currentHumidity)
     if (displayIsAsleep) {
         return;
     }
+
+    bool fullRefreshTriggered = forceFullDisplayRefresh;
+
+    // If a full refresh was requested (e.g., exiting settings), reset cached values
+    if (fullRefreshTriggered) {
+        previousTemp = NAN;
+        previousHumidity = NAN;
+        previousHydronicTemp = NAN;
+        previousSetTemp = NAN;
+        forceFullDisplayRefresh = false;
+    }
     
     unsigned long displayStart = millis();
     Serial.printf("[DEBUG] updateDisplay start at %lu\n", displayStart);
@@ -3576,7 +3618,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
     {
         unsigned long afterTime = millis();
         Serial.printf("[DEBUG] getLocalTime took %lu ms\n", afterTime - beforeTime);
-        // Build formatted time string: "10:40 Monday Dec 1 2025"
+        // Build formatted time string: "10:40 Mon Dec 1 2025"
         char timePart[8];
         if (use24HourClock) {
             strftime(timePart, sizeof(timePart), "%H:%M", &timeinfo);
@@ -3588,7 +3630,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
             }
         }
         char dayName[16];
-        strftime(dayName, sizeof(dayName), "%A", &timeinfo);
+        strftime(dayName, sizeof(dayName), "%a", &timeinfo);
         char monthName[8];
         strftime(monthName, sizeof(monthName), "%b", &timeinfo);
         int dayNum = timeinfo.tm_mday;
@@ -3599,6 +3641,9 @@ void updateDisplay(float currentTemp, float currentHumidity)
 
         // Display current time/date header only when it changes to reduce flicker
         static String lastHeaderLine = "";
+        if (fullRefreshTriggered) { // force refresh when cache reset
+            lastHeaderLine = "";
+        }
         String headerNow(headerLine);
         if (headerNow != lastHeaderLine) {
             tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
@@ -3622,6 +3667,9 @@ void updateDisplay(float currentTemp, float currentHumidity)
     
     // Display weather if enabled and data is valid
     static bool lastWeatherDisplayState = false;
+    if (fullRefreshTriggered) { // force refresh on cache reset
+        lastWeatherDisplayState = false;
+    }
     if (weatherSource != 0 && weather.isDataValid()) {
         if (!lastWeatherDisplayState) {
             Serial.println("WEATHER DISPLAY: Showing weather on TFT");
@@ -3644,36 +3692,99 @@ void updateDisplay(float currentTemp, float currentHumidity)
         lastWeatherDisplayState = false;
     }
 
-    // Update temperature and humidity only if they have changed
+    // Display WiFi status indicator in upper right corner
+    static int lastWiFiStatus = -1; // Track WiFi status to avoid unnecessary redraws
+    static int lastWiFiRSSI = -999;
+    if (fullRefreshTriggered) { // force redraw after returning from settings
+        lastWiFiStatus = -1;
+        lastWiFiRSSI = -999;
+    }
+    int currentWiFiStatus = WiFi.status();
+    int currentWiFiRSSI = 0;
+    if (currentWiFiStatus == WL_CONNECTED) {
+        currentWiFiRSSI = WiFi.RSSI();
+    }
+    
+    // Only redraw if status or signal strength changed significantly
+    if (lastWiFiStatus != currentWiFiStatus || abs(currentWiFiRSSI - lastWiFiRSSI) > 5) {
+        lastWiFiStatus = currentWiFiStatus;
+        lastWiFiRSSI = currentWiFiRSSI;
+        
+        // Clear WiFi indicator area (nudged ~10px right, slightly narrower to stay on-screen)
+        tft.fillRect(290, 0, 30, 25, COLOR_BACKGROUND);
+        
+        if (currentWiFiStatus == WL_CONNECTED) {
+            // Draw WiFi signal strength bars (0-4 bars based on RSSI)
+            // RSSI: -30 to -90 dBm (better to worse)
+            int bars = 0;
+            if (currentWiFiRSSI > -55) bars = 4;
+            else if (currentWiFiRSSI > -65) bars = 3;
+            else if (currentWiFiRSSI > -75) bars = 2;
+            else if (currentWiFiRSSI > -85) bars = 1;
+            
+            // Draw WiFi icon: 4 curved bars
+            // Using simple pixel drawing to create WiFi waves
+            tft.setTextColor(COLOR_SUCCESS, COLOR_BACKGROUND);
+            
+            // Draw filled bars based on signal strength
+            int barX = 295;
+            int barY = 5;
+            int barWidth = 2;
+            int barSpacing = 3;
+            
+            for (int i = 0; i < 4; i++) {
+                int barHeight = 2 + (i * 3); // Progressive heights: 2, 5, 8, 11
+                int y = barY + (12 - barHeight); // Bottom-aligned
+                
+                if (i < bars) {
+                    // Draw filled bar
+                    tft.fillRect(barX + (i * barSpacing), y, barWidth, barHeight, COLOR_SUCCESS);
+                } else {
+                    // Draw empty bar outline
+                    tft.drawRect(barX + (i * barSpacing), y, barWidth, barHeight, COLOR_SURFACE);
+                }
+            }
+        } else {
+            // Draw X for no WiFi
+            tft.setTextColor(COLOR_WARNING, COLOR_BACKGROUND);
+            tft.setTextSize(2);
+            tft.setCursor(295, 3);
+            tft.print("X");
+        }
+    }
     if (currentTemp != previousTemp || currentHumidity != previousHumidity)
     {
-        // Display temperature and humidity on the right side vertically
+        // Display temperature and humidity on the right side with compact spacing
         // Background color in setTextColor will clear as it writes
         tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
         tft.setTextSize(2); // Adjust text size to fit the display
         tft.setRotation(1); // Set rotation for vertical display
-        tft.setCursor(240, 30); // Move temperature down a bit
+        
+        // Temperature at y=30 (moved to x=230 to prevent overlap with set temp)
+        tft.setCursor(230, 30);
         char tempStr[6];
         dtostrf(currentTemp, 4, 1, tempStr); // Convert temperature to string with 1 decimal place
         tft.print(tempStr);
-        tft.println(useFahrenheit ? "F" : "C");
+        tft.print(useFahrenheit ? "F" : "C");
 
-        tft.setCursor(240, 70); // Move humidity down a bit
+        // Humidity at y=60 (25px spacing)
+        tft.setCursor(230, 60);
         char humidityStr[6];
         dtostrf(currentHumidity, 4, 1, humidityStr); // Convert humidity to string with 1 decimal place
         tft.print(humidityStr);
-        tft.println("%");
+        tft.print("%");
         
-        // Display pressure if BME280 sensor is active
+        // Display pressure if BME280 sensor is active (convert hPa to inHg: divide by 33.8639)
         if (activeSensor == SENSOR_BME280 && !isnan(currentPressure)) {
-            tft.setCursor(240, 110); // Position below humidity
+            tft.setCursor(230, 90); // Pressure at y=90, 30px spacing
+            float pressureInHg = currentPressure / 33.8639; // Convert hPa to inHg
             char pressureStr[7];
-            dtostrf(currentPressure, 5, 1, pressureStr); // Format as "XXX.X"
+            dtostrf(pressureInHg, 4, 2, pressureStr); // Format as "XX.XX"
             tft.print(pressureStr);
-            tft.println(" hPa");
+            tft.print("in");
         } else {
             // Clear pressure area if not BME280 or invalid
-            tft.fillRect(240, 110, 80, 20, COLOR_BACKGROUND);
+            tft.fillRect(230, 90, 80, 16, COLOR_BACKGROUND);
         }
 
         // Update previous values
@@ -3683,39 +3794,36 @@ void updateDisplay(float currentTemp, float currentHumidity)
 
     // Display hydronic temperature if enabled and sensor is present
     static bool prevHydronicDisplayState = false;
-    
-    // Only update hydronic temp display if it's changed or display state has changed
-    // if (hydronicHeatingEnabled && ds18b20SensorPresent) {
-    if (hydronicHeatingEnabled) {
-        if (hydronicTemp != previousHydronicTemp || !prevHydronicDisplayState) {
-            // Display hydronic temperature on right side (shift down if BME280 active)
-            int yPos = (activeSensor == SENSOR_BME280 && !isnan(currentPressure)) ? 150 : 110;
-            tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
-            tft.setTextSize(2);
-            tft.setCursor(240, yPos);
-            char hydronicTempStr[6];
-            dtostrf(hydronicTemp, 4, 1, hydronicTempStr);
-            tft.print(hydronicTempStr);
-            tft.println(useFahrenheit ? "F" : "C");
-            
-            // Clear old position if it moved
-            if (yPos == 150) {
-                tft.fillRect(240, 110, 80, 40, COLOR_BACKGROUND);
-            }
-            
-            previousHydronicTemp = hydronicTemp;
-            prevHydronicDisplayState = true;
-        }
-    } 
-    else if (prevHydronicDisplayState) {
-        // If hydronic heating is disabled or sensor not present, clear both possible areas
-        tft.fillRect(240, 110, 80, 40, COLOR_BACKGROUND);
-        tft.fillRect(240, 150, 80, 40, COLOR_BACKGROUND);
+    if (fullRefreshTriggered) { // force refresh on cache reset
         prevHydronicDisplayState = false;
     }
-
-    // Display hydronic lockout warning if active
+    
+    // Only update hydronic temp display if it's changed or display state has changed
+        // if (hydronicHeatingEnabled && ds18b20SensorPresent) {
+        if (hydronicHeatingEnabled) {
+            if (hydronicTemp != previousHydronicTemp || !prevHydronicDisplayState) {
+                // Display hydronic temperature at y=120 (fixed position below sensors)
+                tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
+                tft.setTextSize(2);
+                tft.setCursor(230, 120);
+                char hydronicTempStr[6];
+                dtostrf(hydronicTemp, 4, 1, hydronicTempStr);
+                tft.print(hydronicTempStr);
+                tft.print(useFahrenheit ? "F" : "C");
+                
+                previousHydronicTemp = hydronicTemp;
+                prevHydronicDisplayState = true;
+            }
+        } 
+        else if (prevHydronicDisplayState) {
+            // If hydronic heating is disabled, clear the DS18B20 display area
+            tft.fillRect(230, 120, 80, 16, COLOR_BACKGROUND);
+            prevHydronicDisplayState = false;
+        }    // Display hydronic lockout warning if active
     static bool prevHydronicLockoutDisplay = false;
+    if (fullRefreshTriggered) { // force refresh on cache reset
+        prevHydronicLockoutDisplay = false;
+    }
     if (hydronicHeatingEnabled && hydronicLockout) {
         if (!prevHydronicLockoutDisplay) {
             // Show lockout warning
@@ -4060,13 +4168,20 @@ void handleKeyboardTouch(uint16_t x, uint16_t y, bool isUpperCaseKeyboard)
         return;
     }
     
-    // Only process keyboard touches if we're in WiFi setup mode
+    // Only process keyboard touches if we're in WiFi/setup keyboard mode
     if (!inWiFiSetupMode) {
+        return;
+    }
+
+    // Check for back button tap (top-right)
+    if (y < 35 && x > 250 && x < 310) {
+        exitKeyboardToPreviousScreen();
+        lastTouchTime = currentTime;
         return;
     }
     
     // Check if touch is within the keyboard area
-    if (y < 60) {  // Touch is above the keyboard, ignore
+    if (y < 60) {  // Touch is above the keyboard, ignore other regions
         return;
     }
     
