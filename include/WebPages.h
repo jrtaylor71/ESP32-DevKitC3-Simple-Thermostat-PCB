@@ -73,7 +73,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     String html = "<!DOCTYPE html><html lang='en'><head>";
     html += "<meta charset='UTF-8'>";
     html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
-    html += "<title>Smart Thermostat - Status</title>";
+    html += "<title>Simple Thermostat - Status</title>";
     html += CSS_STYLES;
     html += "</head><body>";
     
@@ -81,7 +81,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     
     // Header
     html += "<div class='header'>";
-    html += "<h1>ESP32-S3 Simple Thermostat Firmware</h1>";
+    html += "<h1>ESP32-S3 Simple Thermostat</h1>";
     html += "<div class='version'>Version " + version_info + " • " + hostname + "</div>";
     html += "</div>";
     
@@ -772,7 +772,7 @@ String generateSettingsPage(String thermostatMode, String fanMode, float setTemp
     String html = "<!DOCTYPE html><html lang='en'><head>";
     html += "<meta charset='UTF-8'>";
     html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
-    html += "<title>Smart Thermostat - Settings</title>";
+    html += "<title>Simple Thermostat - Settings</title>";
     html += CSS_STYLES;
     html += "</head><body>";
     
@@ -781,7 +781,7 @@ String generateSettingsPage(String thermostatMode, String fanMode, float setTemp
     // Header
     html += "<div class='header'>";
     html += "<h1>Thermostat Settings</h1>";
-    html += "<div class='version'>Configure your smart thermostat</div>";
+    html += "<div class='version'>Configure your simple thermostat</div>";
     html += "</div>";
     
     html += "<div class='content'>";
@@ -1037,7 +1037,7 @@ String generateOTAPage() {
     String html = "<!DOCTYPE html><html lang='en'><head>";
     html += "<meta charset='UTF-8'>";
     html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
-    html += "<title>Smart Thermostat - OTA Update</title>";
+    html += "<title>Simple Thermostat - OTA Update</title>";
     html += CSS_STYLES;
     html += "</head><body>";
     
@@ -1106,7 +1106,7 @@ String generateFactoryResetPage() {
     String html = "<!DOCTYPE html><html lang='en'><head>";
     html += "<meta charset='UTF-8'>";
     html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
-    html += "<title>Smart Thermostat - Factory Reset</title>";
+    html += "<title>Simple Thermostat - Factory Reset</title>";
     html += CSS_STYLES;
     html += "</head><body>";
     
@@ -1158,7 +1158,7 @@ String generateSchedulePage(DaySchedule weekSchedule[7], bool scheduleEnabled, S
     String html = "<!DOCTYPE html><html lang='en'><head>";
     html += "<meta charset='UTF-8'>";
     html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
-    html += "<title>Smart Thermostat - Schedule</title>";
+    html += "<title>Simple Thermostat - Schedule</title>";
     html += CSS_STYLES;
     html += "</head><body>";
     

@@ -1,5 +1,5 @@
 /*
- * Weather.h - Weather integration module for Smart Thermostat
+ * Weather.h - Weather integration module for Simple Thermostat
  * 
  * Supports two weather sources:
  * 1. OpenWeatherMap API

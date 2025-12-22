@@ -996,8 +996,6 @@ void setup()
     tft.setTextSize(3);  // Increased size from 2 to 3
     tft.setCursor(15, 40);  // Better centered for display
     tft.println("ESP32-S3 Simple Thermostat");
-    tft.setCursor(60, 70);  // Second line centered
-    tft.println("Alt Firmware");
     tft.setTextSize(2);  // Increased from 1 to 2 for better readability
     tft.setCursor(20, 110);  // Centered version info
     tft.println("Version: " + sw_version);

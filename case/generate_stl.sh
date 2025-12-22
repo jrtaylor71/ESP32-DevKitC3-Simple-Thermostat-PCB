@@ -1,7 +1,7 @@
 #!/bin/bash
 # Generate STL files from OpenSCAD sources
 
-echo "Generating STL files for ESP32-S3 Smart Thermostat case..."
+echo "Generating STL files for ESP32-S3 Simple Thermostat case..."
 
 # Front case (display side, faces room)
 echo "Processing front_case_display.scad..."
