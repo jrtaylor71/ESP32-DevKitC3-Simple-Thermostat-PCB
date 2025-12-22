@@ -218,7 +218,7 @@ String timeZone = "CST6CDT,M3.2.0,M11.1.0"; // Default time zone (Central Standa
 String hostname = "ESP32-S3-Simple-Thermostat"; // Default hostname
 
 // Version control information
-const String sw_version = "1.3.7"; // Software version
+const String sw_version = "1.3.8"; // Software version
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
