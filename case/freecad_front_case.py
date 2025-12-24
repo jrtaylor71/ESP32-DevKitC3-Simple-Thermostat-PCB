@@ -430,13 +430,15 @@ stl_path = os.path.join(out_dir, "front_case_display_freecad.stl")
 # Export STEP
 Part.export([part_obj], step_path)
 
-# Export STL via meshing
-mesh_params = {
-    "LinearDeflection": 0.5,
-    "AngularDeflection": 28.5,
-    "Relative": True
-}
-mesh = MeshPart.meshFromShape(Shape=shell, **mesh_params)
+# Export STL with higher quality mesh
+# Use same method as FreeCAD GUI export
+mesh = Mesh.Mesh()
+mesh.addFacets(MeshPart.meshFromShape(
+    Shape=shell,
+    LinearDeflection=0.01,
+    AngularDeflection=0.523599,  # 30 degrees in radians
+    Relative=False
+).Facets)
 mesh.write(stl_path)
 
 App.Console.PrintMessage("Exported STEP to: %s\n" % step_path)

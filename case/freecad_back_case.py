@@ -67,11 +67,11 @@ snap_tab_height = 2.5      # Must match front case
 snap_tab_undercut = 1.0    # Must match front case
 snap_slot_clearance = 0.2  # Extra clearance for assembly
 snap_hook_thickness = 1.6  # Hook thickness (deflecting element)
-snap_hook_height = 4.0     # Hook rise above wall top
+snap_hook_height = 6.5     # Hook rise above wall top (compensated for taller barb)
 snap_hook_offset_z = 0.0   # Hooks start at wall top (no offset)
 snap_hook_protrusion = 0.0 # Hooks are hidden on the inside; no external protrusion
-snap_hook_overhang = 0.8   # Overhang (barb) depth into window region
-snap_hook_barb_height = 1.2  # Vertical height of overhang barb near the hook tip
+snap_hook_overhang = 1.3   # Overhang (barb) depth into window region for better grip
+snap_hook_barb_height = 1.5  # Vertical height of overhang barb near the hook tip
 snap_hook_base_extension = 8.0  # How far hook extends down the inside wall for strength
 snap_hook_gusset_depth = 3.0   # How far gusset extends from hook toward interior
 lip_top_margin = 0.5       # Leave uncut lip at top to create a catch ledge
@@ -457,6 +457,73 @@ try:
 except Exception as ex:
     App.Console.PrintWarning("Adding triangular supports failed: %s\n" % ex)
 
+# ---------- Add vertical support columns under hook overhangs ----------
+# Create thin removable columns to support the barb overhang during printing
+try:
+    col_thickness = 0.6  # 0.6mm thick - thin and breakaway
+    barb_z_bottom = case_height + snap_hook_height - snap_hook_barb_height
+    col_height = barb_z_bottom - case_height  # From wall top to barb bottom
+    col_spacing = 5.0  # Space columns 5mm apart along the hook width
+    
+    for snap in snap_positions:
+        side = snap['side']
+        pos = snap['pos']
+        window_width = snap_tab_width + 2 * snap_slot_clearance
+        half_width = window_width / 2.0
+        
+        # Calculate number of columns across the hook width
+        num_cols = max(3, int(window_width / col_spacing) + 1)  # At least 3 columns (left, center, right)
+        col_spacing_actual = window_width / (num_cols - 1) if num_cols > 1 else window_width / 2
+        
+        if side == 'top':
+            # Barb extends from wall at Y=(case_width - wall_thickness) outward by snap_hook_overhang
+            # Columns span the full overhang depth
+            for i in range(num_cols):
+                col_x = pos - half_width + (i * col_spacing_actual)
+                # Box spanning from wall to barb tip
+                col = Part.makeBox(col_thickness, snap_hook_overhang, col_height)
+                col.translate(App.Vector(col_x - col_thickness/2.0,
+                                        case_width - wall_thickness,
+                                        case_height))
+                shell = shell.fuse(col)
+                
+        elif side == 'bottom':
+            # Barb extends from wall at Y=wall_thickness inward by snap_hook_overhang
+            # Columns span the full overhang depth
+            for i in range(num_cols):
+                col_x = pos - half_width + (i * col_spacing_actual)
+                col = Part.makeBox(col_thickness, snap_hook_overhang, col_height)
+                col.translate(App.Vector(col_x - col_thickness/2.0,
+                                        wall_thickness - snap_hook_overhang,
+                                        case_height))
+                shell = shell.fuse(col)
+                
+        elif side == 'left':
+            # Barb extends from wall at X=wall_thickness inward by snap_hook_overhang
+            # Columns span the full overhang depth
+            for i in range(num_cols):
+                col_y = pos - half_width + (i * col_spacing_actual)
+                col = Part.makeBox(snap_hook_overhang, col_thickness, col_height)
+                col.translate(App.Vector(wall_thickness - snap_hook_overhang,
+                                        col_y - col_thickness/2.0,
+                                        case_height))
+                shell = shell.fuse(col)
+                
+        elif side == 'right':
+            # Barb extends from wall at X=(case_length - wall_thickness) outward by snap_hook_overhang
+            # Columns span the full overhang depth
+            for i in range(num_cols):
+                col_y = pos - half_width + (i * col_spacing_actual)
+                col = Part.makeBox(snap_hook_overhang, col_thickness, col_height)
+                col.translate(App.Vector(case_length - wall_thickness,
+                                        col_y - col_thickness/2.0,
+                                        case_height))
+                shell = shell.fuse(col)
+    
+    App.Console.PrintMessage("Added vertical support columns under hook overhangs\n")
+except Exception as ex:
+    App.Console.PrintWarning("Adding vertical support columns failed: %s\n" % ex)
+
 # ---------- Mirror on Y-axis ----------
 # Mirror to match front case orientation
 shell = shell.mirror(App.Vector(0, 0, 0), App.Vector(1, 0, 0))
@@ -481,13 +548,16 @@ stl_path = os.path.join(out_dir, "back_case_wall_freecad.stl")
 # Export STEP
 Part.export([part_obj], step_path)
 
-# Export STL
-mesh_params = {
-    "LinearDeflection": 0.5,
-    "AngularDeflection": 28.5,
-    "Relative": True
-}
-mesh = MeshPart.meshFromShape(Shape=shell, **mesh_params)
+# Export STL with higher quality mesh
+# Use same method as FreeCAD GUI export
+import Mesh
+mesh = Mesh.Mesh()
+mesh.addFacets(MeshPart.meshFromShape(
+    Shape=shell,
+    LinearDeflection=0.01,
+    AngularDeflection=0.523599,  # 30 degrees in radians
+    Relative=False
+).Facets)
 mesh.write(stl_path)
 
 App.Console.PrintMessage("Exported STEP to: %s\n" % step_path)
