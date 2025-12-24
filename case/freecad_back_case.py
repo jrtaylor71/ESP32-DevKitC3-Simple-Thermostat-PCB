@@ -30,15 +30,21 @@ pcb_mount_holes = [
 ]
 
 # Case parameters
-wall_thickness = 2.5
-pcb_clearance = 8.0
+side_wall_thickness = 9.0
+bottom_thickness = 4.0
+wall_thickness = side_wall_thickness  # legacy name used throughout
+pcb_clearance = 3.0
 standoff_height = 4.0
 component_height = 20.0
 
 # Calculated dimensions
-case_length = pcb_length + (2 * pcb_clearance)
-case_width = pcb_width + (2 * pcb_clearance)
-case_height = wall_thickness + standoff_height + pcb_thickness + component_height
+# Inner cavity dimensions (what PCB needs)
+inner_length = pcb_length + (2 * pcb_clearance)
+inner_width = pcb_width + (2 * pcb_clearance)
+# Outer case dimensions (cavity + walls)
+case_length = inner_length + (2 * side_wall_thickness)
+case_width = inner_width + (2 * side_wall_thickness)
+case_height = bottom_thickness + standoff_height + pcb_thickness + component_height
 
 # Wire entry hole
 wire_hole_diameter = 22.0
@@ -53,7 +59,7 @@ add_print_supports = False
 support_thickness = 0.6  # thin sacrificial rib thickness
 
 # Wall mounting holes
-wall_mount_hole_dia = 6.0
+wall_mount_hole_dia = 4.0
 wall_mount_spacing_x = 83.0
 wall_mount_spacing_y = 60.0
 
@@ -66,7 +72,7 @@ snap_tab_length = 6.0      # Must match front case
 snap_tab_height = 2.5      # Must match front case
 snap_tab_undercut = 1.0    # Must match front case
 snap_slot_clearance = 0.2  # Extra clearance for assembly
-snap_hook_thickness = 1.6  # Hook thickness (deflecting element)
+snap_hook_thickness = 3.0  # Thicker hook beam for strength
 snap_hook_height = 6.5     # Hook rise above wall top (compensated for taller barb)
 snap_hook_offset_z = 0.0   # Hooks start at wall top (no offset)
 snap_hook_protrusion = 0.0 # Hooks are hidden on the inside; no external protrusion
@@ -88,9 +94,10 @@ snap_positions = [
 vent_slot_count = 15
 vent_slot_count_side = 10
 vent_slot_length = 8.0
-vent_slot_width = 3.0
+vent_slot_width = 2.0   # Keep slot width; widen fins via spacing
 vent_slot_height = 20.0
-vent_spacing = 8.5
+vent_spacing = 10.5  # Wider spacing to enlarge fins between vents
+vent_corner_margin = 15.0  # Increase corner clearance to keep vents further from corners
 
 # Tolerance for near() comparisons
 tolerance = 0.1
@@ -120,10 +127,8 @@ except Exception as ex:
     App.Console.PrintWarning("Corner fillet failed (non-critical): %s\n" % ex)
 
 # Hollow interior
-inner = Part.makeBox(case_length - 2 * wall_thickness,
-                     case_width - 2 * wall_thickness,
-                     case_height + 1)
-inner.translate(App.Vector(wall_thickness, wall_thickness, wall_thickness))
+inner = Part.makeBox(inner_length, inner_width, case_height - bottom_thickness + 1)
+inner.translate(App.Vector(side_wall_thickness, side_wall_thickness, bottom_thickness))
 
 shell = outer.cut(inner)
 App.Console.PrintMessage("Created back case shell\n")
@@ -131,7 +136,7 @@ App.Console.PrintMessage("Created back case shell\n")
 # ---------- Cutouts ----------
 
 # Wire entry hole through back panel
-wire_hole = Part.makeCylinder(wire_hole_diameter / 2.0, wall_thickness + 1.0,
+wire_hole = Part.makeCylinder(wire_hole_diameter / 2.0, bottom_thickness + 1.0,
                                App.Vector(wire_hole_x, wire_hole_y, -0.5),
                                App.Vector(0, 0, 1))
 shell = shell.cut(wire_hole)
@@ -140,7 +145,7 @@ App.Console.PrintMessage("Cut wire entry hole\n")
 # Wall mounting holes - 4 round holes at corners
 for x_offset in [-wall_mount_spacing_x / 2.0, wall_mount_spacing_x / 2.0]:
     for y_offset in [-wall_mount_spacing_y / 2.0, wall_mount_spacing_y / 2.0]:
-        mount_hole = Part.makeCylinder(wall_mount_hole_dia / 2.0, wall_thickness + 1.0,
+        mount_hole = Part.makeCylinder(wall_mount_hole_dia / 2.0, bottom_thickness + 1.0,
                                         App.Vector(case_length / 2.0 + x_offset,
                                                   case_width / 2.0 + y_offset,
                                                   -0.5),
@@ -148,10 +153,23 @@ for x_offset in [-wall_mount_spacing_x / 2.0, wall_mount_spacing_x / 2.0]:
         shell = shell.cut(mount_hole)
 App.Console.PrintMessage("Cut 4 wall mounting holes\n")
 
+# 2 additional mounting holes between corner holes, towards center
+# Top and bottom center holes
+for y_offset in [-wall_mount_spacing_y / 2.0, wall_mount_spacing_y / 2.0]:
+    mount_hole = Part.makeCylinder(wall_mount_hole_dia / 2.0, bottom_thickness + 1.0,
+                                    App.Vector(case_length / 2.0,
+                                              case_width / 2.0 + y_offset,
+                                              -0.5),
+                                    App.Vector(0, 0, 1))
+    shell = shell.cut(mount_hole)
+App.Console.PrintMessage("Cut 2 additional center mounting holes\n")
+
 # Ventilation slots - front style (horizontal through walls, 3mm wide)
 # Top edge vent slots
 for i in range(vent_slot_count):
     x = case_length / 2.0 + (i - (vent_slot_count - 1) / 2.0) * vent_spacing
+    if x < vent_corner_margin or x > case_length - vent_corner_margin:
+        continue
     slot = Part.makeBox(vent_slot_length, vent_slot_width, vent_slot_height)
     slot.translate(App.Vector(-vent_slot_length / 2.0, -vent_slot_width / 2.0, -vent_slot_height / 2.0))
     slot = slot.rotate(App.Vector(0, 0, 0), App.Vector(1, 0, 0), 90)
@@ -165,6 +183,8 @@ for i in range(vent_slot_count):
 # Bottom edge vent slots
 for i in range(vent_slot_count):
     x = case_length / 2.0 + (i - (vent_slot_count - 1) / 2.0) * vent_spacing
+    if x < vent_corner_margin or x > case_length - vent_corner_margin:
+        continue
     slot = Part.makeBox(vent_slot_length, vent_slot_width, vent_slot_height)
     slot.translate(App.Vector(-vent_slot_length / 2.0, -vent_slot_width / 2.0, -vent_slot_height / 2.0))
     slot = slot.rotate(App.Vector(0, 0, 0), App.Vector(1, 0, 0), 90)
@@ -178,6 +198,8 @@ for i in range(vent_slot_count):
 # Left edge vent slots
 for i in range(vent_slot_count_side):
     y = case_width / 2.0 + (i - (vent_slot_count_side - 1) / 2.0) * vent_spacing
+    if y < vent_corner_margin or y > case_width - vent_corner_margin:
+        continue
     slot = Part.makeBox(vent_slot_length, vent_slot_width, vent_slot_height)
     slot.translate(App.Vector(-vent_slot_length / 2.0, -vent_slot_width / 2.0, -vent_slot_height / 2.0))
     slot = slot.rotate(App.Vector(0, 0, 0), App.Vector(1, 0, 0), 90)
@@ -192,6 +214,8 @@ for i in range(vent_slot_count_side):
 # Right edge vent slots
 for i in range(vent_slot_count_side):
     y = case_width / 2.0 + (i - (vent_slot_count_side - 1) / 2.0) * vent_spacing
+    if y < vent_corner_margin or y > case_width - vent_corner_margin:
+        continue
     slot = Part.makeBox(vent_slot_length, vent_slot_width, vent_slot_height)
     slot.translate(App.Vector(-vent_slot_length / 2.0, -vent_slot_width / 2.0, -vent_slot_height / 2.0))
     slot = slot.rotate(App.Vector(0, 0, 0), App.Vector(1, 0, 0), 90)
@@ -456,73 +480,6 @@ try:
     App.Console.PrintMessage("Added triangular supports to all snap hooks\n")
 except Exception as ex:
     App.Console.PrintWarning("Adding triangular supports failed: %s\n" % ex)
-
-# ---------- Add vertical support columns under hook overhangs ----------
-# Create thin removable columns to support the barb overhang during printing
-try:
-    col_thickness = 0.6  # 0.6mm thick - thin and breakaway
-    barb_z_bottom = case_height + snap_hook_height - snap_hook_barb_height
-    col_height = barb_z_bottom - case_height  # From wall top to barb bottom
-    col_spacing = 5.0  # Space columns 5mm apart along the hook width
-    
-    for snap in snap_positions:
-        side = snap['side']
-        pos = snap['pos']
-        window_width = snap_tab_width + 2 * snap_slot_clearance
-        half_width = window_width / 2.0
-        
-        # Calculate number of columns across the hook width
-        num_cols = max(3, int(window_width / col_spacing) + 1)  # At least 3 columns (left, center, right)
-        col_spacing_actual = window_width / (num_cols - 1) if num_cols > 1 else window_width / 2
-        
-        if side == 'top':
-            # Barb extends from wall at Y=(case_width - wall_thickness) outward by snap_hook_overhang
-            # Columns span the full overhang depth
-            for i in range(num_cols):
-                col_x = pos - half_width + (i * col_spacing_actual)
-                # Box spanning from wall to barb tip
-                col = Part.makeBox(col_thickness, snap_hook_overhang, col_height)
-                col.translate(App.Vector(col_x - col_thickness/2.0,
-                                        case_width - wall_thickness,
-                                        case_height))
-                shell = shell.fuse(col)
-                
-        elif side == 'bottom':
-            # Barb extends from wall at Y=wall_thickness inward by snap_hook_overhang
-            # Columns span the full overhang depth
-            for i in range(num_cols):
-                col_x = pos - half_width + (i * col_spacing_actual)
-                col = Part.makeBox(col_thickness, snap_hook_overhang, col_height)
-                col.translate(App.Vector(col_x - col_thickness/2.0,
-                                        wall_thickness - snap_hook_overhang,
-                                        case_height))
-                shell = shell.fuse(col)
-                
-        elif side == 'left':
-            # Barb extends from wall at X=wall_thickness inward by snap_hook_overhang
-            # Columns span the full overhang depth
-            for i in range(num_cols):
-                col_y = pos - half_width + (i * col_spacing_actual)
-                col = Part.makeBox(snap_hook_overhang, col_thickness, col_height)
-                col.translate(App.Vector(wall_thickness - snap_hook_overhang,
-                                        col_y - col_thickness/2.0,
-                                        case_height))
-                shell = shell.fuse(col)
-                
-        elif side == 'right':
-            # Barb extends from wall at X=(case_length - wall_thickness) outward by snap_hook_overhang
-            # Columns span the full overhang depth
-            for i in range(num_cols):
-                col_y = pos - half_width + (i * col_spacing_actual)
-                col = Part.makeBox(snap_hook_overhang, col_thickness, col_height)
-                col.translate(App.Vector(case_length - wall_thickness,
-                                        col_y - col_thickness/2.0,
-                                        case_height))
-                shell = shell.fuse(col)
-    
-    App.Console.PrintMessage("Added vertical support columns under hook overhangs\n")
-except Exception as ex:
-    App.Console.PrintWarning("Adding vertical support columns failed: %s\n" % ex)
 
 # ---------- Mirror on Y-axis ----------
 # Mirror to match front case orientation
