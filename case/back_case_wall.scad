@@ -55,11 +55,10 @@ screw_positions = [
 lip_depth = 1.5;
 lip_height = 1.5;
 
-// Wall mounting keyholes
-keyhole_spacing = 83.0;
-keyhole_width = 4.0;
-keyhole_height = 15.0;
-keyhole_head_dia = 10.0;
+// Wall mounting holes (simple round holes instead of keyholes)
+wall_mount_hole_dia = 6.0;     // For wall screws/anchors
+wall_mount_spacing_x = 83.0;   // Horizontal spacing
+wall_mount_spacing_y = 60.0;   // Vertical spacing
 
 $fn = 64;
 
@@ -75,15 +74,6 @@ module rounded_rect(l, w, h, r) {
 }
 
 // Back case should NOT have PCB standoffs; PCB mounts to front cover
-
-module keyhole() {
-    // Head recess
-    translate([0, keyhole_height/2, 0])
-        cylinder(d=keyhole_head_dia, h=20, center=true);
-    // Slot
-    translate([0, 0, 0])
-        cube([keyhole_width, keyhole_height, 20], center=true);
-}
 
 module vent_grid(rows, cols) {
     spacing = 7.0;
@@ -122,14 +112,12 @@ module front_case() {
         translate([wire_hole_x, wire_hole_y, -0.5])
             cylinder(d=wire_hole_diameter, h=wall_thickness + 1.0, center=false);
         
-        // Keyhole mounting slots through BACK PANEL (cuts along Z)
-        for (x_offset = [-keyhole_spacing/2, keyhole_spacing/2]) {
-            // Slot rectangle through panel
-            translate([case_length/2 + x_offset - keyhole_width/2, case_width/2 - keyhole_height/2, -0.5])
-                cube([keyhole_width, keyhole_height, wall_thickness + 1.0]);
-            // Head circle through panel
-            translate([case_length/2 + x_offset, case_width/2, -0.5])
-                cylinder(d=keyhole_head_dia, h=wall_thickness + 1.0, center=false);
+        // Wall mounting holes through BACK PANEL - 4 round holes at corners
+        for (x_offset = [-wall_mount_spacing_x/2, wall_mount_spacing_x/2]) {
+            for (y_offset = [-wall_mount_spacing_y/2, wall_mount_spacing_y/2]) {
+                translate([case_length/2 + x_offset, case_width/2 + y_offset, -0.5])
+                    cylinder(d=wall_mount_hole_dia, h=wall_thickness + 1.0, center=false);
+            }
         }
         
         // Ventilation on left and right sides - short slots instead of grid

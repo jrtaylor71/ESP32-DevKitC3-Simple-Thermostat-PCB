@@ -2,6 +2,12 @@
 // This case has the display opening and faces outward into the room
 // Snaps onto the back case which holds the PCB
 
+// Optional BOSL2 library for precise edge filleting (kept disabled by default)
+// To enable, install BOSL2 to your OpenSCAD user libraries and set
+// `enable_face_edge_round = true;`
+// BOSL2 is included here to support the opt-in edge fillet.
+include <BOSL2/std.scad>
+
 // PCB dimensions
 pcb_length = 133.0;
 pcb_width = 89.5;
@@ -16,7 +22,8 @@ pcb_mount_holes = [
 ];
 
 // Case parameters
-wall_thickness = 2.5;
+face_thickness = 1.8;   // Front face thickness (only the panel)
+wall_thickness = 2.6;   // Side wall thickness (restored)
 pcb_clearance = 8.0;
 standoff_height = 17.3;  // Updated for display pin header clearance
 standoff_diameter = 7.0;
@@ -40,7 +47,7 @@ display_center_y = (display_holes[0][1] + display_holes[3][1]) / 2;
 // Calculated dimensions
 case_length = pcb_length + (2 * pcb_clearance);
 case_width = pcb_width + (2 * pcb_clearance);
-case_height = wall_thickness + display_clearance;
+case_height = face_thickness + display_clearance;
 
 // Display opening rotated 90° about Z (swap width/height) and aligned to display hole center
 display_width = 68.0;   // swapped
@@ -61,7 +68,7 @@ sensor_box_height = 15.0;     // Height of box frame
 sensor_box_depth = 16.0;      // Protrudes from case front
 sensor_box_wall = 1.5;        // Wall thickness of sensor box
 sensor_x = pcb_clearance + 11.5; // Relative X in case (J5 center)
-sensor_y = pcb_clearance + 66.42; // Relative Y in case (J5 center)
+sensor_y = pcb_clearance + 68.42; // Relative Y in case (J5 center)
 
 // Screw fasteners (front-through holes, back bosses)
 screw_hole_dia = 3.0;        // clearance for M2.5
@@ -79,6 +86,10 @@ screw_positions = [
 
 $fn = 64;
 
+// Toggle for BOSL2-based face/wall edge rounding (off by default)
+enable_face_edge_round = false;      // Default OFF to preserve stable geometry
+face_edge_radius = 1.0;              // Radius to apply at face/wall junction when enabled
+
 // === MODULES ===
 
 // Rounded rectangle for outer shell
@@ -91,28 +102,14 @@ module rounded_rect(l, w, h, r) {
     }
 }
 
-// Rounded bottom edge version - cylinders at bottom for front edge rounding
+// Simple box with straight walls
 module rounded_edge_box(l, w, h, corner_r, edge_r) {
+    // No rounding at face/wall junction: plain rounded-rectangle hull
     hull() {
-        // Bottom corners with edge radius (creates rounded front/bottom edge)
-        translate([corner_r, corner_r, edge_r]) 
-            sphere(r=edge_r, $fn=32);
-        translate([l - corner_r, corner_r, edge_r]) 
-            sphere(r=edge_r, $fn=32);
-        translate([corner_r, w - corner_r, edge_r]) 
-            sphere(r=edge_r, $fn=32);
-        translate([l - corner_r, w - corner_r, edge_r]) 
-            sphere(r=edge_r, $fn=32);
-        
-        // Top corners maintain full dimensions
-        translate([corner_r, corner_r, h]) 
-            cylinder(r=corner_r, h=0.1);
-        translate([l - corner_r, corner_r, h]) 
-            cylinder(r=corner_r, h=0.1);
-        translate([corner_r, w - corner_r, h]) 
-            cylinder(r=corner_r, h=0.1);
-        translate([l - corner_r, w - corner_r, h]) 
-            cylinder(r=corner_r, h=0.1);
+        translate([corner_r, corner_r, 0]) cylinder(r=corner_r, h=h);
+        translate([l - corner_r, corner_r, 0]) cylinder(r=corner_r, h=h);
+        translate([corner_r, w - corner_r, 0]) cylinder(r=corner_r, h=h);
+        translate([l - corner_r, w - corner_r, 0]) cylinder(r=corner_r, h=h);
     }
 }
 
@@ -190,54 +187,115 @@ module pcb_standoff() {
 // === FRONT CASE (display side) ===
 
 module front_shell() {
-    difference() {
-        // Outer shell with rounded bottom/front edges (2mm)
-        rounded_edge_box(case_length, case_width, case_height, 4, 2);
-        
-        // CUT SENSOR HOLES THROUGH OUTER PANEL FIRST (z=0 face)
-        // LDR07 hole - light entry through front face
-        translate([ldr_x, ldr_y, -1])
-            cylinder(d=ldr_diameter, h=wall_thickness + 2);
-        
-        // Temp/Humidity sensor front opening - match AHT20 footprint 12.5 x 6.0, rotated 90°
-        translate([sensor_x, sensor_y, -0.1])
-            rotate([0,0,90])
-                translate([-12.5/2, -6.0/2, 0])
-                    cube([12.5, 6.0, wall_thickness + 0.2]);
-        
-        // THEN cut hollow interior (z >= wall_thickness)
-        translate([wall_thickness, wall_thickness, wall_thickness])
-            cube([
-                case_length - 2*wall_thickness,
-                case_width - 2*wall_thickness,
-                case_height
-            ]);
-        
-        // Display opening
-        translate([display_x, display_y, -0.1])
-            cube([display_width, display_height, wall_thickness + 0.2]);
-        
-        // Top edge ventilation - short slots instead of long grid
-        translate([case_length/2, wall_thickness/2, case_height/2])
-            rotate([90, 0, 0])
-                short_vent_slots(15, slot_length=8.0, slot_width=2.0, spacing=8.5);
-        
-        // Bottom edge ventilation - short slots
-        translate([case_length/2, case_width - wall_thickness/2, case_height/2])
-            rotate([90, 0, 0])
-                short_vent_slots(15, slot_length=8.0, slot_width=2.0, spacing=8.5);
-        
-        // Left edge ventilation (short end)
-        translate([wall_thickness/2, case_width/2, case_height/2])
-            rotate([90, 0, 90])
-                short_vent_slots(10, slot_length=8.0, slot_width=2.0, spacing=8.5);
-        
-        // Right edge ventilation (short end)
-        translate([case_length - wall_thickness/2, case_width/2, case_height/2])
-            rotate([90, 0, 90])
-                short_vent_slots(10, slot_length=8.0, slot_width=2.0, spacing=8.5);
+    if (enable_face_edge_round) {
+        // BOSL2-powered branch with precise edge-only fillet at face/wall junction
+        // Use diff() to subtract both the fillet mask and all cutouts in one pass
+        diff() {
+            // Parent: BOSL2 rect_tube replicates our shell with straight walls
+            // and rounded corners, preserving wall thickness. Anchor at bottom-left-back
+            // to match origin [0,0,0].
+            rect_tube(size=[case_length, case_width], height=case_height,
+                      wall=wall_thickness, rounding=4, anchor=BOT+LEFT+BACK) {
+                // Edge-only fillet: apply a consistent-height roundover along the bottom perimeter
+                // Height is controlled by face_edge_radius
+                edge_profile(BOT)
+                    mask2d_roundover(height=face_edge_radius, mask_angle=$edge_angle, $fn=64);
 
-        // Short-end ventilation TBD: will add precise slots aligned to the front panel thickness
+                // CUT SENSOR HOLES THROUGH OUTER PANEL FIRST (z=0 face)
+                // LDR07 hole - light entry through front face
+                tag("remove") translate([ldr_x, ldr_y, -1])
+                    cylinder(d=ldr_diameter, h=face_thickness + 2);
+
+                // Temp/Humidity sensor front opening - match AHT20 footprint 12.5 x 6.0, rotated 90°
+                tag("remove") translate([sensor_x, sensor_y, -0.1])
+                    rotate([0,0,90])
+                        translate([-12.5/2, -6.0/2, 0])
+                            cube([12.5, 6.0, face_thickness + 0.2]);
+
+                // Interior cavity is inherent in rect_tube; no separate subtraction needed
+
+
+            // Recreate the front face plate of thickness face_thickness so the face is present.
+            // Use original rounded rectangle hull to match outer shape exactly.
+            tag("keep") rounded_rect(case_length, case_width, face_thickness, 4);
+                // Display opening
+                tag("remove") translate([display_x, display_y, -0.1])
+                    cube([display_width, display_height, face_thickness + 0.2]);
+
+                // Top edge ventilation - short slots instead of long grid
+                tag("remove") translate([case_length/2, wall_thickness/2, case_height/2])
+                    rotate([90, 0, 0])
+                        short_vent_slots(15, slot_length=8.0, slot_width=2.0, spacing=8.5);
+
+                // Bottom edge ventilation - short slots
+                tag("remove") translate([case_length/2, case_width - wall_thickness/2, case_height/2])
+                    rotate([90, 0, 0])
+                        short_vent_slots(15, slot_length=8.0, slot_width=2.0, spacing=8.5);
+
+                // Left edge ventilation (short end)
+                tag("remove") translate([wall_thickness/2, case_width/2, case_height/2])
+                    rotate([90, 0, 90])
+                        short_vent_slots(10, slot_length=8.0, slot_width=2.0, spacing=8.5);
+
+                // Right edge ventilation (short end)
+                tag("remove") translate([case_length - wall_thickness/2, case_width/2, case_height/2])
+                    rotate([90, 0, 90])
+                        short_vent_slots(10, slot_length=8.0, slot_width=2.0, spacing=8.5);
+
+                // Short-end ventilation TBD: will add precise slots aligned to the front panel thickness
+            }
+        }
+    } else {
+        // Original branch: plain rounded-rectangle hull, straight walls, no perimeter rounding
+        difference() {
+            // Outer shell with no rounding at face/wall junction
+            rounded_edge_box(case_length, case_width, case_height, 4, 0);
+            
+            // CUT SENSOR HOLES THROUGH OUTER PANEL FIRST (z=0 face)
+            // LDR07 hole - light entry through front face
+            translate([ldr_x, ldr_y, -1])
+                cylinder(d=ldr_diameter, h=face_thickness + 2);
+            
+            // Temp/Humidity sensor front opening - match AHT20 footprint 12.5 x 6.0, rotated 90°
+            translate([sensor_x, sensor_y, -0.1])
+                rotate([0,0,90])
+                    translate([-12.5/2, -6.0/2, 0])
+                        cube([12.5, 6.0, face_thickness + 0.2]);
+            
+            // THEN cut hollow interior (z >= face_thickness)
+            translate([wall_thickness, wall_thickness, face_thickness])
+                cube([
+                    case_length - 2*wall_thickness,
+                    case_width - 2*wall_thickness,
+                    case_height
+                ]);
+            
+            // Display opening
+            translate([display_x, display_y, -0.1])
+                cube([display_width, display_height, face_thickness + 0.2]);
+            
+            // Top edge ventilation - short slots instead of long grid
+            translate([case_length/2, wall_thickness/2, case_height/2])
+                rotate([90, 0, 0])
+                    short_vent_slots(15, slot_length=8.0, slot_width=2.0, spacing=8.5);
+            
+            // Bottom edge ventilation - short slots
+            translate([case_length/2, case_width - wall_thickness/2, case_height/2])
+                rotate([90, 0, 0])
+                    short_vent_slots(15, slot_length=8.0, slot_width=2.0, spacing=8.5);
+            
+            // Left edge ventilation (short end)
+            translate([wall_thickness/2, case_width/2, case_height/2])
+                rotate([90, 0, 90])
+                    short_vent_slots(10, slot_length=8.0, slot_width=2.0, spacing=8.5);
+            
+            // Right edge ventilation (short end)
+            translate([case_length - wall_thickness/2, case_width/2, case_height/2])
+                rotate([90, 0, 90])
+                    short_vent_slots(10, slot_length=8.0, slot_width=2.0, spacing=8.5);
+
+            // Short-end ventilation TBD: will add precise slots aligned to the front panel thickness
+        }
     }
 }
 
@@ -250,7 +308,7 @@ module front_case() {
                     front_shell();
             // PCB mounting standoffs (with holes) at all 4 corners
             for (hole = pcb_mount_holes) {
-                translate([hole[0] + pcb_clearance, hole[1] + pcb_clearance, wall_thickness])
+                translate([hole[0] + pcb_clearance, hole[1] + pcb_clearance, face_thickness])
                     pcb_standoff();
             }
             // Add sensor protection box on the outward front face using same mirror/translate

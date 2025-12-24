@@ -16,6 +16,7 @@
 
 #include <TFT_eSPI.h>
 #include <Preferences.h>
+#include <WiFi.h>
 
 // Keyboard mode for reusing on-screen keyboard
 enum KeyboardMode { KB_WIFI_SSID, KB_WIFI_PASS, KB_HOSTNAME };
@@ -68,10 +69,11 @@ extern void buzzerBeep(int duration);
 
 // Settings UI state
 enum SettingsPage {
-    PAGE_MENU,       // Main menu: WiFi, Comfort, HVAC Advanced, Hostname, Back
+    PAGE_MENU,       // Main menu: WiFi, Comfort, HVAC Advanced, Hostname, System Info, Back
     PAGE_COMFORT,    // Temp swing, auto swing, fan relay, use F
     PAGE_HVAC_ADV,   // stage2 enable (heat/cool), stage1 min runtime, stage2 delta
-    PAGE_HOSTNAME    // Hostname entry (uses keyboard)
+    PAGE_HOSTNAME,   // Hostname entry (uses keyboard)
+    PAGE_SYSINFO     // System information (IP, MAC, uptime, memory, etc)
 };
 
 // Touch button structure
@@ -98,6 +100,7 @@ static bool editStage2CoolingEnabled = false;
 void drawSettingsMenu();
 void drawComfortSettings();
 void drawHVACAdvancedSettings();
+void drawSystemInfo();
 bool settingsHandleTouch(uint16_t x, uint16_t y);
 void enterSettingsMenu();
 void exitSettingsToMain();
@@ -200,22 +203,25 @@ void drawSettingsMenu() {
     tft.setCursor(10, 10);
     tft.print("Settings Menu");
     
-    // Menu buttons (stacked vertically)
-    int btnX = 20, btnY = 50, btnW = 280, btnH = 35, btnSpacing = 5;
+    // Menu buttons (2 columns to fit on screen)
+    // Left column: x=20, Right column: x=170
+    int btnW = 135, btnH = 40, spacing = 5;
+    int leftX = 10, rightX = 165;
+    int btnY = 50;
     
-    drawSettingsButton(btnX, btnY, btnW, btnH, "WiFi", COLOR_PRIMARY);
-    btnY += btnH + btnSpacing;
+    // Row 1
+    drawSettingsButton(leftX, btnY, btnW, btnH, "WiFi", COLOR_PRIMARY);
+    drawSettingsButton(rightX, btnY, btnW, btnH, "Comfort", COLOR_SECONDARY);
+    btnY += btnH + spacing;
     
-    drawSettingsButton(btnX, btnY, btnW, btnH, "Comfort", COLOR_SECONDARY);
-    btnY += btnH + btnSpacing;
+    // Row 2
+    drawSettingsButton(leftX, btnY, btnW, btnH, "HVAC Adv", COLOR_ACCENT);
+    drawSettingsButton(rightX, btnY, btnW, btnH, "Hostname", COLOR_PRIMARY);
+    btnY += btnH + spacing;
     
-    drawSettingsButton(btnX, btnY, btnW, btnH, "HVAC Advanced", COLOR_ACCENT);
-    btnY += btnH + btnSpacing;
-    
-    drawSettingsButton(btnX, btnY, btnW, btnH, "Hostname", COLOR_PRIMARY);
-    btnY += btnH + btnSpacing;
-    
-    drawSettingsButton(btnX, btnY, btnW, btnH, "Back to Main", COLOR_WARNING);
+    // Row 3
+    drawSettingsButton(leftX, btnY, btnW, btnH, "System", COLOR_SECONDARY);
+    drawSettingsButton(rightX, btnY, btnW, btnH, "Back", COLOR_WARNING);
 }
 
 // Draw comfort settings page
@@ -290,6 +296,103 @@ void drawHVACAdvancedSettings() {
     drawSettingsButton(180, 200, 120, 35, "Back", COLOR_WARNING);
 }
 
+// Draw System Info page
+void drawSystemInfo() {
+    tft.fillScreen(COLOR_BACKGROUND);
+    tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
+    tft.setTextSize(2);
+    tft.setCursor(10, 10);
+    tft.print("System Info");
+    
+    tft.setTextSize(1);
+    int yPos = 40;
+    
+    // IP Address
+    tft.setCursor(10, yPos);
+    tft.print("IP: ");
+    tft.print(WiFi.localIP().toString());
+    yPos += 15;
+    
+    // MAC Address
+    tft.setCursor(10, yPos);
+    tft.print("MAC: ");
+    tft.print(WiFi.macAddress());
+    yPos += 15;
+    
+    // Hostname
+    tft.setCursor(10, yPos);
+    tft.print("Hostname: ");
+    tft.print(hostname);
+    yPos += 15;
+    
+    // WiFi SSID
+    tft.setCursor(10, yPos);
+    tft.print("SSID: ");
+    tft.print(WiFi.SSID());
+    yPos += 15;
+    
+    // WiFi Signal Strength
+    tft.setCursor(10, yPos);
+    tft.print("RSSI: ");
+    tft.print(WiFi.RSSI());
+    tft.print(" dBm");
+    yPos += 20;
+    
+    // Uptime
+    unsigned long uptimeSeconds = millis() / 1000;
+    unsigned long days = uptimeSeconds / 86400;
+    unsigned long hours = (uptimeSeconds % 86400) / 3600;
+    unsigned long minutes = (uptimeSeconds % 3600) / 60;
+    unsigned long seconds = uptimeSeconds % 60;
+    
+    tft.setCursor(10, yPos);
+    tft.print("Uptime: ");
+    tft.print(days);
+    tft.print("d ");
+    tft.print(hours);
+    tft.print("h ");
+    tft.print(minutes);
+    tft.print("m ");
+    tft.print(seconds);
+    tft.print("s");
+    yPos += 20;
+    
+    // Free Heap
+    tft.setCursor(10, yPos);
+    tft.print("Free Heap: ");
+    tft.print(ESP.getFreeHeap());
+    tft.print(" bytes");
+    yPos += 15;
+    
+    // Chip Model
+    tft.setCursor(10, yPos);
+    tft.print("Chip: ");
+    tft.print(ESP.getChipModel());
+    yPos += 15;
+    
+    // Chip Revision
+    tft.setCursor(10, yPos);
+    tft.print("Revision: ");
+    tft.print(ESP.getChipRevision());
+    yPos += 15;
+    
+    // CPU Frequency
+    tft.setCursor(10, yPos);
+    tft.print("CPU Freq: ");
+    tft.print(ESP.getCpuFreqMHz());
+    tft.print(" MHz");
+    yPos += 15;
+    
+    // Flash Size
+    tft.setCursor(10, yPos);
+    tft.print("Flash: ");
+    tft.print(ESP.getFlashChipSize() / (1024 * 1024));
+    tft.print(" MB");
+    
+    // Back button
+    drawSettingsButton(90, 200, 140, 35, "Back", COLOR_WARNING);
+}
+
 // Launch WiFi setup (reuse existing keyboard flow)
 void startWiFiSetupUI(bool returnToSettings) {
     keyboardReturnToSettings = returnToSettings;
@@ -334,42 +437,52 @@ bool settingsHandleTouch(uint16_t x, uint16_t y) {
     
     // Main settings menu
     if (currentPage == PAGE_MENU) {
-        int btnX = 20, btnY = 50, btnW = 280, btnH = 35, btnSpacing = 5;
+        int btnW = 135, btnH = 40, spacing = 5;
+        int leftX = 10, rightX = 165;
+        int btnY = 50;
         
-        // WiFi button
-        if (x >= btnX && x <= btnX + btnW && y >= btnY && y <= btnY + btnH) {
-            startWiFiSetupUI(true);
-            return true;
+        // Row 1: WiFi (left) and Comfort (right)
+        if (y >= btnY && y <= btnY + btnH) {
+            if (x >= leftX && x <= leftX + btnW) {
+                // WiFi button
+                startWiFiSetupUI(true);
+                return true;
+            } else if (x >= rightX && x <= rightX + btnW) {
+                // Comfort button
+                currentPage = PAGE_COMFORT;
+                drawComfortSettings();
+                return true;
+            }
         }
-        btnY += btnH + btnSpacing;
+        btnY += btnH + spacing;
         
-        // Comfort button
-        if (x >= btnX && x <= btnX + btnW && y >= btnY && y <= btnY + btnH) {
-            currentPage = PAGE_COMFORT;
-            drawComfortSettings();
-            return true;
+        // Row 2: HVAC Advanced (left) and Hostname (right)
+        if (y >= btnY && y <= btnY + btnH) {
+            if (x >= leftX && x <= leftX + btnW) {
+                // HVAC Advanced button
+                currentPage = PAGE_HVAC_ADV;
+                drawHVACAdvancedSettings();
+                return true;
+            } else if (x >= rightX && x <= rightX + btnW) {
+                // Hostname button
+                startHostnameEntry();
+                return true;
+            }
         }
-        btnY += btnH + btnSpacing;
+        btnY += btnH + spacing;
         
-        // HVAC Advanced button
-        if (x >= btnX && x <= btnX + btnW && y >= btnY && y <= btnY + btnH) {
-            currentPage = PAGE_HVAC_ADV;
-            drawHVACAdvancedSettings();
-            return true;
-        }
-        btnY += btnH + btnSpacing;
-        
-        // Hostname button
-        if (x >= btnX && x <= btnX + btnW && y >= btnY && y <= btnY + btnH) {
-            startHostnameEntry();
-            return true;
-        }
-        btnY += btnH + btnSpacing;
-        
-        // Back to Main button
-        if (x >= btnX && x <= btnX + btnW && y >= btnY && y <= btnY + btnH) {
-            exitSettingsToMain();
-            return true;
+        // Row 3: System Info (left) and Back (right)
+        if (y >= btnY && y <= btnY + btnH) {
+            if (x >= leftX && x <= leftX + btnW) {
+                // System Info button
+                currentPage = PAGE_SYSINFO;
+                drawSystemInfo();
+                return true;
+            } else if (x >= rightX && x <= rightX + btnW) {
+                // Back to Main button
+                exitSettingsToMain();
+                return true;
+            }
         }
     }
     
@@ -511,6 +624,16 @@ bool settingsHandleTouch(uint16_t x, uint16_t y) {
         // Back button
         if (x >= 180 && x <= 300 && y >= 200 && y <= 235) {
             // Discard changes
+            currentPage = PAGE_MENU;
+            drawSettingsMenu();
+            return true;
+        }
+    }
+    
+    // System Info page
+    else if (currentPage == PAGE_SYSINFO) {
+        // Back button (centered)
+        if (x >= 90 && x <= 230 && y >= 200 && y <= 235) {
             currentPage = PAGE_MENU;
             drawSettingsMenu();
             return true;

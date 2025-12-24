@@ -76,7 +76,6 @@ float currentPressure = 0.0; // Barometric pressure (BME280 only, in hPa)
 
 // Settings for factory reset
 unsigned long bootButtonPressStart = 0; // When the boot button was pressed
-const unsigned long FACTORY_RESET_PRESS_TIME = 10000; // 10 seconds in milliseconds
 bool bootButtonPressed = false; // Track if boot button is being pressed
 
 // DS18B20 sensor setup (pin defined in HardwarePins.h as ONEWIRE_PIN)
@@ -98,15 +97,9 @@ bool hydronicLockout = false; // Track hydronic safety lockout state
 // LIGHT_SENSOR_PIN and TFT_BACKLIGHT_PIN are defined in HardwarePins.h
 // PWM_CHANNEL, PWM_CHANNEL_HEAT, PWM_CHANNEL_COOL, PWM_CHANNEL_FAN, PWM_CHANNEL_BUZZER defined in HardwarePins.h
 // PWM_FREQ and PWM_RESOLUTION defined in HardwarePins.h
-const int MIN_BRIGHTNESS = 30; // Minimum backlight brightness (0-255)
-const int MAX_BRIGHTNESS = 255; // Maximum backlight brightness (0-255)
-const int LIGHT_SENSOR_MIN = 100; // Minimum useful light sensor reading
-const int LIGHT_SENSOR_MAX = 3500; // Maximum useful light sensor reading (adjust based on your sensor)
-int currentBrightness = MAX_BRIGHTNESS; // Current backlight brightness
 int lastLightReading = 0; // Last light sensor reading
 unsigned long lastBrightnessUpdate = 0; // Last time brightness was updated
-const unsigned long BRIGHTNESS_UPDATE_INTERVAL = 1000; // Update brightness every 1 second
-
+int currentBrightness = MAX_BRIGHTNESS; // Current backlight brightness
 // Display sleep mode settings
 bool displaySleepEnabled = true; // Enable/disable display sleep mode
 unsigned long displaySleepTimeout = 300000; // Sleep after 5 minutes (300000ms) of inactivity
@@ -223,7 +216,7 @@ String mqttPassword = "password";  // Replace with your MQTT password
 String timeZone = "CST6CDT,M3.2.0,M11.1.0"; // Default time zone (Central Standard Time)
 
 // Add a preference for hostname
-String hostname = "ESP32-S3-Simple-Thermostat"; // Default hostname
+String hostname = DEFAULT_HOSTNAME; // Default hostname via ProjectConfig
 
 // Version control information
 const String sw_version = "1.3.8"; // Software version
@@ -935,7 +928,7 @@ void setup()
     // Print version information at startup
     Serial.println();
     Serial.println("========================================");
-    Serial.println("ESP32-S3 Simple Thermostat");
+    Serial.println(PROJECT_NAME_SHORT);
     Serial.print("Version: ");
     Serial.println(sw_version);
     Serial.print("Build Date: ");
@@ -1008,7 +1001,7 @@ void setup()
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
     tft.setTextSize(3);  // Increased size from 2 to 3
     tft.setCursor(15, 40);  // Better centered for display
-    tft.println("ESP32-S3 Simple Thermostat");
+    tft.println(PROJECT_NAME_SHORT);
     tft.setTextSize(2);  // Increased from 1 to 2 for better readability
     tft.setCursor(20, 110);  // Centered version info
     tft.println("Version: " + sw_version);
@@ -2173,7 +2166,7 @@ void publishHomeAssistantDiscovery()
         device["identifiers"] = hostname;
         device["name"] = hostname;
         device["manufacturer"] = "TDC";
-        device["model"] = "Simple Thermostat Alt Firmware";
+        device["model"] = PROJECT_NAME_SHORT;
         device["sw_version"] = sw_version;
 
         serializeJson(doc, buffer);
@@ -2203,7 +2196,7 @@ void publishHomeAssistantDiscovery()
             JsonObject device = motionDoc.createNestedObject("device");
             device["identifiers"][0] = hostname;
             device["name"] = hostname;
-            device["model"] = "ESP32-S3 with LD2410";
+            device["model"] = PROJECT_NAME_SHORT;
             device["manufacturer"] = "Custom";
             
             char motionBuffer[512];
@@ -2229,7 +2222,7 @@ void publishHomeAssistantDiscovery()
             JsonObject device = pressureDoc.createNestedObject("device");
             device["identifiers"][0] = hostname;
             device["name"] = hostname;
-            device["model"] = "Simple Thermostat Alt Firmware";
+            device["model"] = PROJECT_NAME_SHORT;
             device["manufacturer"] = "TDC";
             device["sw_version"] = sw_version;
             
@@ -4040,7 +4033,7 @@ void loadSettings()
     hydronicTempLow = preferences.getFloat("hydLow", 110.0);
     hydronicTempHigh = preferences.getFloat("hydHigh", 130.0);
     hydronicLowTempAlertSent = preferences.getBool("hydAlertSent", false);
-    hostname = preferences.getString("host", "ESP32-S3-Simple-Thermostat");
+    hostname = preferences.getString("host", DEFAULT_HOSTNAME);
     stage1MinRuntime = preferences.getUInt("stg1MnRun", 300);
     stage2TempDelta = preferences.getFloat("stg2Delta", 2.0);
     stage2HeatingEnabled = preferences.getBool("stg2HeatEn", false);
@@ -4256,7 +4249,7 @@ void restoreDefaultSettings()
     timeZone = "CST6CDT,M3.2.0,M11.1.0"; // Reset time zone to default
     use24HourClock = true; // Reset clock format to default
     hydronicHeatingEnabled = false; // Reset hydronic heating setting to default
-    hostname = "ESP32-S3-Simple-Thermostat"; // Reset hostname to default
+    hostname = DEFAULT_HOSTNAME; // Reset hostname to default
 
     mqttPort = 1883; // Reset MQTT port default
     hydronicTempLow = 110.0; // Reset hydronic low temp

@@ -171,4 +171,29 @@
  * - Each sensor has unique 64-bit ROM address
  */
 
+// ============================================================================
+// ============================================================================
+// BRIGHTNESS CONTROL (Display Backlight)
+// ============================================================================
+const int MIN_BRIGHTNESS = 30;        // Minimum backlight brightness (0-255)
+const int MAX_BRIGHTNESS = 255;       // Maximum backlight brightness (0-255)
+
+// Light sensor thresholds for automatic brightness control
+const int LIGHT_SENSOR_MIN = 100;     // Minimum useful light sensor reading
+const int LIGHT_SENSOR_MAX = 3500;    // Maximum useful light sensor reading
+
+// ============================================================================
+// TIMING CONSTANTS
+// ============================================================================
+const unsigned long BRIGHTNESS_UPDATE_INTERVAL = 1000;  // Update brightness every 1 second
+const unsigned long FACTORY_RESET_PRESS_TIME = 10000;   // 10 seconds for factory reset
+
+// PROJECT NAMING AND BRANDING
+// ============================================================================
+#define PROJECT_NAME_SHORT "ESP32-S3 Simple Thermostat"
+#define UI_PRODUCT_LINE "ESP32-S3 Simple Thermostat"
+#define DEFAULT_HOSTNAME "ESP32-S3-Simple-Thermostat"
+#define MQTT_MANUFACTURER "TDC"
+#define MQTT_MODEL "ESP32-S3 Simple Thermostat"
+
 #endif // HARDWARE_PINS_H
