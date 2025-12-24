@@ -505,14 +505,14 @@ stl_path = os.path.join(out_dir, "back_case_wall_freecad.stl")
 # Export STEP
 Part.export([part_obj], step_path)
 
-# Export STL with higher quality mesh
-# Use same method as FreeCAD GUI export
+# Export STL with highest quality mesh for 3D printing
+# Use same method as FreeCAD GUI export with premium settings
 import Mesh
 mesh = Mesh.Mesh()
 mesh.addFacets(MeshPart.meshFromShape(
     Shape=shell,
-    LinearDeflection=0.01,
-    AngularDeflection=0.523599,  # 30 degrees in radians
+    LinearDeflection=0.005,      # 5 microns - very fine detail
+    AngularDeflection=0.174533,  # 10 degrees in radians - smooth curves
     Relative=False
 ).Facets)
 mesh.write(stl_path)
