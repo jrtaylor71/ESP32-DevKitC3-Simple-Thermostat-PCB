@@ -481,6 +481,59 @@ try:
 except Exception as ex:
     App.Console.PrintWarning("Adding triangular supports failed: %s\n" % ex)
 
+# ---------- Add L-shaped corner alignment tabs ----------
+# L-shaped tabs in each corner that extend from bottom to 3mm above wall top for easy printing
+tab_arm_width = 2.0  # Width of each arm of the L
+tab_arm_length = 6.0  # Length of each arm of the L
+tab_protrusion_above = 3.0  # Height extending above wall top
+tab_total_height = (case_height - bottom_thickness) + tab_protrusion_above  # Full height from bottom
+
+# Bottom-left corner - arms extend right and up
+try:
+    arm_right = Part.makeBox(tab_arm_length, tab_arm_width, tab_total_height)
+    arm_up = Part.makeBox(tab_arm_width, tab_arm_length, tab_total_height)
+    arm_right.translate(App.Vector(wall_thickness, wall_thickness, bottom_thickness))
+    arm_up.translate(App.Vector(wall_thickness, wall_thickness, bottom_thickness))
+    shell = shell.fuse(arm_right)
+    shell = shell.fuse(arm_up)
+except Exception as ex:
+    App.Console.PrintWarning("Bottom-left corner tab failed: %s\n" % ex)
+
+# Bottom-right corner - arms extend left and up
+try:
+    arm_left = Part.makeBox(tab_arm_length, tab_arm_width, tab_total_height)
+    arm_up = Part.makeBox(tab_arm_width, tab_arm_length, tab_total_height)
+    arm_left.translate(App.Vector(case_length - wall_thickness - tab_arm_length, wall_thickness, bottom_thickness))
+    arm_up.translate(App.Vector(case_length - wall_thickness - tab_arm_width, wall_thickness, bottom_thickness))
+    shell = shell.fuse(arm_left)
+    shell = shell.fuse(arm_up)
+except Exception as ex:
+    App.Console.PrintWarning("Bottom-right corner tab failed: %s\n" % ex)
+
+# Top-right corner - arms extend left and down
+try:
+    arm_left = Part.makeBox(tab_arm_length, tab_arm_width, tab_total_height)
+    arm_down = Part.makeBox(tab_arm_width, tab_arm_length, tab_total_height)
+    arm_left.translate(App.Vector(case_length - wall_thickness - tab_arm_length, case_width - wall_thickness - tab_arm_width, bottom_thickness))
+    arm_down.translate(App.Vector(case_length - wall_thickness - tab_arm_width, case_width - wall_thickness - tab_arm_length, bottom_thickness))
+    shell = shell.fuse(arm_left)
+    shell = shell.fuse(arm_down)
+except Exception as ex:
+    App.Console.PrintWarning("Top-right corner tab failed: %s\n" % ex)
+
+# Top-left corner - arms extend right and down
+try:
+    arm_right = Part.makeBox(tab_arm_length, tab_arm_width, tab_total_height)
+    arm_down = Part.makeBox(tab_arm_width, tab_arm_length, tab_total_height)
+    arm_right.translate(App.Vector(wall_thickness, case_width - wall_thickness - tab_arm_width, bottom_thickness))
+    arm_down.translate(App.Vector(wall_thickness, case_width - wall_thickness - tab_arm_length, bottom_thickness))
+    shell = shell.fuse(arm_right)
+    shell = shell.fuse(arm_down)
+except Exception as ex:
+    App.Console.PrintWarning("Top-left corner tab failed: %s\n" % ex)
+
+App.Console.PrintMessage("Added 4 L-shaped corner alignment tabs (full height)\n")
+
 # ---------- Mirror on Y-axis ----------
 # Mirror to match front case orientation
 shell = shell.mirror(App.Vector(0, 0, 0), App.Vector(1, 0, 0))

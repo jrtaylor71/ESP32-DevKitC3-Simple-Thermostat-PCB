@@ -44,7 +44,7 @@ display_holes = [
     [128.61, 16.1],
     [128.61, 65.0]
 ]
-display_center_x = (display_holes[0][0] + display_holes[3][0]) / 2.0
+display_center_x = (display_holes[0][0] + display_holes[3][0]) / 2.0 + 5.6
 display_center_y = (display_holes[0][1] + display_holes[3][1]) / 2.0
 display_width = 68.0
 display_height = 50.0
@@ -53,7 +53,7 @@ display_y = wall_thickness + pcb_clearance + display_center_y - display_height /
 
 # Sensor holes
 ldr_diameter = 5.5
-ldr_x = wall_thickness + pcb_clearance + 104.8 - 2.0
+ldr_x = wall_thickness + pcb_clearance + 104.8 - 0.5
 ldr_y = wall_thickness + pcb_clearance + 6.5
 
 sensor_box_width = 20.0
