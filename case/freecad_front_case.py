@@ -363,6 +363,7 @@ latch_window_width = snap_tab_width + 2 * window_clearance
 latch_window_height = snap_tab_height + window_clearance
 latch_window_depth = 3.0  # Shallow recess into wall from inside
 latch_hole_diameter = 2.0  # Small hole for hook/tab push-through
+latch_hole_z_offset = 3.0  # Move hole center downward without moving window
 # Move windows down the sidewall by 4 mm
 z_window = case_height - latch_window_height - (0.6 + 4.0)
 for snap in snap_positions:
@@ -377,7 +378,7 @@ for snap in snap_positions:
                                     z_window))
         # Hole through full wall thickness pointing inward
         hole = Part.makeCylinder(latch_hole_diameter / 2.0, wall_thickness + 4,
-                                 App.Vector(pos, case_width + 2, z_window + latch_window_height / 2.0),
+                                 App.Vector(pos, case_width + 2, z_window + latch_window_height / 2.0 + latch_hole_z_offset),
                                  App.Vector(0, -1, 0))
         try:
             shell = shell.cut(window)
@@ -395,7 +396,7 @@ for snap in snap_positions:
                                     z_window))
         # Hole through full wall thickness pointing inward
         hole = Part.makeCylinder(latch_hole_diameter / 2.0, wall_thickness + 4,
-                                 App.Vector(pos, -2, z_window + latch_window_height / 2.0),
+                                 App.Vector(pos, -2, z_window + latch_window_height / 2.0 + latch_hole_z_offset),
                                  App.Vector(0, 1, 0))
         try:
             shell = shell.cut(window)
@@ -413,7 +414,7 @@ for snap in snap_positions:
                                     z_window))
         # Hole pointing inward toward cavity (+X direction)
         hole = Part.makeCylinder(latch_hole_diameter / 2.0, wall_thickness + 2,
-                                 App.Vector(-2, pos, z_window + latch_window_height / 2.0),
+                                 App.Vector(-2, pos, z_window + latch_window_height / 2.0 + latch_hole_z_offset),
                                  App.Vector(1, 0, 0))
         try:
             shell = shell.cut(window)
@@ -430,7 +431,7 @@ for snap in snap_positions:
                                     pos - latch_window_width / 2.0,
                                     z_window))
         hole = Part.makeCylinder(latch_hole_diameter / 2.0, wall_thickness + 2,
-                                 App.Vector(case_length + 2, pos, z_window + latch_window_height / 2.0),
+                                 App.Vector(case_length + 2, pos, z_window + latch_window_height / 2.0 + latch_hole_z_offset),
                                  App.Vector(-1, 0, 0))
         try:
             shell = shell.cut(window)
