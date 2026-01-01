@@ -803,6 +803,26 @@ document.addEventListener('visibilitychange', function() {
         startAutoRefresh();
     }
 });
+
+// Mutual exclusion for stage 2 heating and reversing valve
+document.addEventListener('DOMContentLoaded', function() {
+    const stage2Heat = document.getElementById('stage2HeatingEnabled');
+    const revValve = document.getElementById('reversingValveEnabled');
+    
+    if (stage2Heat && revValve) {
+        stage2Heat.addEventListener('change', function() {
+            if (this.checked && revValve.checked) {
+                revValve.checked = false;
+            }
+        });
+        
+        revValve.addEventListener('change', function() {
+            if (this.checked && stage2Heat.checked) {
+                stage2Heat.checked = false;
+            }
+        });
+    }
+});
 </script>
 )";
 

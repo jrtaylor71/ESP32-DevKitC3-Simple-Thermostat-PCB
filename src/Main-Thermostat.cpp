@@ -142,6 +142,7 @@ bool stage1Active = false; // Flag to track if stage 1 is active
 bool stage2Active = false; // Flag to track if stage 2 is active
 bool stage2HeatingEnabled = false; // Enable/disable 2nd stage heating
 bool stage2CoolingEnabled = false; // Enable/disable 2nd stage cooling
+bool reversingValveEnabled = false; // Enable reversing valve (heat pump) - mutually exclusive with stage2HeatingEnabled
 
 // Globals
 AsyncWebServer server(80);
@@ -385,7 +386,7 @@ bool isUpperCaseKeyboard = true;
 float previousTemp = 0.0;
 float previousHumidity = 0.0;
 float previousSetTemp = 0.0;
-bool firstHourAfterBoot = true; // Flag to track the first hour after bootup
+// bool firstHourAfterBoot = true; // Flag to track the first hour after bootup - DISABLED
 volatile bool mqttFeedbackNeeded = false; // Flag for immediate MQTT feedback on settings change
 
 // Temperature and humidity filtering (exponential moving average)
@@ -1006,6 +1007,12 @@ void setup()
         // Add initial message to buffer
         addToDebugBuffer("=== DEBUG BUFFER INITIALIZED ===\n");
     }
+
+    // Initialize Preferences
+    preferences.begin("thermostat", false);
+    loadSettings();
+    loadScheduleSettings();
+
     
     // Print version information at startup
     debugLog("\n");
@@ -1022,11 +1029,6 @@ void setup()
     debugLog("========================================\n");
     debugLog("\n");
     
-    // Initialize Preferences
-    preferences.begin("thermostat", false);
-    loadSettings();
-    loadScheduleSettings();
-
     // Initialize the DHT11 sensor
     // Initialize TFT backlight with PWM (GPIO 14)
     ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_RESOLUTION);
@@ -2941,7 +2943,23 @@ void activateHeating() {
         stage1Active = true;
         stage1StartTime = millis(); // Record the start time
         stage2Active = false; // Ensure stage 2 is off initially
-    } 
+        
+        // Wake display when HVAC activates
+        if (displayIsAsleep) {
+            wakeDisplay();
+            debugLog("[DISPLAY] Woke from sleep - heating activated\n");
+        }
+    }
+    
+    // Handle reversing valve or stage 2 heating (mutually exclusive)
+    if (reversingValveEnabled) {
+        // Reversing valve mode: energize valve immediately when heating
+        if (!stage2Active) {
+            debugLog("[HVAC] Reversing valve energized for HEAT mode\n");
+            digitalWrite(HEAT_RELAY_2_PIN, HIGH);
+            stage2Active = true; // Use stage2Active flag to track valve state
+        }
+    }
     // Check if it's time to activate stage 2 based on hybrid approach
     else if (!stage2Active && 
              ((millis() - stage1StartTime) / 1000 >= stage1MinRuntime) && // Minimum run time condition
@@ -2990,7 +3008,15 @@ void activateCooling()
     
     // Turn off heating relays when activating cooling
     digitalWrite(HEAT_RELAY_1_PIN, LOW);
-    digitalWrite(HEAT_RELAY_2_PIN, LOW);
+    
+    // Handle reversing valve: de-energize for cooling mode
+    if (reversingValveEnabled) {
+        debugLog("[HVAC] Reversing valve de-energized for COOL mode\n");
+        digitalWrite(HEAT_RELAY_2_PIN, LOW);
+        stage2Active = false;
+    } else {
+        digitalWrite(HEAT_RELAY_2_PIN, LOW);
+    }
     
     // Check if stage 1 is not active yet
     if (!stage1Active) {
@@ -3000,11 +3026,18 @@ void activateCooling()
         stage1StartTime = millis(); // Record the start time
         stage2Active = false; // Ensure stage 2 is off initially
         debugLog("[DEBUG] Stage 1 cooling activated - relay pin %d set HIGH\n", COOL_RELAY_1_PIN);
+        
+        // Wake display when HVAC activates
+        if (displayIsAsleep) {
+            wakeDisplay();
+            debugLog("[DISPLAY] Woke from sleep - cooling activated\n");
+        }
     } else {
         debugLog("[DEBUG] Cooling stage 1 already active (stage1Active=%d)\n", stage1Active);
     }
-    // Check if it's time to activate stage 2 based on hybrid approach
-    if (!stage2Active && 
+    
+    // Only activate stage 2 cooling if NOT using reversing valve
+    if (!reversingValveEnabled && !stage2Active && 
             ((millis() - stage1StartTime) / 1000 >= stage1MinRuntime) && // Minimum run time condition
             (currentTemp > setTempCool + tempSwing + stage2TempDelta) && // Temperature delta condition
             stage2CoolingEnabled) { // Check if stage 2 cooling is enabled
@@ -3076,16 +3109,7 @@ void handleFanControl()
 
 void controlFanSchedule()
 {
-    if (firstHourAfterBoot)
-    {
-        unsigned long currentTime = millis();
-        if (currentTime >= SECONDS_PER_HOUR * 1000) // Check if an hour has passed
-        {
-            firstHourAfterBoot = false; // Reset the flag after the first hour
-            debugLog("[FAN SCHEDULE] First hour after boot complete, enabling fan cycle\n");
-        }
-        return; // Skip fan schedule during the first hour
-    }
+    // Removed 1-hour boot delay - fan cycle starts immediately
 
     if (fanMode == "cycle")
     {
@@ -3161,6 +3185,7 @@ void handleWebRequests()
                                        fanRelayNeeded, stage1MinRuntime, 
                                        stage2TempDelta, fanMinutesPerHour,
                                        stage2HeatingEnabled, stage2CoolingEnabled,
+                                       reversingValveEnabled,
                                        hydronicTempLow, hydronicTempHigh,
                                        wifiSSID, wifiPassword, timeZone,
                                        use24HourClock, mqttEnabled, mqttServer,
@@ -3179,6 +3204,7 @@ void handleWebRequests()
         String html = generateSettingsPage(thermostatMode, fanMode, setTempHeat, setTempCool, setTempAuto, 
                                           tempSwing, autoTempSwing, fanRelayNeeded, useFahrenheit, mqttEnabled, 
                                           stage1MinRuntime, stage2TempDelta, stage2HeatingEnabled, stage2CoolingEnabled,
+                                          reversingValveEnabled,
                                           hydronicHeatingEnabled, hydronicTempLow, hydronicTempHigh, fanMinutesPerHour,
                                           mqttServer, mqttPort, mqttUsername, mqttPassword, wifiSSID, wifiPassword,
                                           hostname, use24HourClock, timeZone, tempOffset, humidityOffset, displaySleepEnabled,
@@ -3295,6 +3321,16 @@ void handleWebRequests()
             stage2HeatingEnabled = request->getParam("stage2HeatingEnabled", true)->value() == "on";
         } else {
             stage2HeatingEnabled = false; // Ensure stage2HeatingEnabled is set to false if not present in the form
+        }
+        if (request->hasParam("reversingValveEnabled", true)) {
+            reversingValveEnabled = request->getParam("reversingValveEnabled", true)->value() == "on";
+        } else {
+            reversingValveEnabled = false;
+        }
+        // Mutual exclusion: cannot have both stage2 heating and reversing valve
+        if (stage2HeatingEnabled && reversingValveEnabled) {
+            debugLog("[WARNING] Both stage2HeatingEnabled and reversingValveEnabled set - disabling stage2HeatingEnabled\n");
+            stage2HeatingEnabled = false;
         }
         if (request->hasParam("stage2CoolingEnabled", true)) {
             stage2CoolingEnabled = request->getParam("stage2CoolingEnabled", true)->value() == "on";
@@ -4230,6 +4266,7 @@ void saveSettings()
     debugLog("stage2TempDelta: "); Serial.println(stage2TempDelta);
     debugLog("stage2HeatingEnabled: "); Serial.println(stage2HeatingEnabled);
     debugLog("stage2CoolingEnabled: "); Serial.println(stage2CoolingEnabled);
+    debugLog("reversingValveEnabled: "); Serial.println(reversingValveEnabled);
     debugLog("weatherSource: "); Serial.println(weatherSource);
     debugLog("owmApiKey: "); Serial.println(owmApiKey.length() > 0 ? "[SET]" : "[NOT SET]");
     debugLog("owmCity: "); Serial.println(owmCity);
@@ -4267,6 +4304,7 @@ void saveSettings()
     preferences.putFloat("stg2Delta", stage2TempDelta);
     preferences.putBool("stg2HeatEn", stage2HeatingEnabled);
     preferences.putBool("stg2CoolEn", stage2CoolingEnabled);
+    preferences.putBool("revValve", reversingValveEnabled);
     preferences.putFloat("tempOffset", tempOffset);
     preferences.putFloat("humOffset", humidityOffset);
     preferences.putBool("dispSleepEn", displaySleepEnabled);
@@ -4323,6 +4361,7 @@ void loadSettings()
     stage2TempDelta = preferences.getFloat("stg2Delta", 2.0);
     stage2HeatingEnabled = preferences.getBool("stg2HeatEn", false);
     stage2CoolingEnabled = preferences.getBool("stg2CoolEn", false);
+    reversingValveEnabled = preferences.getBool("revValve", false);
     tempOffset = preferences.getFloat("tempOffset", -4.0);
     humidityOffset = preferences.getFloat("humOffset", 0.0);
     displaySleepEnabled = preferences.getBool("dispSleepEn", true);

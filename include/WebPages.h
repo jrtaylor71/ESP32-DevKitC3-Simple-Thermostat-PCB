@@ -58,6 +58,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
                          bool fanRelayNeeded, unsigned long stage1MinRuntime, 
                          float stage2TempDelta, int fanMinutesPerHour,
                          bool stage2HeatingEnabled, bool stage2CoolingEnabled,
+                         bool reversingValveEnabled,
                          float hydronicTempLow, float hydronicTempHigh,
                          String wifiSSID, String wifiPassword, String timeZone,
                          bool use24HourClock, bool mqttEnabled, String mqttServer,
@@ -169,18 +170,29 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "<span>Heat Stage 1</span><span class='status-indicator " + String(heat1Status ? "status-on" : "status-off") + "'>" + String(heat1Status ? "ON" : "OFF") + "</span>";
     html += "</div>";
     
-    html += "<div class='relay-status" + String(heat2Status ? " active" : "") + "'>";
-    html += "<span>Heat Stage 2</span><span class='status-indicator " + String(heat2Status ? "status-on" : "status-off") + "'>" + String(heat2Status ? "ON" : "OFF") + "</span>";
-    html += "</div>";
+    // Show Heat Stage 2 OR Reversing Valve based on configuration
+    if (reversingValveEnabled) {
+        html += "<div class='relay-status" + String(heat2Status ? " active" : "") + "'>";
+        html += "<span>Reversing Valve</span><span class='status-indicator " + String(heat2Status ? "status-on" : "status-off") + "'>" + String(heat2Status ? "HEAT" : "COOL") + "</span>";
+        html += "</div>";
+    } else if (stage2HeatingEnabled) {
+        html += "<div class='relay-status" + String(heat2Status ? " active" : "") + "'>";
+        html += "<span>Heat Stage 2</span><span class='status-indicator " + String(heat2Status ? "status-on" : "status-off") + "'>" + String(heat2Status ? "ON" : "OFF") + "</span>";
+        html += "</div>";
+    }
     
     html += "<div class='relay-status" + String(cool1Status ? " active" : "") + "'>";
     html += "<span>Cool Stage 1</span><span class='status-indicator " + String(cool1Status ? "status-on" : "status-off") + "'>" + String(cool1Status ? "ON" : "OFF") + "</span>";
     html += "</div>";
     
-    html += "<div class='relay-status" + String(cool2Status ? " active" : "") + "'>";
-    html += "<span>Cool Stage 2</span><span class='status-indicator " + String(cool2Status ? "status-on" : "status-off") + "'>" + String(cool2Status ? "ON" : "OFF") + "</span>";
-    html += "</div>";
+    // Only show Cool Stage 2 if enabled
+    if (stage2CoolingEnabled) {
+        html += "<div class='relay-status" + String(cool2Status ? " active" : "") + "'>";
+        html += "<span>Cool Stage 2</span><span class='status-indicator " + String(cool2Status ? "status-on" : "status-off") + "'>" + String(cool2Status ? "ON" : "OFF") + "</span>";
+        html += "</div>";
+    }
     
+    // Fan always shown
     html += "<div class='relay-status" + String(fanStatus ? " active" : "") + "'>";
     html += "<span>Fan</span><span class='status-indicator " + String(fanStatus ? "status-on" : "status-off") + "'>" + String(fanStatus ? "ON" : "OFF") + "</span>";
     html += "</div>";
@@ -286,8 +298,13 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "</div>"; // End grid
     
     html += "<div class='form-checkbox'>";
-    html += "<input type='checkbox' name='stage2HeatingEnabled' " + String(stage2HeatingEnabled ? "checked" : "") + ">";
+    html += "<input type='checkbox' id='stage2HeatingEnabled' name='stage2HeatingEnabled' " + String(stage2HeatingEnabled ? "checked" : "") + ">";
     html += "<label class='form-label'>Enable 2nd Stage Heating</label>";
+    html += "</div>";
+    
+    html += "<div class='form-checkbox'>";
+    html += "<input type='checkbox' id='reversingValveEnabled' name='reversingValveEnabled' " + String(reversingValveEnabled ? "checked" : "") + ">";
+    html += "<label class='form-label'>Reversing Valve (Heat Pump) - Uses H2 relay</label>";
     html += "</div>";
     
     html += "<div class='form-checkbox'>";
@@ -441,6 +458,23 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "</div>"; // End settings actions section
     
     html += "</form>";
+    
+    // Add JavaScript for mutual exclusion
+    html += "<script>";
+    html += "(function(){";
+    html += "const stage2Heat = document.getElementById('stage2HeatingEnabled');";
+    html += "const revValve = document.getElementById('reversingValveEnabled');";
+    html += "if(stage2Heat && revValve){";
+    html += "stage2Heat.addEventListener('change', function(){";
+    html += "if(this.checked && revValve.checked){revValve.checked=false;}";
+    html += "});";
+    html += "revValve.addEventListener('change', function(){";
+    html += "if(this.checked && stage2Heat.checked){stage2Heat.checked=false;}";
+    html += "});";
+    html += "}";
+    html += "})();";
+    html += "</script>";
+    
     html += "</div>"; // End settings-content tab
     
     // Schedule tab content (embedded schedule interface)
@@ -762,6 +796,7 @@ String generateSettingsPage(String thermostatMode, String fanMode, float setTemp
                            float autoTempSwing, bool fanRelayNeeded, bool useFahrenheit,
                            bool mqttEnabled, int stage1MinRuntime, float stage2TempDelta,
                            bool stage2HeatingEnabled, bool stage2CoolingEnabled,
+                           bool reversingValveEnabled,
                            bool hydronicHeatingEnabled, float hydronicTempLow, 
                            float hydronicTempHigh, int fanMinutesPerHour,
                            String mqttServer, int mqttPort, String mqttUsername,
@@ -882,8 +917,13 @@ String generateSettingsPage(String thermostatMode, String fanMode, float setTemp
     html += "</div>"; // End grid
     
     html += "<div class='form-checkbox'>";
-    html += "<input type='checkbox' name='stage2HeatingEnabled' " + String(stage2HeatingEnabled ? "checked" : "") + ">";
+    html += "<input type='checkbox' id='stage2HeatingEnabled' name='stage2HeatingEnabled' " + String(stage2HeatingEnabled ? "checked" : "") + ">";
     html += "<label class='form-label'>Enable 2nd Stage Heating</label>";
+    html += "</div>";
+    
+    html += "<div class='form-checkbox'>";
+    html += "<input type='checkbox' id='reversingValveEnabled' name='reversingValveEnabled' " + String(reversingValveEnabled ? "checked" : "") + ">";
+    html += "<label class='form-label'>Reversing Valve (Heat Pump) - Uses H2 relay</label>";
     html += "</div>";
     
     html += "<div class='form-checkbox'>";

@@ -1,1 +1,1 @@
-build_20260101-153328/flash.sh
+esp32-s3-wroom-1-n16_build_20260101-163932/flash.sh
