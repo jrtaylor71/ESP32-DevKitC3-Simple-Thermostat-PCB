@@ -400,6 +400,7 @@ volatile size_t otaBytesWritten = 0;      // Bytes written so far during current
 volatile size_t otaTotalSize = 0;         // Total size of firmware being uploaded
 volatile bool otaInProgress = false;      // True while receiving firmware data
 volatile bool otaRebooting = false;       // Set after successful end before reboot
+volatile bool systemRebootInProgress = false; // Prevent multiple reboot requests
 unsigned long otaStartTime = 0;           // millis() when OTA began
 unsigned long otaLastUpdateLog = 0;       // For throttled serial logging
 
@@ -2150,6 +2151,8 @@ void publishHomeAssistantDiscovery()
         doc["min_temp"] = 50; // Minimum temperature in Fahrenheit
         doc["max_temp"] = 90; // Maximum temperature in Fahrenheit
         doc["temp_step"] = 0.5; // Temperature step
+        doc["precision"] = 0.1; // Precision for temperature display (1 decimal place)
+        doc["value_template"] = "{{ value | round(1) }}"; // Round to 1 decimal place
 
         JsonArray modes = doc.createNestedArray("modes");
         modes.add("off");
@@ -3355,20 +3358,75 @@ void handleWebRequests()
 
     server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest *request)
               {
-        request->send(200, "text/html", "<html><head><meta http-equiv='refresh' content='10;url=/'>" 
-                      "<title>Rebooting...</title></head><body>" 
-                      "<h1>Rebooting Device...</h1>" 
-                      "<p>Please wait while the device restarts. You will be redirected to the main page in 10 seconds.</p>" 
-                      "<p><a href='/'>Return to Main Page</a></p>" 
-                      "</body></html>");
-        delay(1000);
+        // Prevent multiple reboot calls
+        if (systemRebootInProgress) {
+            request->send(200, "application/json", "{\"status\": \"already_rebooting\"}");
+            return;
+        }
+        
+        systemRebootInProgress = true;
+        // Send response with immediate connection close (like OTA does)
+        AsyncWebServerResponse *response = request->beginResponse(200, "text/html", 
+            "<html><head><title>Rebooting</title></head><body>"
+            "<h1>Device Rebooting...</h1>"
+            "<p>Please wait...</p>"
+            "<script>"
+            "setTimeout(function() {"
+            "  var begin = Date.now();"
+            "  var iv = setInterval(function() {"
+            "    fetch('/version').then(r => r.json()).then(j => {"
+            "      window.location.href = '/';"
+            "      clearInterval(iv);"
+            "    }).catch(function() {"
+            "      if (Date.now() - begin > 45000) {"
+            "        window.location.href = '/';"
+            "        clearInterval(iv);"
+            "      }"
+            "    });"
+            "  }, 2000);"
+            "}, 30000);"
+            "</script>"
+            "</body></html>");
+        response->addHeader("Connection", "close");
+        request->send(response);
+        delay(1500);
         ESP.restart();
     });
     
     server.on("/reboot", HTTP_POST, [](AsyncWebServerRequest *request)
               {
-        request->send(200, "text/plain", "Rebooting...");
-        delay(1000);
+        // Prevent multiple reboot calls
+        if (systemRebootInProgress) {
+            request->send(200, "application/json", "{\"status\": \"already_rebooting\"}");
+            return;
+        }
+        
+        systemRebootInProgress = true;
+        // Send response with immediate connection close (like OTA does)
+        AsyncWebServerResponse *response = request->beginResponse(200, "text/html", 
+            "<html><head><title>Rebooting</title></head><body>"
+            "<h1>Device Rebooting...</h1>"
+            "<p>Please wait...</p>"
+            "<script>"
+            "setTimeout(function() {"
+            "  var begin = Date.now();"
+            "  var iv = setInterval(function() {"
+            "    fetch('/version').then(r => r.json()).then(j => {"
+            "      window.location.href = '/';"
+            "      clearInterval(iv);"
+            "    }).catch(function() {"
+            "      if (Date.now() - begin > 45000) {"
+            "        window.location.href = '/';"
+            "        clearInterval(iv);"
+            "      }"
+            "    });"
+            "  }, 2000);"
+            "}, 30000);"
+            "</script>"
+            "</body></html>");
+        response->addHeader("Connection", "close");
+        request->send(response);
+        delay(1500);
         ESP.restart();
     });
 
