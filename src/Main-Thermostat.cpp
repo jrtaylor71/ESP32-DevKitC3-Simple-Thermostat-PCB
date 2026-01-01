@@ -2346,7 +2346,9 @@ void sendMQTTData()
         if (!isnan(currentTemp) && currentTemp != lastTemp)
         {
             String currentTempTopic = hostname + "/current_temperature";
-            mqttClient.publish(currentTempTopic.c_str(), String(currentTemp, 1).c_str(), true);
+            char tempStr[10];
+            snprintf(tempStr, sizeof(tempStr), "%.1f", currentTemp);
+            mqttClient.publish(currentTempTopic.c_str(), tempStr, true);
             lastTemp = currentTemp;
         }
 

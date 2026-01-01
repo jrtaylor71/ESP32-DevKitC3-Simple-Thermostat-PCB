@@ -1,0 +1,51 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "PlatformIO: Build & Organize Firmware",
+      "type": "shell",
+      "command": "cd ${workspaceFolder} && pio run && ./organize_firmware.sh",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$platformio"
+      ],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "PlatformIO: Clean & Build & Organize",
+      "type": "shell",
+      "command": "cd ${workspaceFolder} && pio run --target clean && pio run && ./organize_firmware.sh",
+      "group": {
+        "kind": "build"
+      },
+      "problemMatcher": [
+        "$platformio"
+      ],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Organize Firmware Only",
+      "type": "shell",
+      "command": "cd ${workspaceFolder} && ./organize_firmware.sh",
+      "group": {
+        "kind": "none"
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "new"
+      }
+    }
+  ]
+}
