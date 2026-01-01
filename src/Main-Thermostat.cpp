@@ -922,9 +922,90 @@ void loadScheduleSettings() {
                   activePeriod.c_str());
 }
 
+// =============================================================================
+// DEBUG LOG BUFFER - For web-based serial output viewing
+// =============================================================================
+const int DEBUG_BUFFER_SIZE = 8192;  // 8KB circular buffer
+char debugBuffer[DEBUG_BUFFER_SIZE];
+int debugBufferIndex = 0;
+bool debugBufferWrapped = false;  // Track if buffer has wrapped around
+SemaphoreHandle_t debugBufferMutex = NULL;
+
+void addToDebugBuffer(const char* message) {
+    if (debugBufferMutex == NULL || xSemaphoreTake(debugBufferMutex, pdMS_TO_TICKS(10)) != pdTRUE) {
+        return;  // Can't acquire mutex, skip
+    }
+    
+    int len = strlen(message);
+    if (len > DEBUG_BUFFER_SIZE) len = DEBUG_BUFFER_SIZE;
+    
+    // Write to circular buffer
+    for (int i = 0; i < len; i++) {
+        debugBuffer[debugBufferIndex] = message[i];
+        debugBufferIndex = (debugBufferIndex + 1) % DEBUG_BUFFER_SIZE;
+        if (debugBufferIndex == 0) {
+            debugBufferWrapped = true;  // We've wrapped around
+        }
+    }
+    
+    xSemaphoreGive(debugBufferMutex);
+}
+
+String getDebugLog() {
+    String result = "";
+    if (debugBufferMutex == NULL || xSemaphoreTake(debugBufferMutex, pdMS_TO_TICKS(50)) != pdTRUE) {
+        return result;
+    }
+    
+    // Return the buffer contents in order
+    result.reserve(DEBUG_BUFFER_SIZE + 100);
+    
+    // If buffer has wrapped, start from debugBufferIndex (oldest data)
+    // Otherwise start from 0 (buffer not full yet)
+    int startIdx = debugBufferWrapped ? debugBufferIndex : 0;
+    int endIdx = debugBufferIndex;
+    
+    for (int i = 0; i < DEBUG_BUFFER_SIZE; i++) {
+        int idx = (startIdx + i) % DEBUG_BUFFER_SIZE;
+        result += debugBuffer[idx];
+        if (idx == endIdx && !debugBufferWrapped) {
+            break;  // Stop if we haven't wrapped and reached current index
+        }
+    }
+    
+    xSemaphoreGive(debugBufferMutex);
+    return result;
+}
+
+// Unified logging function for both Serial and debug buffer
+void debugLog(const char* format, ...) {
+    char buffer[256];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    Serial.print(buffer);
+    addToDebugBuffer(buffer);
+}
+
 void setup()
 {
     Serial.begin(115200);
+    
+    // Initialize debug buffer with zeros and mutex
+    memset(debugBuffer, 0, DEBUG_BUFFER_SIZE);
+    debugBufferIndex = 0;
+    debugBufferWrapped = false;
+    
+    // Initialize debug buffer mutex
+    debugBufferMutex = xSemaphoreCreateMutex();
+    if (debugBufferMutex == NULL) {
+        Serial.println("ERROR: Failed to create debug buffer mutex!");
+    } else {
+        Serial.println("Debug buffer mutex created successfully");
+        // Add initial message to buffer
+        addToDebugBuffer("=== DEBUG BUFFER INITIALIZED ===\n");
+    }
     
     // Print version information at startup
     Serial.println();
@@ -940,6 +1021,10 @@ void setup()
     Serial.println(hostname);
     Serial.println("========================================");
     Serial.println();
+    
+    // Log startup to debug buffer
+    debugLog("[BOOT] System starting up - Version %s\n", sw_version.c_str());
+    debugLog("[BOOT] Hostname: %s\n", hostname.c_str());
 
     // Initialize Preferences
     preferences.begin("thermostat", false);
@@ -1242,6 +1327,8 @@ void setup()
     );
     
     Serial.println("Dual-core thermostat with centralized display updates setup complete");
+    debugLog("[BOOT] Setup complete - System ready\n");
+    debugLog("[BOOT] Debug console available at /debug\n");
     
     // Play startup tone to indicate setup is complete
     buzzerStartupTone();
@@ -1310,27 +1397,58 @@ void loop()
 
     // Handle touch input with priority - check this first for responsiveness
     uint16_t x, y;
+    static unsigned long lastTouchDebug = 0;
+    
     if (tft.getTouch(&x, &y))
     {
-        // Wake display if it's asleep
-        if (displayIsAsleep) {
-            wakeDisplay();
-            // Don't process touch input when waking from sleep, just wake up
-            // Don't reset interaction time here - wakeDisplay handles it if needed
-        } else if (currentTime - lastWakeTime > 500) {
-            // Display is awake and we're past the wake debounce period
-            // Ignore touches for 500ms after waking to prevent immediate re-sleep
-            lastInteractionTime = millis();
-            
-            // Always handle button presses - removed serial debug for maximum speed
-            handleButtonPress(x, y);
-            
-            // Only handle keyboard touches if we're in WiFi setup mode
-            if (inWiFiSetupMode) {
-                handleKeyboardTouch(x, y, isUpperCaseKeyboard);
+        // Debug: Log all touches for diagnosis
+        // Ignore touches on the edges of the display (deadzone for case edge artifacts)
+        // ILI9341 display is 320x240, add a 5-pixel deadzone on all edges to filter case pressure
+        const int TOUCH_DEADZONE = 5;
+        
+        unsigned long currentTime = millis();
+        if (currentTime - lastTouchDebug > 500) {
+            char touchMsg[64];
+            snprintf(touchMsg, sizeof(touchMsg), "[TOUCH] X=%u Y=%u DZ=%d\n", x, y, TOUCH_DEADZONE);
+            Serial.print(touchMsg);
+            addToDebugBuffer(touchMsg);
+            lastTouchDebug = currentTime;
+        }
+        
+        if (x < TOUCH_DEADZONE || x >= 320 - TOUCH_DEADZONE ||
+            y < TOUCH_DEADZONE || y >= 240 - TOUCH_DEADZONE) {
+            // Touch is outside valid area - ignore it (but log it occasionally)
+            static unsigned long lastDeadzoneLog = 0;
+            if (currentTime - lastDeadzoneLog > 2000) {
+                char dzMsg[64];
+                snprintf(dzMsg, sizeof(dzMsg), "[FILTERED] X=%u Y=%u (deadzone)\n", x, y);
+                Serial.print(dzMsg);
+                addToDebugBuffer(dzMsg);
+                lastDeadzoneLog = currentTime;
+            }
+        } else {
+            // Valid touch within display bounds
+            // Wake display if it's asleep
+            if (displayIsAsleep) {
+                wakeDisplay();
+                // Don't process touch input when waking from sleep, just wake up
+                // Don't reset interaction time here - wakeDisplay handles it if needed
+            } else if (currentTime - lastWakeTime > 500) {
+                // Display is awake and we're past the wake debounce period
+                // Ignore touches for 500ms after waking to prevent immediate re-sleep
+                lastInteractionTime = millis();
+                
+                // Always handle button presses - removed serial debug for maximum speed
+                handleButtonPress(x, y);
+                
+                // Only handle keyboard touches if we're in WiFi setup mode
+                if (inWiFiSetupMode) {
+                    handleKeyboardTouch(x, y, isUpperCaseKeyboard);
+                }
             }
         }
     }
+
 
     // If in WiFi setup mode, skip the normal display updates and sensor readings
     if (inWiFiSetupMode) {
@@ -1402,7 +1520,19 @@ void loop()
 
     // Check if display should go to sleep due to inactivity
     checkDisplaySleep();
-
+    
+    // Periodic debug output to buffer every 5 seconds
+    static unsigned long lastDebugOutput = 0;
+    if (currentTime - lastDebugOutput > 5000) {
+        lastDebugOutput = currentTime;
+        char dbgMsg[128];
+        snprintf(dbgMsg, sizeof(dbgMsg), 
+                 "[DEBUG] Temp=%.1f H=%.1f Sleep=%d SleepTime=%lu\n",
+                 currentTemp, currentHumidity, displayIsAsleep, 
+                 currentTime - lastInteractionTime);
+        Serial.print(dbgMsg);
+        addToDebugBuffer(dbgMsg);
+    }
     // Periodic display updates - now called from main loop for thread safety with TFT library
     if (currentTime - lastDisplayUpdateTime > displayUpdateInterval)
     {
@@ -2576,8 +2706,8 @@ void controlRelays(float currentTemp)
         {
             // Only call activateHeating if not already heating
             if (!heatingOn) {
-                Serial.printf("Activating heating: current %.1f < setpoint-swing %.1f\n", 
-                             currentTemp, (setTempHeat - tempSwing));
+                debugLog("[HVAC] HEAT ACTIVATED: %.1f < %.1f (setpoint-swing)\n", 
+                         currentTemp, (setTempHeat - tempSwing));
                 activateHeating();
             }
         }
@@ -2585,8 +2715,8 @@ void controlRelays(float currentTemp)
         else if (currentTemp >= setTempHeat)
         {
             if (heatingOn || coolingOn || fanOn) {
-                Serial.printf("Deactivating heating: current %.1f >= setpoint %.1f\n", 
-                             currentTemp, setTempHeat);
+                debugLog("[HVAC] HEAT DEACTIVATED: %.1f >= %.1f (setpoint)\n", 
+                         currentTemp, setTempHeat);
             }
             turnOffAllRelays();
         }
@@ -2616,8 +2746,8 @@ void controlRelays(float currentTemp)
         {
             // Only call activateCooling if not already cooling
             if (!coolingOn) {
-                Serial.printf("Activating cooling: current %.1f > setpoint+swing %.1f\n", 
-                             currentTemp, (setTempCool + tempSwing));
+                debugLog("[HVAC] COOL ACTIVATED: %.1f > %.1f (setpoint+swing)\n", 
+                         currentTemp, (setTempCool + tempSwing));
                 activateCooling();
             }
         }
@@ -2625,8 +2755,8 @@ void controlRelays(float currentTemp)
         else if (currentTemp < setTempCool)
         {
             if (heatingOn || coolingOn || fanOn) {
-                Serial.printf("Deactivating cooling: current %.1f < setpoint %.1f\n", 
-                             currentTemp, setTempCool);
+                debugLog("[HVAC] COOL DEACTIVATED: %.1f < %.1f (setpoint)\n", 
+                         currentTemp, setTempCool);
             }
             turnOffAllRelays();
         }
@@ -2804,21 +2934,20 @@ void activateHeating() {
     
     // Check if stage 1 is not active yet
     if (!stage1Active) {
-        Serial.println("[DEBUG] Activating heating stage 1 relay");
+        debugLog("[HVAC] Stage 1 HEATING activated\n");
         digitalWrite(HEAT_RELAY_1_PIN, HIGH); // Activate stage 1
         stage1Active = true;
         stage1StartTime = millis(); // Record the start time
         stage2Active = false; // Ensure stage 2 is off initially
-        Serial.printf("[DEBUG] Stage 1 heating activated - relay pin %d set HIGH\n", HEAT_RELAY_1_PIN);
     } 
     // Check if it's time to activate stage 2 based on hybrid approach
     else if (!stage2Active && 
              ((millis() - stage1StartTime) / 1000 >= stage1MinRuntime) && // Minimum run time condition
              (currentTemp < setTempHeat - tempSwing - stage2TempDelta) && // Temperature delta condition
              stage2HeatingEnabled) { // Check if stage 2 heating is enabled
+        debugLog("[HVAC] Stage 2 HEATING activated\n");
         digitalWrite(HEAT_RELAY_2_PIN, HIGH); // Activate stage 2
         stage2Active = true;
-        Serial.println("Stage 2 heating activated");
     }
     
     // Control fan based on fanRelayNeeded setting
@@ -2826,6 +2955,7 @@ void activateHeating() {
     if (fanMode == "on") {
         // User has manually set fan to always on - respect that
         if (!fanOn) {
+            debugLog("[HVAC] FAN turned ON (manual mode)\n");
             digitalWrite(FAN_RELAY_PIN, HIGH);
             fanOn = true;
             Serial.println("Fan activated with heat (manual 'on' mode)");
@@ -3177,9 +3307,8 @@ void handleWebRequests()
         }
         if (request->hasParam("displaySleepEnabled", true)) {
             displaySleepEnabled = request->getParam("displaySleepEnabled", true)->value() == "on";
-        } else {
-            displaySleepEnabled = false;
         }
+        // Note: unchecked checkbox won't send parameter, so don't disable it in that case
         if (request->hasParam("displaySleepTimeout", true)) {
             unsigned long timeoutMinutes = request->getParam("displaySleepTimeout", true)->value().toInt();
             // Constrain to reasonable range (1 minute to 60 minutes)
@@ -3639,6 +3768,96 @@ void handleWebRequests()
     server.on("/weather_refresh", HTTP_POST, [](AsyncWebServerRequest *request) {
         weather.forceUpdate();
         request->send(200, "text/plain", "Weather update forced");
+    });
+    
+    // Debug log endpoint - returns JSON with recent serial output
+    server.on("/api/debug", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String logOutput = getDebugLog();
+        
+        // Use ArduinoJson for proper JSON serialization
+        DynamicJsonDocument doc(16384);  // 16KB for debug buffer + overhead
+        doc["log"] = logOutput;
+        
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+    
+    // Debug plain text endpoint (simpler, easier to debug)
+    server.on("/api/debug/plain", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String logOutput = getDebugLog();
+        request->send(200, "text/plain", logOutput);
+    });
+    
+    // Debug HTML page
+    server.on("/debug", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String html = "<!DOCTYPE html><html><head>";
+        html += "<title>Debug Console</title>";
+        html += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">";
+        html += "<style>";
+        html += "body { font-family: monospace; background: #1e1e1e; color: #00ff00; margin: 0; padding: 10px; }";
+        html += ".container { max-width: 1200px; margin: 0 auto; }";
+        html += "h1 { color: #0099ff; }";
+        html += "#log { background: #000; padding: 10px; border: 1px solid #333; height: 600px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; font-size: 12px; }";
+        html += ".controls { margin: 10px 0; }";
+        html += "button { padding: 8px 16px; background: #0099ff; color: #000; border: none; cursor: pointer; border-radius: 4px; margin-right: 10px; }";
+        html += "button:hover { background: #00cc00; }";
+        html += ".refresh-rate { margin-left: 20px; }";
+        html += "</style></head><body>";
+        html += "<div class=\"container\"><h1>Debug Console</h1>";
+        html += "<div class=\"controls\">";
+        html += "<button onclick=\"clearLog()\">Clear</button>";
+        html += "<button onclick=\"toggleAutoRefresh()\">Auto Refresh: ON</button>";
+        html += "<span class=\"refresh-rate\">Refresh every <input type=\"number\" id=\"refreshInterval\" value=\"1\" min=\"0.5\" max=\"10\" step=\"0.5\" style=\"width: 50px;\"> sec</span>";
+        html += "</div>";
+        html += "<div id=\"log\">Waiting for data...</div></div>";
+        html += "<script>";
+        html += "let autoRefresh = true;";
+        html += "let refreshInterval = 1000;";
+        html += "function toggleAutoRefresh() {";
+        html += "  autoRefresh = !autoRefresh;";
+        html += "  event.target.textContent = 'Auto Refresh: ' + (autoRefresh ? 'ON' : 'OFF');";
+        html += "  if (autoRefresh) startAutoRefresh();";
+        html += "}";
+        html += "function refreshLog() {";
+        html += "  fetch('/api/debug')";
+        html += "    .then(r => {";
+        html += "      if (!r.ok) throw new Error('HTTP ' + r.status);";
+        html += "      return r.json();";
+        html += "    })";
+        html += "    .then(data => {";
+        html += "      const logDiv = document.getElementById('log');";
+        html += "      if (!data.log || data.log.length === 0) {";
+        html += "        logDiv.textContent = '[WAITING] No debug output yet. System just started?';";
+        html += "      } else {";
+        html += "        logDiv.textContent = data.log;";
+        html += "      }";
+        html += "      logDiv.scrollTop = logDiv.scrollHeight;";
+        html += "    })";
+        html += "    .catch(err => {";
+        html += "      document.getElementById('log').textContent = '[ERROR] Failed to fetch: ' + err.message;";
+        html += "      console.error('Debug fetch error:', err);";
+        html += "    });";
+        html += "}";
+        html += "function clearLog() {";
+        html += "  if (confirm('Clear debug log?')) {";
+        html += "    document.getElementById('log').textContent = 'Log cleared.';";
+        html += "  }";
+        html += "}";
+        html += "function startAutoRefresh() {";
+        html += "  if (autoRefresh) {";
+        html += "    refreshLog();";
+        html += "    setTimeout(startAutoRefresh, document.getElementById('refreshInterval').value * 1000);";
+        html += "  }";
+        html += "}";
+        html += "document.getElementById('refreshInterval').addEventListener('change', () => {";
+        html += "  refreshInterval = document.getElementById('refreshInterval').value * 1000;";
+        html += "});";
+        html += "refreshLog();";
+        html += "startAutoRefresh();";
+        html += "</script>";
+        html += "</body></html>";
+        request->send(200, "text/html", html);
     });
 }
 
@@ -4406,7 +4625,7 @@ void checkDisplaySleep() {
     static unsigned long lastFilterLog = 0;
     
     if (currentTime - lastDebugTime > 30000) {
-        Serial.printf("[SLEEP_DEBUG] Function called - Enabled: %s, Time since touch: %lu ms / timeout: %lu ms, Display asleep: %d\n",
+        debugLog("[SLEEP_DEBUG] Enabled: %s, Time: %lu / Timeout: %lu, Asleep: %d\n",
                       displaySleepEnabled ? "YES" : "NO",
                       currentTime - lastInteractionTime, displaySleepTimeout, displayIsAsleep);
         lastDebugTime = currentTime;
@@ -4509,6 +4728,7 @@ void wakeDisplay() {
         displayIsAsleep = false;
         lastWakeTime = millis();
         lastInteractionTime = millis();
+        debugLog("[DISPLAY] Woke from sleep\n");
         
         // Just restore the backlight
         updateDisplayBrightness();
@@ -4519,6 +4739,7 @@ void sleepDisplay() {
     if (!displayIsAsleep) {
         displayIsAsleep = true;
         lastSleepTime = millis(); // Record sleep time for motion wake cooldown
+        debugLog("[DISPLAY] Going to sleep (inactive for %lu ms)\n", millis() - lastInteractionTime);
         // Turn off backlight completely (bypass MIN_BRIGHTNESS constraint)
         currentBrightness = 0;
         ledcWrite(PWM_CHANNEL, 0);
