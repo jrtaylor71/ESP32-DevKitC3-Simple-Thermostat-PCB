@@ -16,6 +16,9 @@
 #include <ArduinoJson.h>
 #include <TFT_eSPI.h>
 
+// Forward declaration for debugLog from Main-Thermostat.cpp
+extern void debugLog(const char* format, ...);
+
 // Weather source types
 enum WeatherSource {
     WEATHER_DISABLED = 0,

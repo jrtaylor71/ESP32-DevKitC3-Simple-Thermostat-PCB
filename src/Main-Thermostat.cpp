@@ -219,7 +219,7 @@ String timeZone = "CST6CDT,M3.2.0,M11.1.0"; // Default time zone (Central Standa
 String hostname = DEFAULT_HOSTNAME; // Default hostname via ProjectConfig
 
 // Version control information
-const String sw_version = "1.3.8"; // Software version
+const String sw_version = "1.3.9"; // Software version
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -417,16 +417,16 @@ void sensorTaskFunction(void *parameter) {
         bool readSuccess = readTemperatureHumidity(tempReading, humidityReading, pressureReading);
         
         if (!readSuccess) {
-            Serial.println("[SENSOR] Read failed!");
+            debugLog("[SENSOR] Read failed!\n");
             
             // Try to reinitialize if cooldown has passed
             unsigned long now = millis();
             if (now - lastSensorError > SENSOR_ERROR_COOLDOWN) {
-                Serial.printf("[SENSOR] Attempting %s reinit...\n", sensorName.c_str());
+                debugLog("[SENSOR] Attempting %s reinit...\n", sensorName.c_str());
                 if (initializeSensor(activeSensor)) {
-                    Serial.printf("[SENSOR] %s reinitialized successfully\n", sensorName.c_str());
+                    debugLog("[SENSOR] %s reinitialized successfully\n", sensorName.c_str());
                 } else {
-                    Serial.printf("[SENSOR] %s reinit failed\n", sensorName.c_str());
+                    debugLog("[SENSOR] %s reinit failed\n", sensorName.c_str());
                 }
                 lastSensorError = now;
             }
@@ -472,7 +472,7 @@ void sensorTaskFunction(void *parameter) {
                 hydronicTemp = useFahrenheit ? (hydTempC * 9.0 / 5.0 + 32.0) : hydTempC;
             } else {
                 // Invalid reading - keep last valid reading, don't update
-                Serial.println("[WARNING] DS18B20 sensor reading failed or disconnected");
+                debugLog("[WARNING] DS18B20 sensor reading failed or disconnected\n");
             }
         }
         
@@ -486,7 +486,7 @@ void sensorTaskFunction(void *parameter) {
 
 // Option C: Centralized Display Update Task
 void displayUpdateTaskFunction(void* parameter) {
-    Serial.println("DISPLAY_TASK: Starting centralized display update task");
+    debugLog("DISPLAY_TASK: Starting centralized display update task\n");
     
     for (;;) {
         // Check if display update is required or if enough time has passed
@@ -499,9 +499,9 @@ void displayUpdateTaskFunction(void* parameter) {
             
             if (updateNeeded) {
                 if (displayUpdateRequired) {
-                    Serial.println("[DISPLAY_TASK] Flag-triggered update");
+                    debugLog("[DISPLAY_TASK] Flag-triggered update\n");
                 } else {
-                    Serial.println("[DISPLAY_TASK] Timer-triggered update");
+                    debugLog("[DISPLAY_TASK] Timer-triggered update\n");
                 }
                 displayUpdateRequired = false;  // Clear the flag
                 displayIndicators.lastUpdate = currentTime;
@@ -521,7 +521,7 @@ void displayUpdateTaskFunction(void* parameter) {
 
 // Update display indicators based on current system state
 void updateDisplayIndicators() {
-    Serial.println("DISPLAY_UPDATE: Refreshing display indicators");
+    debugLog("DISPLAY_UPDATE: Refreshing display indicators\n");
     
     // Take mutex to read system state safely
     if (xSemaphoreTake(displayUpdateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
@@ -543,20 +543,20 @@ void updateDisplayIndicators() {
         setCoolLED(coolingOn);  
         setFanLED(fanOn);
         
-        Serial.print("DISPLAY_UPDATE: Heat=");
+        debugLog("DISPLAY_UPDATE: Heat=");
         Serial.print(displayIndicators.heatIndicator ? "ON" : "OFF");
-        Serial.print(", Cool=");
+        debugLog(", Cool=");
         Serial.print(displayIndicators.coolIndicator ? "ON" : "OFF");
-        Serial.print(", Fan=");
+        debugLog(", Fan=");
         Serial.print(displayIndicators.fanIndicator ? "ON" : "OFF");
-        Serial.print(", Auto=");
+        debugLog(", Auto=");
         Serial.print(displayIndicators.autoIndicator ? "ON" : "OFF");
-        Serial.print(", Stage1=");
+        debugLog(", Stage1=");
         Serial.print(displayIndicators.stage1Indicator ? "ON" : "OFF");
-        Serial.print(", Stage2=");
+        debugLog(", Stage2=");
         Serial.println(displayIndicators.stage2Indicator ? "ON" : "OFF");
     } else {
-        Serial.println("DISPLAY_UPDATE: Failed to take mutex, skipping update");
+        debugLog("DISPLAY_UPDATE: Failed to take mutex, skipping update\n");
     }
 }
 
@@ -565,9 +565,9 @@ void setDisplayUpdateFlag() {
     if (xSemaphoreTake(displayUpdateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         displayUpdateRequired = true;
         xSemaphoreGive(displayUpdateMutex);
-        Serial.println("[DISPLAY_FLAG_SET] Display update requested from controlRelays");
+        debugLog("[DISPLAY_FLAG_SET] Display update requested from controlRelays\n");
     } else {
-        Serial.println("[DISPLAY_FLAG_FAILED] Could not acquire mutex");
+        debugLog("[DISPLAY_FLAG_FAILED] Could not acquire mutex\n");
     }
 }
 
@@ -577,35 +577,35 @@ void setDisplayUpdateFlag() {
 
 // Auto-detect which sensor is connected
 SensorType detectSensor() {
-    Serial.println("[SENSOR] Starting sensor auto-detection...");
+    debugLog("[SENSOR] Starting sensor auto-detection...\n");
     
     // Initialize I2C bus first
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
     delay(100);
     
     // Try AHT20 (I2C address 0x38)
-    Serial.println("[SENSOR] Checking for AHT20 at I2C address 0x38...");
+    debugLog("[SENSOR] Checking for AHT20 at I2C address 0x38...\n");
     if (aht.begin()) {
-        Serial.println("[SENSOR] AHT20 detected!");
+        debugLog("[SENSOR] AHT20 detected!\n");
         return SENSOR_AHT20;
     }
     
     // Try BME280 (I2C addresses 0x76 or 0x77)
-    Serial.println("[SENSOR] Checking for BME280 at I2C address 0x76...");
+    debugLog("[SENSOR] Checking for BME280 at I2C address 0x76...\n");
     if (bme.begin(0x76)) {
-        Serial.println("[SENSOR] BME280 detected at address 0x76!");
+        debugLog("[SENSOR] BME280 detected at address 0x76!\n");
         return SENSOR_BME280;
     }
     
-    Serial.println("[SENSOR] Checking for BME280 at I2C address 0x77...");
+    debugLog("[SENSOR] Checking for BME280 at I2C address 0x77...\n");
     if (bme.begin(0x77)) {
-        Serial.println("[SENSOR] BME280 detected at address 0x77!");
+        debugLog("[SENSOR] BME280 detected at address 0x77!\n");
         return SENSOR_BME280;
     }
     
     // No I2C sensor found, try DHT11 on GPIO35
-    Serial.println("[SENSOR] No I2C sensors found, trying DHT11...");
-    Serial.println("[SENSOR] Disabling I2C, switching GPIO35 to DHT11 mode...");
+    debugLog("[SENSOR] No I2C sensors found, trying DHT11...\n");
+    debugLog("[SENSOR] Disabling I2C, switching GPIO35 to DHT11 mode...\n");
     Wire.end();
     pinMode(I2C_SCL_PIN, INPUT_PULLUP); // Configure GPIO35 as regular GPIO
     dht.begin();
@@ -616,17 +616,17 @@ SensorType detectSensor() {
     float testHum = dht.readHumidity();
     
     if (!isnan(testTemp) && !isnan(testHum)) {
-        Serial.println("[SENSOR] DHT11 detected!");
+        debugLog("[SENSOR] DHT11 detected!\n");
         return SENSOR_DHT11;
     }
     
-    Serial.println("[SENSOR] ERROR: No temperature/humidity sensor detected!");
+    debugLog("[SENSOR] ERROR: No temperature/humidity sensor detected!\n");
     return SENSOR_NONE;
 }
 
 // Initialize the detected sensor
 bool initializeSensor(SensorType sensor) {
-    Serial.printf("[SENSOR] Initializing %s sensor...\n", 
+    debugLog("[SENSOR] Initializing %s sensor...\n", 
                   sensor == SENSOR_AHT20 ? "AHT20" : 
                   sensor == SENSOR_DHT11 ? "DHT11" : 
                   sensor == SENSOR_BME280 ? "BME280" : "NONE");
@@ -635,11 +635,11 @@ bool initializeSensor(SensorType sensor) {
         case SENSOR_AHT20:
             Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
             if (aht.begin()) {
-                Serial.println("[SENSOR] AHT20 initialized successfully");
+                debugLog("[SENSOR] AHT20 initialized successfully\n");
                 sensorName = "AHT20";
                 return true;
             }
-            Serial.println("[SENSOR] AHT20 initialization failed");
+            debugLog("[SENSOR] AHT20 initialization failed\n");
             return false;
             
         case SENSOR_DHT11:
@@ -647,7 +647,7 @@ bool initializeSensor(SensorType sensor) {
             pinMode(I2C_SCL_PIN, INPUT_PULLUP);
             dht.begin();
             delay(2000);
-            Serial.println("[SENSOR] DHT11 initialized successfully");
+            debugLog("[SENSOR] DHT11 initialized successfully\n");
             sensorName = "DHT11";
             return true;
             
@@ -661,11 +661,11 @@ bool initializeSensor(SensorType sensor) {
                                Adafruit_BME280::SAMPLING_X1,  // humidity
                                Adafruit_BME280::FILTER_X16,
                                Adafruit_BME280::STANDBY_MS_500);
-                Serial.println("[SENSOR] BME280 initialized successfully");
+                debugLog("[SENSOR] BME280 initialized successfully\n");
                 sensorName = "BME280";
                 return true;
             }
-            Serial.println("[SENSOR] BME280 initialization failed");
+            debugLog("[SENSOR] BME280 initialization failed\n");
             return false;
             
         default:
@@ -766,7 +766,7 @@ void checkSchedule() {
     if (scheduleOverride && overrideEndTime > 0 && millis() >= overrideEndTime) {
         scheduleOverride = false;
         overrideEndTime = 0;
-        Serial.println("SCHEDULE: Override expired, resuming schedule");
+        debugLog("SCHEDULE: Override expired, resuming schedule\n");
     }
     
     // Skip if override is active
@@ -830,7 +830,7 @@ void applySchedule(int dayOfWeek, bool isDayPeriod) {
     setTempCool = period.coolTemp;
     setTempAuto = period.autoTemp;
     
-    Serial.printf("SCHEDULE: Applied %s schedule for day %d - Heat: %.1f°F, Cool: %.1f°F, Auto: %.1f°F\n", 
+    debugLog("SCHEDULE: Applied %s schedule for day %d - Heat: %.1f°F, Cool: %.1f°F, Auto: %.1f°F\n", 
                   isDayPeriod ? "day" : "night", dayOfWeek, setTempHeat, setTempCool, setTempAuto);
     
     // Save settings and update MQTT
@@ -875,7 +875,7 @@ void saveScheduleSettings() {
         preferences.putBool((dayPrefix + "n_active").c_str(), weekSchedule[day].night.active);
     }
     
-    Serial.println("SCHEDULE: Settings saved to preferences");
+    debugLog("SCHEDULE: Settings saved to preferences\n");
 }
 
 // Load schedule settings from preferences
@@ -888,7 +888,7 @@ void loadScheduleSettings() {
     // Check if schedule data exists, if not initialize defaults silently
     bool scheduleExists = preferences.isKey("day0_d_heat");
     if (!scheduleExists) {
-        Serial.println("SCHEDULE: First boot detected, initializing default schedule data...");
+        debugLog("SCHEDULE: First boot detected, initializing default schedule data...\n");
         saveScheduleSettings(); // Save the compiled-in defaults to NVS
         return; // Skip the individual loading since we just saved defaults
     }
@@ -916,7 +916,7 @@ void loadScheduleSettings() {
         weekSchedule[day].night.active = preferences.getBool((dayPrefix + "n_active").c_str(), true);
     }
     
-    Serial.printf("SCHEDULE: Settings loaded - Enabled: %s, Override: %s, Active Period: %s\n",
+    debugLog("SCHEDULE: Settings loaded - Enabled: %s, Override: %s, Active Period: %s\n",
                   scheduleEnabled ? "YES" : "NO", 
                   scheduleOverride ? "YES" : "NO",
                   activePeriod.c_str());
@@ -925,7 +925,7 @@ void loadScheduleSettings() {
 // =============================================================================
 // DEBUG LOG BUFFER - For web-based serial output viewing
 // =============================================================================
-const int DEBUG_BUFFER_SIZE = 8192;  // 8KB circular buffer
+const int DEBUG_BUFFER_SIZE = 32768;  // 32KB circular buffer for more history
 char debugBuffer[DEBUG_BUFFER_SIZE];
 int debugBufferIndex = 0;
 bool debugBufferWrapped = false;  // Track if buffer has wrapped around
@@ -1000,32 +1000,28 @@ void setup()
     // Initialize debug buffer mutex
     debugBufferMutex = xSemaphoreCreateMutex();
     if (debugBufferMutex == NULL) {
-        Serial.println("ERROR: Failed to create debug buffer mutex!");
+        debugLog("ERROR: Failed to create debug buffer mutex!\n");
     } else {
-        Serial.println("Debug buffer mutex created successfully");
+        debugLog("Debug buffer mutex created successfully\n");
         // Add initial message to buffer
         addToDebugBuffer("=== DEBUG BUFFER INITIALIZED ===\n");
     }
     
     // Print version information at startup
-    Serial.println();
-    Serial.println("========================================");
+    debugLog("\n");
+    debugLog("========================================\n");
     Serial.println(PROJECT_NAME_SHORT);
-    Serial.print("Version: ");
+    debugLog("Version: ");
     Serial.println(sw_version);
-    Serial.print("Build Date: ");
+    debugLog("Build Date: ");
     Serial.println(build_date);
-    Serial.print("Build Time: ");
+    debugLog("Build Time: ");
     Serial.println(build_time);
-    Serial.print("Hostname: ");
+    debugLog("Hostname: ");
     Serial.println(hostname);
-    Serial.println("========================================");
-    Serial.println();
+    debugLog("========================================\n");
+    debugLog("\n");
     
-    // Log startup to debug buffer
-    debugLog("[BOOT] System starting up - Version %s\n", sw_version.c_str());
-    debugLog("[BOOT] Hostname: %s\n", hostname.c_str());
-
     // Initialize Preferences
     preferences.begin("thermostat", false);
     loadSettings();
@@ -1051,33 +1047,33 @@ void setup()
     // Test LD2410 connection
     ld2410Connected = testLD2410Connection();
     if (ld2410Connected) {
-        Serial.println("LD2410: Motion sensor connected successfully");
+        debugLog("LD2410: Motion sensor connected successfully\n");
         // Configure with conservative settings matching original hardware
         configureLD2410Sensitivity();
     } else {
-        Serial.println("LD2410: Motion sensor not detected - display control via touch only");
+        debugLog("LD2410: Motion sensor not detected - display control via touch only\n");
     }
     
     // Create I2C mutex BEFORE initializing I2C bus and devices
     i2cMutex = xSemaphoreCreateMutex();
     if (i2cMutex == NULL) {
-        Serial.println("ERROR: Failed to create I2C mutex!");
+        debugLog("ERROR: Failed to create I2C mutex!\n");
     } else {
-        Serial.println("I2C mutex created successfully");
+        debugLog("I2C mutex created successfully\n");
     }
     
     // Auto-detect and initialize temperature/humidity sensor
     activeSensor = detectSensor();
     if (activeSensor != SENSOR_NONE) {
         if (!initializeSensor(activeSensor)) {
-            Serial.println("ERROR: Sensor initialization failed!");
+            debugLog("ERROR: Sensor initialization failed!\n");
             activeSensor = SENSOR_NONE;
             sensorName = "None";
         } else {
-            Serial.printf("SUCCESS: %s sensor ready\n", sensorName.c_str());
+            debugLog("SUCCESS: %s sensor ready\n", sensorName.c_str());
         }
     } else {
-        Serial.println("ERROR: No temperature/humidity sensor detected!");
+        debugLog("ERROR: No temperature/humidity sensor detected!\n");
     }
 
     // Initialize the TFT display
@@ -1155,17 +1151,17 @@ void setup()
         unsigned long startAttemptTime = millis();
         
         // Only try to connect for 5 seconds, allowing operation without WiFi
-        Serial.println("Attempting to connect to WiFi...");
+        debugLog("Attempting to connect to WiFi...\n");
         while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 5000)
         {
             delay(500);
-            Serial.print(".");
+            debugLog(".");
         }
         
         if (WiFi.status() == WL_CONNECTED)
         {
-            Serial.println("\nConnected to WiFi");
-            Serial.print("IP Address: ");
+            debugLog("\nConnected to WiFi\n");
+            debugLog("IP Address: ");
             Serial.println(WiFi.localIP());
             wifiConnected = true;
             
@@ -1186,37 +1182,37 @@ void setup()
             weather.setOpenWeatherMapConfig(owmApiKey, owmCity, owmState, owmCountry);
             weather.setHomeAssistantConfig(haUrl, haToken, haEntityId);
             weather.setUpdateInterval(weatherUpdateInterval * 60000); // Convert minutes to milliseconds
-            Serial.println("Weather module initialized");
-            Serial.printf("Weather Source: %d (0=Disabled, 1=OpenWeatherMap, 2=HomeAssistant)\n", weatherSource);
-            Serial.printf("Weather Update Interval: %d minutes\n", weatherUpdateInterval);
+            debugLog("Weather module initialized\n");
+            debugLog("Weather Source: %d (0=Disabled, 1=OpenWeatherMap, 2=HomeAssistant)\n", weatherSource);
+            debugLog("Weather Update Interval: %d minutes\n", weatherUpdateInterval);
             if (weatherSource == 1) {
-                Serial.printf("OpenWeatherMap: City=%s, State=%s, Country=%s, API Key=%s\n", 
+                debugLog("OpenWeatherMap: City=%s, State=%s, Country=%s, API Key=%s\n", 
                              owmCity.c_str(), owmState.c_str(), owmCountry.c_str(), 
                              owmApiKey.length() > 0 ? "[SET]" : "[NOT SET]");
             } else if (weatherSource == 2) {
-                Serial.printf("Home Assistant: URL=%s, Entity=%s, Token=%s\n",
+                debugLog("Home Assistant: URL=%s, Entity=%s, Token=%s\n",
                              haUrl.c_str(), haEntityId.c_str(),
                              haToken.length() > 0 ? "[SET]" : "[NOT SET]");
             }
             
             // Fetch initial weather data
             if (weatherSource != 0) {
-                Serial.println("Fetching initial weather data...");
+                debugLog("Fetching initial weather data...\n");
                 bool success = weather.update();
-                Serial.printf("Initial weather fetch: %s\n", success ? "SUCCESS" : "FAILED");
+                debugLog("Initial weather fetch: %s\n", success ? "SUCCESS" : "FAILED");
                 if (!success) {
-                    Serial.printf("Weather error: %s\n", weather.getLastError().c_str());
+                    debugLog("Weather error: %s\n", weather.getLastError().c_str());
                 }
             }
         }
         else
         {
-            Serial.println("\nFailed to connect to WiFi. Will operate offline.");
+            debugLog("\nFailed to connect to WiFi. Will operate offline.\n");
         }
     }
     else
     {
-        Serial.println("No WiFi credentials found. Operating in offline mode.");
+        debugLog("No WiFi credentials found. Operating in offline mode.\n");
     }
     
     lastInteractionTime = millis();
@@ -1245,12 +1241,12 @@ void setup()
         // Store pressure if BME280 detected
         if (activeSensor == SENSOR_BME280 && !isnan(pressureReading)) {
             currentPressure = pressureReading;
-            Serial.printf("Initial pressure reading: %.1f hPa\n", currentPressure);
+            debugLog("Initial pressure reading: %.1f hPa\n", currentPressure);
         }
         
-        Serial.printf("Initial readings - Temp: %.1f, Humidity: %.1f%%\n", currentTemp, currentHumidity);
+        debugLog("Initial readings - Temp: %.1f, Humidity: %.1f%%\n", currentTemp, currentHumidity);
     } else {
-        Serial.println("WARNING: Failed to get initial sensor reading");
+        debugLog("WARNING: Failed to get initial sensor reading\n");
         // Use fallback values
         currentTemp = 72.0;
         currentHumidity = 50.0;
@@ -1276,9 +1272,9 @@ void setup()
     ds18b20SensorPresent = (tempC != DEVICE_DISCONNECTED_C && tempC != -127.0);
     
     if (ds18b20SensorPresent) {
-        Serial.println("DS18B20 sensor detected");
+        debugLog("DS18B20 sensor detected\n");
     } else {
-        Serial.println("DS18B20 sensor NOT detected");
+        debugLog("DS18B20 sensor NOT detected\n");
     }
     
     // Create sensor task on core 1
@@ -1295,25 +1291,25 @@ void setup()
     // Option C: Create display update mutex and task on core 0
     displayUpdateMutex = xSemaphoreCreateMutex();
     if (displayUpdateMutex == NULL) {
-        Serial.println("ERROR: Failed to create display update mutex!");
+        debugLog("ERROR: Failed to create display update mutex!\n");
     } else {
-        Serial.println("Display update mutex created successfully");
+        debugLog("Display update mutex created successfully\n");
     }
     
     // Create controlRelays mutex for thread-safe relay control
     controlRelaysMutex = xSemaphoreCreateMutex();
     if (controlRelaysMutex == NULL) {
-        Serial.println("ERROR: Failed to create controlRelays mutex!");
+        debugLog("ERROR: Failed to create controlRelays mutex!\n");
     } else {
-        Serial.println("Control relays mutex created successfully");
+        debugLog("Control relays mutex created successfully\n");
     }
     
     // Create radar sensor mutex for thread-safe sensor access
     radarSensorMutex = xSemaphoreCreateMutex();
     if (radarSensorMutex == NULL) {
-        Serial.println("ERROR: Failed to create radar sensor mutex!");
+        debugLog("ERROR: Failed to create radar sensor mutex!\n");
     } else {
-        Serial.println("Radar sensor mutex created successfully");
+        debugLog("Radar sensor mutex created successfully\n");
     }
     
     xTaskCreatePinnedToCore(
@@ -1326,12 +1322,16 @@ void setup()
         0                         // Core 0 (same as main display operations)
     );
     
-    Serial.println("Dual-core thermostat with centralized display updates setup complete");
+    debugLog("Dual-core thermostat with centralized display updates setup complete\n");
     debugLog("[BOOT] Setup complete - System ready\n");
     debugLog("[BOOT] Debug console available at /debug\n");
+    debugLog("[BOOT] System Version %s\n", sw_version.c_str());
+    debugLog("[BOOT] Hostname: %s\n", hostname.c_str());
     
     // Play startup tone to indicate setup is complete
     buzzerStartupTone();
+
+    
 }
 
 void loop()
@@ -1354,20 +1354,20 @@ void loop()
     {
         bootButtonPressed = true;
         bootButtonPressStart = millis();
-        Serial.println("Boot button pressed, holding for factory reset...");
+        debugLog("Boot button pressed, holding for factory reset...\n");
     }
     
     // Detect boot button release
     if (!currentBootButtonState && bootButtonPressed)
     {
         bootButtonPressed = false;
-        Serial.println("Boot button released");
+        debugLog("Boot button released\n");
     }
     
     // Check if boot button has been held long enough for factory reset
     if (bootButtonPressed && (millis() - bootButtonPressStart > FACTORY_RESET_PRESS_TIME))
     {
-        Serial.println("Factory reset triggered by boot button!");
+        debugLog("Factory reset triggered by boot button!\n");
         
         // Show reset message on display
         tft.fillScreen(COLOR_BACKGROUND);
@@ -1484,7 +1484,7 @@ void loop()
         
         // Debug weather status every 60 seconds
         if (millis() - lastWeatherDebug > 60000) {
-            Serial.printf("WEATHER: Source=%d, Valid=%d, Temp=%.1f, Condition=%s, Error=%s\n",
+            debugLog("WEATHER: Source=%d, Valid=%d, Temp=%.1f, Condition=%s, Error=%s\n",
                          weatherSource,
                          weather.isDataValid(),
                          weather.getData().temperature,
@@ -1509,12 +1509,12 @@ void loop()
     if (millis() - lastLD2410Status > 30000) {
         lastLD2410Status = millis();
         if (ld2410Connected) {
-            Serial.printf("LD2410: Status - Connected: %s, Motion: %s, Last motion: %lu ms ago\\n",
+            debugLog("LD2410: Status - Connected: %s, Motion: %s, Last motion: %lu ms ago\\n",
                           ld2410Connected ? "YES" : "NO",
                           motionDetected ? "ACTIVE" : "INACTIVE",
                           millis() - lastMotionTime);
         } else {
-            Serial.println("LD2410: Status - Sensor not detected, display control via touch only");
+            debugLog("LD2410: Status - Sensor not detected, display control via touch only\n");
         }
     }
 
@@ -1559,7 +1559,7 @@ void loop()
         
         // Send MQTT feedback immediately if settings changed via MQTT
         if (mqttFeedbackNeeded && mqttClient.connected()) {
-            Serial.println("[MQTT] Sending immediate feedback for settings change");
+            debugLog("[MQTT] Sending immediate feedback for settings change\n");
             sendMQTTData();
             mqttFeedbackNeeded = false;
             lastMQTTDataTime = currentTime;
@@ -1605,9 +1605,9 @@ void logRuntimeDiagnostics() {
     UBaseType_t sensorWatermark = sensorTask ? uxTaskGetStackHighWaterMark(sensorTask) : 0;
     UBaseType_t displayWatermark = displayUpdateTask ? uxTaskGetStackHighWaterMark(displayUpdateTask) : 0;
 
-    Serial.printf("[DIAG] Heap: free=%uB, largest=%uB, min_free=%uB\n",
+    debugLog("[DIAG] Heap: free=%uB, largest=%uB, min_free=%uB\n",
                   (unsigned)free8, (unsigned)largest8, (unsigned)minFree8);
-    Serial.printf("[DIAG] Stack HWM (words): main=%lu, sensor=%lu, display=%lu\n",
+    debugLog("[DIAG] Stack HWM (words): main=%lu, sensor=%lu, display=%lu\n",
                   (unsigned long)mainWatermark,
                   (unsigned long)sensorWatermark,
                   (unsigned long)displayWatermark);
@@ -1630,25 +1630,25 @@ void setupWiFi()
         while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000)
         {
             delay(1000);
-            Serial.println("Connecting to WiFi...");
+            debugLog("Connecting to WiFi...\n");
         }
 
         if (WiFi.status() == WL_CONNECTED)
         {
-            Serial.println("Connected to WiFi");
-            Serial.print("IP Address: ");
+            debugLog("Connected to WiFi\n");
+            debugLog("IP Address: ");
             Serial.println(WiFi.localIP());
         }
         else
         {
-            Serial.println("Failed to connect to WiFi");
+            debugLog("Failed to connect to WiFi\n");
             enterWiFiCredentials();
         }
     }
     else
     {
         // No WiFi credentials found, prompt user to enter them via touch screen
-        Serial.println("No WiFi credentials found. Please enter them via the touch screen.");
+        debugLog("No WiFi credentials found. Please enter them via the touch screen.\n");
         enterWiFiCredentials();
     }
 }
@@ -1657,9 +1657,9 @@ void connectToWiFi()
 {
     if (wifiSSID != "" && wifiPassword != "")
     {
-        Serial.print("Connecting to WiFi with SSID: ");
+        debugLog("Connecting to WiFi with SSID: ");
         Serial.println(wifiSSID);
-        Serial.print("Password: ");
+        debugLog("Password: ");
         Serial.println(wifiPassword);
 
         WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
@@ -1669,18 +1669,18 @@ void connectToWiFi()
         while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000)
         {
             delay(1000);
-            Serial.println("Connecting to WiFi...");
+            debugLog("Connecting to WiFi...\n");
         }
 
         if (WiFi.status() == WL_CONNECTED)
         {
-            Serial.println("Connected to WiFi");
-            Serial.print("IP Address: ");
+            debugLog("Connected to WiFi\n");
+            debugLog("IP Address: ");
             Serial.println(WiFi.localIP());
         }
         else
         {
-            Serial.println("Failed to connect to WiFi");
+            debugLog("Failed to connect to WiFi\n");
             // Don't enter WiFi credentials mode here, just return
             // This allows the device to keep operating without WiFi
         }
@@ -1688,7 +1688,7 @@ void connectToWiFi()
     else
     {
         // Having no credentials is fine - don't trigger WiFi setup automatically
-        Serial.println("No WiFi credentials found. Device operating in offline mode.");
+        debugLog("No WiFi credentials found. Device operating in offline mode.\n");
         // Note: User can press the WiFi button on the display to configure WiFi if desired
     }
 }
@@ -1718,7 +1718,7 @@ void enterWiFiCredentials()
         static unsigned long lastStatusPrint = 0;
         unsigned long currentTime = millis();
         if (currentTime - lastStatusPrint > 5000) {
-            Serial.println("Waiting for WiFi credentials...");
+            debugLog("Waiting for WiFi credentials...\n");
             lastStatusPrint = currentTime;
         }
     }
@@ -1898,7 +1898,7 @@ void handleKeyPress(int row, int col)
                     tft.setCursor(30 + (dots * 12), 160);
                     tft.print(".");
                     dots = (dots + 1) % 20;
-                    Serial.println("Connecting to WiFi...");
+                    debugLog("Connecting to WiFi...\n");
                 }
 
                 if (WiFi.status() == WL_CONNECTED)
@@ -1910,8 +1910,8 @@ void handleKeyPress(int row, int col)
                     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
                     tft.setCursor(30, 130);
                     tft.println("Restarting...");
-                    Serial.println("Connected to WiFi");
-                    Serial.print("IP Address: ");
+                    debugLog("Connected to WiFi\n");
+                    debugLog("IP Address: ");
                     Serial.println(WiFi.localIP());
                     delay(2000);
                     ESP.restart();
@@ -1925,7 +1925,7 @@ void handleKeyPress(int row, int col)
                     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
                     tft.setCursor(30, 130);
                     tft.println("Touch to retry");
-                    Serial.println("Failed to connect to WiFi");
+                    debugLog("Failed to connect to WiFi\n");
                     delay(3000);
                     // Reset and return to keyboard
                     inputText = "";
@@ -2136,22 +2136,22 @@ void handleButtonPress(uint16_t x, uint16_t y)
             if (!handlingMQTTMessage) mqttClient.publish("thermostat/setTempAuto", String(setTempAuto).c_str(), true);
         }
         unsigned long beforeSave2 = millis();
-        Serial.printf("[DEBUG] Before saveSettings (- button)\n");
+        debugLog("[DEBUG] Before saveSettings (- button)\n");
         saveSettings();
         unsigned long afterSave2 = millis();
-        Serial.printf("[DEBUG] After saveSettings (took %lu ms)\n", afterSave2 - beforeSave2);
+        debugLog("[DEBUG] After saveSettings (took %lu ms)\n", afterSave2 - beforeSave2);
         
         sendMQTTData();
         unsigned long afterMQTT2 = millis();
-        Serial.printf("[DEBUG] After sendMQTTData (took %lu ms)\n", afterMQTT2 - afterSave2);
+        debugLog("[DEBUG] After sendMQTTData (took %lu ms)\n", afterMQTT2 - afterSave2);
         
         // Update display immediately for better responsiveness
         unsigned long beforeDisplay2 = millis();
-        Serial.printf("[DEBUG] Before updateDisplay (- button)\n");
+        debugLog("[DEBUG] Before updateDisplay (- button)\n");
         updateDisplay(currentTemp, currentHumidity);
         unsigned long afterDisplay2 = millis();
-        Serial.printf("[DEBUG] After updateDisplay (took %lu ms)\n", afterDisplay2 - beforeDisplay2);
-        Serial.printf("[DEBUG] Total - button time: %lu ms\n", afterDisplay2 - startTime);
+        debugLog("[DEBUG] After updateDisplay (took %lu ms)\n", afterDisplay2 - beforeDisplay2);
+        debugLog("[DEBUG] Total - button time: %lu ms\n", afterDisplay2 - startTime);
     }
     else if (x > 125 && x < 195 && y > 195 && y < 245) // Mode button with slightly increased touch area
     {
@@ -2166,7 +2166,7 @@ void handleButtonPress(uint16_t x, uint16_t y)
         else
             thermostatMode = "auto";
         
-        Serial.printf("[DEBUG] Mode switched: %s -> %s\n", oldMode.c_str(), thermostatMode.c_str());
+        debugLog("[DEBUG] Mode switched: %s -> %s\n", oldMode.c_str(), thermostatMode.c_str());
 
         saveSettings();
         sendMQTTData();
@@ -2179,6 +2179,7 @@ void handleButtonPress(uint16_t x, uint16_t y)
     else if (x > 195 && x < 265 && y > 195 && y < 245) // Fan button with slightly increased touch area
     {
         // Change fan mode
+        String oldMode = fanMode;
         if (fanMode == "auto")
             fanMode = "on";
         else if (fanMode == "on")
@@ -2186,6 +2187,7 @@ void handleButtonPress(uint16_t x, uint16_t y)
         else
             fanMode = "auto";
 
+        debugLog("[FAN] Fan mode changed: %s -> %s\n", oldMode.c_str(), fanMode.c_str());
         saveSettings();
         sendMQTTData();
         // Immediately update relays to reflect fan mode change
@@ -2207,15 +2209,15 @@ void reconnectMQTT()
     // Non-blocking approach - only try once per function call
     if (!mqttClient.connected())
     {
-        Serial.print("Attempting MQTT connection to server: ");
+        debugLog("Attempting MQTT connection to server: ");
         Serial.print(mqttServer);
-        Serial.print(" port: ");
+        debugLog(" port: ");
         Serial.print(mqttPort);
-        Serial.print(" username: ");
+        debugLog(" username: ");
         Serial.print(mqttUsername);
         
         if (mqttClient.connect(hostname.c_str(), mqttUsername.c_str(), mqttPassword.c_str())) {
-            Serial.println(" - Connected successfully");
+            debugLog(" - Connected successfully\n");
 
             // Subscribe to necessary topics
             String tempSetTopic = hostname + "/target_temperature/set";
@@ -2231,28 +2233,28 @@ void reconnectMQTT()
         else
         {
             int mqttState = mqttClient.state();
-            Serial.print(" - Connection failed, rc=");
+            debugLog(" - Connection failed, rc=");
             Serial.print(mqttState);
-            Serial.print(" (");
+            debugLog(" (");
             
             // Provide human-readable error messages
             switch(mqttState) {
-                case -4: Serial.print("MQTT_CONNECTION_TIMEOUT"); break;
-                case -3: Serial.print("MQTT_CONNECTION_LOST"); break;
-                case -2: Serial.print("MQTT_CONNECT_FAILED"); break;
-                case -1: Serial.print("MQTT_DISCONNECTED"); break;
-                case 1: Serial.print("MQTT_CONNECT_BAD_PROTOCOL"); break;
-                case 2: Serial.print("MQTT_CONNECT_BAD_CLIENT_ID"); break;
-                case 3: Serial.print("MQTT_CONNECT_UNAVAILABLE"); break;
-                case 4: Serial.print("MQTT_CONNECT_BAD_CREDENTIALS"); break;
-                case 5: Serial.print("MQTT_CONNECT_UNAUTHORIZED"); break;
-                default: Serial.print("UNKNOWN ERROR"); break;
+                case -4: debugLog("MQTT_CONNECTION_TIMEOUT"); break;
+                case -3: debugLog("MQTT_CONNECTION_LOST"); break;
+                case -2: debugLog("MQTT_CONNECT_FAILED"); break;
+                case -1: debugLog("MQTT_DISCONNECTED"); break;
+                case 1: debugLog("MQTT_CONNECT_BAD_PROTOCOL"); break;
+                case 2: debugLog("MQTT_CONNECT_BAD_CLIENT_ID"); break;
+                case 3: debugLog("MQTT_CONNECT_UNAVAILABLE"); break;
+                case 4: debugLog("MQTT_CONNECT_BAD_CREDENTIALS"); break;
+                case 5: debugLog("MQTT_CONNECT_UNAUTHORIZED"); break;
+                default: debugLog("UNKNOWN ERROR"); break;
             }
             
-            Serial.println(")");
-            Serial.print("Server: ");
+            debugLog(")\n");
+            debugLog("Server: ");
             Serial.print(mqttServer);
-            Serial.print(", Port: ");
+            debugLog(", Port: ");
             Serial.println(mqttPort);
         }
     }
@@ -2310,7 +2312,7 @@ void publishHomeAssistantDiscovery()
         mqttClient.publish(availabilityTopic.c_str(), "online", true);
 
         // Debug log for payload
-        Serial.println("Published Home Assistant discovery payload:");
+        debugLog("Published Home Assistant discovery payload:\n");
         Serial.println(buffer);
 
         // Publish motion sensor discovery if LD2410 is connected
@@ -2336,7 +2338,7 @@ void publishHomeAssistantDiscovery()
             serializeJson(motionDoc, motionBuffer);
             mqttClient.publish(motionConfigTopic.c_str(), motionBuffer, true);
             
-            Serial.println("Published LD2410 motion sensor discovery to Home Assistant");
+            debugLog("Published LD2410 motion sensor discovery to Home Assistant\n");
         }
         
         // Publish barometric pressure sensor discovery if BME280 is active
@@ -2363,7 +2365,7 @@ void publishHomeAssistantDiscovery()
             serializeJson(pressureDoc, pressureBuffer);
             mqttClient.publish(pressureConfigTopic.c_str(), pressureBuffer, true);
             
-            Serial.println("Published BME280 pressure sensor discovery to Home Assistant");
+            debugLog("Published BME280 pressure sensor discovery to Home Assistant\n");
         }
     }
     else
@@ -2384,9 +2386,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
         message += (char)payload[i];
     }
 
-    Serial.print("Message arrived [");
+    debugLog("Message arrived [");
     Serial.print(topic);
-    Serial.print("] ");
+    debugLog("] ");
     Serial.println(message);
 
     // Set flag to indicate we're handling an MQTT message to prevent publish loops
@@ -2403,7 +2405,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
         if (message != thermostatMode)
         {
             thermostatMode = message;
-            Serial.print("Updated thermostat mode to: ");
+            debugLog("Updated thermostat mode to: ");
             Serial.println(thermostatMode);
             settingsNeedSaving = true;
             controlRelays(currentTemp); // Apply changes to relays
@@ -2415,7 +2417,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
         if (message != fanMode)
         {
             fanMode = message;
-            Serial.print("Updated fan mode to: ");
+            debugLog("Updated fan mode to: ");
             Serial.println(fanMode);
             settingsNeedSaving = true;
             controlRelays(currentTemp); // Apply changes to relays
@@ -2427,21 +2429,21 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
         if (thermostatMode == "heat" && newTargetTemp != setTempHeat)
         {
             setTempHeat = newTargetTemp;
-            Serial.print("Updated heating target temperature to: ");
+            debugLog("Updated heating target temperature to: ");
             Serial.println(setTempHeat);
             settingsNeedSaving = true;
         }
         else if (thermostatMode == "cool" && newTargetTemp != setTempCool)
         {
             setTempCool = newTargetTemp;
-            Serial.print("Updated cooling target temperature to: ");
+            debugLog("Updated cooling target temperature to: ");
             Serial.println(setTempCool);
             settingsNeedSaving = true;
         }
         else if (thermostatMode == "auto" && newTargetTemp != setTempAuto)
         {
             setTempAuto = newTargetTemp;
-            Serial.print("Updated auto target temperature to: ");
+            debugLog("Updated auto target temperature to: ");
             Serial.println(setTempAuto);
             settingsNeedSaving = true;
         }
@@ -2450,7 +2452,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
 
     // Save settings to flash if they were changed
     if (settingsNeedSaving) {
-        Serial.println("Saving settings changed via MQTT");
+        debugLog("Saving settings changed via MQTT\n");
         saveSettings();
         // Update display immediately when settings change via MQTT
         updateDisplay(currentTemp, currentHumidity);
@@ -2550,14 +2552,14 @@ void sendMQTTData()
         }
 
         // Monitor hydronic boiler water temperature and send alerts
-        Serial.printf("[DEBUG] Hydronic Alert Check: enabled=%s, temp=%.1f, tempValid=%s\n",
+        debugLog("[DEBUG] Hydronic Alert Check: enabled=%s, temp=%.1f, tempValid=%s\n",
                      hydronicHeatingEnabled ? "YES" : "NO", 
                      hydronicTemp,
                      !isnan(hydronicTemp) ? "YES" : "NO");
                      
         if (hydronicHeatingEnabled && !isnan(hydronicTemp))
         {
-            Serial.printf("[DEBUG] Hydronic Logic: temp=%.1f < threshold=%.1f? %s, alertSent=%s\n",
+            debugLog("[DEBUG] Hydronic Logic: temp=%.1f < threshold=%.1f? %s, alertSent=%s\n",
                          hydronicTemp, hydronicTempLow,
                          (hydronicTemp < hydronicTempLow) ? "YES" : "NO",
                          hydronicLowTempAlertSent ? "YES" : "NO");
@@ -2578,14 +2580,14 @@ void sendMQTTData()
                 // Set flag to prevent duplicate alerts
                 hydronicLowTempAlertSent = true;
                 preferences.putBool("hydAlertSent", hydronicLowTempAlertSent);
-                Serial.println("MQTT: Hydronic low temperature alert sent");
+                debugLog("MQTT: Hydronic low temperature alert sent\n");
             }
             // Reset alert flag only when temperature recovers above HIGH threshold (hysteresis)
             else if (hydronicTemp >= hydronicTempHigh && hydronicLowTempAlertSent)
             {
                 hydronicLowTempAlertSent = false;
                 preferences.putBool("hydAlertSent", hydronicLowTempAlertSent);
-                Serial.printf("MQTT: Hydronic temperature recovered to %.1f°F (above %.1f°F) - alert reset\n", 
+                debugLog("MQTT: Hydronic temperature recovered to %.1f°F (above %.1f°F) - alert reset\n", 
                              hydronicTemp, hydronicTempHigh);
             }
         }
@@ -2622,12 +2624,12 @@ void controlRelays(float currentTemp)
 {
     // Take mutex to prevent concurrent access from multiple cores
     if (xSemaphoreTake(controlRelaysMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        Serial.println("[WARNING] controlRelays: Failed to acquire mutex, skipping this call");
+        debugLog("[WARNING] controlRelays: Failed to acquire mutex, skipping this call\n");
         return;
     }
     
     // Debug entry
-    Serial.printf("[DEBUG] controlRelays ENTRY: mode=%s, temp=%.1f, heatingOn=%d, coolingOn=%d\n", 
+    debugLog("[DEBUG] controlRelays ENTRY: mode=%s, temp=%.1f, heatingOn=%d, coolingOn=%d\n", 
                  thermostatMode.c_str(), currentTemp, heatingOn, coolingOn);
     
     // Track previous states to only print debug info on changes
@@ -2639,7 +2641,7 @@ void controlRelays(float currentTemp)
     
     // Check if temperature reading is valid
     if (isnan(currentTemp)) {
-        Serial.println("WARNING: Invalid temperature reading, skipping relay control");
+        debugLog("WARNING: Invalid temperature reading, skipping relay control\n");
         return;
     }
     
@@ -2650,7 +2652,7 @@ void controlRelays(float currentTemp)
 
     if (thermostatMode == "off")
     {
-        Serial.println("[DEBUG] In OFF mode - turning off heating and cooling relays");
+        debugLog("[DEBUG] In OFF mode - turning off heating and cooling relays\n");
         // Turn off heating and cooling relays, but don't turn off fan
         // This allows the fan to operate in "on" or "cycle" mode even when thermostat is off
         digitalWrite(HEAT_RELAY_1_PIN, LOW);
@@ -2667,7 +2669,7 @@ void controlRelays(float currentTemp)
             if (!fanOn) {
                 digitalWrite(FAN_RELAY_PIN, HIGH);
                 fanOn = true;
-                Serial.println("Fan on while thermostat is off");
+                debugLog("Fan on while thermostat is off\n");
             }
         }
         else if (fanMode == "auto") {
@@ -2684,12 +2686,12 @@ void controlRelays(float currentTemp)
     // Rest of the thermostat logic for heat, cool, and auto modes
     if (thermostatMode == "heat")
     {
-        Serial.printf("[DEBUG] In HEAT mode: temp=%.1f, setpoint=%.1f, swing=%.1f\n", 
+        debugLog("[DEBUG] In HEAT mode: temp=%.1f, setpoint=%.1f, swing=%.1f\n", 
                      currentTemp, setTempHeat, tempSwing);
         
         // Turn off cooling relays when entering heat mode
         if (coolingOn) {
-            Serial.println("[DEBUG] Turning off cooling relays in heat mode");
+            debugLog("[DEBUG] Turning off cooling relays in heat mode\n");
             digitalWrite(COOL_RELAY_1_PIN, LOW);
             digitalWrite(COOL_RELAY_2_PIN, LOW);
             coolingOn = false;
@@ -2699,7 +2701,7 @@ void controlRelays(float currentTemp)
         }
         
         // Only activate heating if below setpoint - swing
-        Serial.printf("[DEBUG] Heat check: %.1f < %.1f? %s\n", 
+        debugLog("[DEBUG] Heat check: %.1f < %.1f? %s\n", 
                      currentTemp, (setTempHeat - tempSwing), 
                      (currentTemp < (setTempHeat - tempSwing)) ? "YES" : "NO");
         if (currentTemp < (setTempHeat - tempSwing))
@@ -2724,12 +2726,12 @@ void controlRelays(float currentTemp)
     }
     else if (thermostatMode == "cool")
     {
-        Serial.printf("[DEBUG] In COOL mode: temp=%.1f, setpoint=%.1f, swing=%.1f\n", 
+        debugLog("[DEBUG] In COOL mode: temp=%.1f, setpoint=%.1f, swing=%.1f\n", 
                      currentTemp, setTempCool, tempSwing);
         
         // Turn off heating relays when entering cool mode
         if (heatingOn) {
-            Serial.println("[DEBUG] Turning off heating relays in cool mode");
+            debugLog("[DEBUG] Turning off heating relays in cool mode\n");
             digitalWrite(HEAT_RELAY_1_PIN, LOW);
             digitalWrite(HEAT_RELAY_2_PIN, LOW);
             heatingOn = false;
@@ -2739,7 +2741,7 @@ void controlRelays(float currentTemp)
         }
         
         // Only activate cooling if above setpoint + swing
-        Serial.printf("[DEBUG] Cool check: %.1f > %.1f? %s\n", 
+        debugLog("[DEBUG] Cool check: %.1f > %.1f? %s\n", 
                      currentTemp, (setTempCool + tempSwing), 
                      (currentTemp > (setTempCool + tempSwing)) ? "YES" : "NO");
         if (currentTemp > (setTempCool + tempSwing))
@@ -2764,35 +2766,35 @@ void controlRelays(float currentTemp)
     }
     else if (thermostatMode == "auto")
     {
-        Serial.printf("[DEBUG] In AUTO mode: temp=%.1f, setpoint=%.1f, autoSwing=%.1f\n", 
+        debugLog("[DEBUG] In AUTO mode: temp=%.1f, setpoint=%.1f, autoSwing=%.1f\n", 
                      currentTemp, setTempAuto, autoTempSwing);
         
         if (currentTemp < (setTempAuto - autoTempSwing))
         {
-            Serial.printf("[DEBUG] Auto heating check: %.1f < %.1f? YES\n", 
+            debugLog("[DEBUG] Auto heating check: %.1f < %.1f? YES\n", 
                          currentTemp, (setTempAuto - autoTempSwing));
             if (!heatingOn) {
-                Serial.printf("Auto mode activating heating: current %.1f < auto_setpoint-swing %.1f\n", 
+                debugLog("Auto mode activating heating: current %.1f < auto_setpoint-swing %.1f\n", 
                              currentTemp, (setTempAuto - autoTempSwing));
             }
             activateHeating();
         }
         else if (currentTemp > (setTempAuto + autoTempSwing))
         {
-            Serial.printf("[DEBUG] Auto cooling check: %.1f > %.1f? YES\n", 
+            debugLog("[DEBUG] Auto cooling check: %.1f > %.1f? YES\n", 
                          currentTemp, (setTempAuto + autoTempSwing));
             if (!coolingOn) {
-                Serial.printf("Auto mode activating cooling: current %.1f > auto_setpoint+swing %.1f\n", 
+                debugLog("Auto mode activating cooling: current %.1f > auto_setpoint+swing %.1f\n", 
                              currentTemp, (setTempAuto + autoTempSwing));
             }
             activateCooling();
         }
         else
         {
-            Serial.printf("[DEBUG] Auto deadband check: %.1f between %.1f and %.1f\n", 
+            debugLog("[DEBUG] Auto deadband check: %.1f between %.1f and %.1f\n", 
                          currentTemp, (setTempAuto - autoTempSwing), (setTempAuto + autoTempSwing));
             if (heatingOn || coolingOn) {
-                Serial.printf("Auto mode temperature in deadband, turning off: %.1f is between %.1f and %.1f\n", 
+                debugLog("Auto mode temperature in deadband, turning off: %.1f is between %.1f and %.1f\n", 
                              currentTemp, (setTempAuto - autoTempSwing), (setTempAuto + autoTempSwing));
             }
             turnOffAllRelays();
@@ -2808,9 +2810,9 @@ void controlRelays(float currentTemp)
     
     // Only print debug info when there are changes
     if (stateChanged || modeChanged || abs(currentTemp - prevTemp) > 0.5) {
-        Serial.printf("controlRelays: mode=%s, temp=%.1f, setHeat=%.1f, setCool=%.1f, setAuto=%.1f, swing=%.1f\n", 
+        debugLog("controlRelays: mode=%s, temp=%.1f, setHeat=%.1f, setCool=%.1f, setAuto=%.1f, swing=%.1f\n", 
                      thermostatMode.c_str(), currentTemp, setTempHeat, setTempCool, setTempAuto, tempSwing);
-        Serial.printf("Relay states: heating=%d, cooling=%d, fan=%d\n", heatingOn, coolingOn, fanOn);
+        debugLog("Relay states: heating=%d, cooling=%d, fan=%d\n", heatingOn, coolingOn, fanOn);
         
         // CONSOLIDATED UPDATE: Update LEDs and display when relay state or mode changes
         updateStatusLEDs();
@@ -2831,7 +2833,7 @@ void controlRelays(float currentTemp)
     bool actualCool2 = digitalRead(COOL_RELAY_2_PIN) == HIGH;
     bool actualFan = digitalRead(FAN_RELAY_PIN) == HIGH;
     
-    Serial.printf("[DEBUG] controlRelays EXIT: RelayPins H1=%d H2=%d C1=%d C2=%d F=%d | Flags heat=%d cool=%d fan=%d stage1=%d stage2=%d\n", 
+    debugLog("[DEBUG] controlRelays EXIT: RelayPins H1=%d H2=%d C1=%d C2=%d F=%d | Flags heat=%d cool=%d fan=%d stage1=%d stage2=%d\n", 
                  actualHeat1, actualHeat2, actualCool1, actualCool2, actualFan, 
                  heatingOn, coolingOn, fanOn, stage1Active, stage2Active);
     
@@ -2840,7 +2842,7 @@ void controlRelays(float currentTemp)
 
 void turnOffAllRelays()
 {
-    Serial.println("[DEBUG] turnOffAllRelays() - Turning off heating/cooling relays");
+    debugLog("[DEBUG] turnOffAllRelays() - Turning off heating/cooling relays\n");
     digitalWrite(HEAT_RELAY_1_PIN, LOW);
     digitalWrite(HEAT_RELAY_2_PIN, LOW);
     digitalWrite(COOL_RELAY_1_PIN, LOW);
@@ -2856,7 +2858,7 @@ void turnOffAllRelays()
         if (!fanOn) {
             digitalWrite(FAN_RELAY_PIN, HIGH);
             fanOn = true;
-            Serial.println("[DEBUG] turnOffAllRelays() - Keeping fan ON (fanMode=on)");
+            debugLog("[DEBUG] turnOffAllRelays() - Keeping fan ON (fanMode=on)\n");
         }
     } else if (fanMode == "auto") {
         // Turn off fan in auto mode when heating/cooling stops
@@ -2864,40 +2866,40 @@ void turnOffAllRelays()
             // Only control fan if fanRelayNeeded is true
             digitalWrite(FAN_RELAY_PIN, LOW);
             fanOn = false;
-            Serial.println("[DEBUG] turnOffAllRelays() - Turning fan OFF (fanMode=auto)");
+            debugLog("[DEBUG] turnOffAllRelays() - Turning fan OFF (fanMode=auto)\n");
         }
     }
     // Note: "cycle" mode is handled by controlFanSchedule(), don't interfere
     
-    Serial.printf("[DEBUG] turnOffAllRelays() COMPLETE: heatingOn=%d, coolingOn=%d, fanOn=%d, fanMode=%s\n", 
+    debugLog("[DEBUG] turnOffAllRelays() COMPLETE: heatingOn=%d, coolingOn=%d, fanOn=%d, fanMode=%s\n", 
                  heatingOn, coolingOn, fanOn, fanMode.c_str());
     updateStatusLEDs(); // Update LED status
     setDisplayUpdateFlag(); // Option C: Request display update
 }
 
 void activateHeating() {
-    Serial.printf("[DEBUG] activateHeating() ENTRY: stage1Active=%d, stage2Active=%d\n", stage1Active, stage2Active);
+    debugLog("[DEBUG] activateHeating() ENTRY: stage1Active=%d, stage2Active=%d\n", stage1Active, stage2Active);
     
     // Hydronic boiler safety interlock - prevent heating if boiler water is too cold
     if (hydronicHeatingEnabled && !isnan(hydronicTemp)) {
-        Serial.printf("[DEBUG] Hydronic Safety Check: temp=%.1f, low=%.1f, high=%.1f, lockout=%d\n", 
+        debugLog("[DEBUG] Hydronic Safety Check: temp=%.1f, low=%.1f, high=%.1f, lockout=%d\n", 
                      hydronicTemp, hydronicTempLow, hydronicTempHigh, hydronicLockout);
         
         // Manage lockout state with hysteresis
         // Lockout activates at low threshold, clears at high threshold
         if (hydronicTemp < hydronicTempLow && !hydronicLockout) {
             hydronicLockout = true;
-            Serial.printf("[LOCKOUT] Hydronic lockout ACTIVATED - temp %.1f°F below %.1f°F\n", 
+            debugLog("[LOCKOUT] Hydronic lockout ACTIVATED - temp %.1f°F below %.1f°F\n", 
                          hydronicTemp, hydronicTempLow);
         } else if (hydronicTemp >= hydronicTempHigh && hydronicLockout) {
             hydronicLockout = false;
-            Serial.printf("[LOCKOUT] Hydronic lockout CLEARED - temp %.1f°F reached %.1f°F\n", 
+            debugLog("[LOCKOUT] Hydronic lockout CLEARED - temp %.1f°F reached %.1f°F\n", 
                          hydronicTemp, hydronicTempHigh);
         }
         
         // If in lockout state, prevent heating
         if (hydronicLockout) {
-            Serial.printf("[LOCKOUT] Hydronic lockout active - waiting for temp to reach %.1f°F (currently %.1f°F)\n", 
+            debugLog("[LOCKOUT] Hydronic lockout active - waiting for temp to reach %.1f°F (currently %.1f°F)\n", 
                          hydronicTempHigh, hydronicTemp);
             
             // Turn off heating relays
@@ -2910,7 +2912,7 @@ void activateHeating() {
             // Keep fan running if needed (to circulate existing warm air)
             if (fanMode == "on" || fanMode == "cycle") {
                 if (!fanOn) {
-                    Serial.println("[LOCKOUT] Keeping fan on for air circulation");
+                    debugLog("[LOCKOUT] Keeping fan on for air circulation\n");
                     digitalWrite(FAN_RELAY_PIN, HIGH);
                     fanOn = true;
                 }
@@ -2921,7 +2923,7 @@ void activateHeating() {
             return; // Exit - no heating allowed
         }
         
-        Serial.printf("[LOCKOUT] Hydronic water temp %.1f°F OK - heating allowed\n", hydronicTemp);
+        debugLog("[LOCKOUT] Hydronic water temp %.1f°F OK - heating allowed\n", hydronicTemp);
     }
 
     // Default heating behavior with hybrid staging
@@ -2958,20 +2960,20 @@ void activateHeating() {
             debugLog("[HVAC] FAN turned ON (manual mode)\n");
             digitalWrite(FAN_RELAY_PIN, HIGH);
             fanOn = true;
-            Serial.println("Fan activated with heat (manual 'on' mode)");
+            debugLog("Fan activated with heat (manual 'on' mode)\n");
         }
     } else if (fanRelayNeeded) {
         if (!fanOn) {
             digitalWrite(FAN_RELAY_PIN, HIGH);
             fanOn = true;
-            Serial.println("Fan activated with heat");
+            debugLog("Fan activated with heat\n");
         }
     } else {
         // HVAC controls its own fan, turn ours off
         if (fanOn) {
             digitalWrite(FAN_RELAY_PIN, LOW);
             fanOn = false;
-            Serial.println("Fan turned off during heat - HVAC controls fan");
+            debugLog("Fan turned off during heat - HVAC controls fan\n");
         }
     }
     updateStatusLEDs(); // Update LED status
@@ -2980,7 +2982,7 @@ void activateHeating() {
 
 void activateCooling()
 {
-    Serial.printf("[DEBUG] activateCooling() ENTRY: stage1Active=%d, stage2Active=%d\n", stage1Active, stage2Active);
+    debugLog("[DEBUG] activateCooling() ENTRY: stage1Active=%d, stage2Active=%d\n", stage1Active, stage2Active);
     
     // Default cooling behavior with hybrid staging
     coolingOn = true;
@@ -2992,14 +2994,14 @@ void activateCooling()
     
     // Check if stage 1 is not active yet
     if (!stage1Active) {
-        Serial.println("[DEBUG] Activating cooling stage 1 relay");
+        debugLog("[DEBUG] Activating cooling stage 1 relay\n");
         digitalWrite(COOL_RELAY_1_PIN, HIGH); // Activate stage 1
         stage1Active = true;
         stage1StartTime = millis(); // Record the start time
         stage2Active = false; // Ensure stage 2 is off initially
-        Serial.printf("[DEBUG] Stage 1 cooling activated - relay pin %d set HIGH\n", COOL_RELAY_1_PIN);
+        debugLog("[DEBUG] Stage 1 cooling activated - relay pin %d set HIGH\n", COOL_RELAY_1_PIN);
     } else {
-        Serial.printf("[DEBUG] Cooling stage 1 already active (stage1Active=%d)\n", stage1Active);
+        debugLog("[DEBUG] Cooling stage 1 already active (stage1Active=%d)\n", stage1Active);
     }
     // Check if it's time to activate stage 2 based on hybrid approach
     if (!stage2Active && 
@@ -3008,7 +3010,7 @@ void activateCooling()
             stage2CoolingEnabled) { // Check if stage 2 cooling is enabled
         digitalWrite(COOL_RELAY_2_PIN, HIGH); // Activate stage 2
         stage2Active = true;
-        Serial.println("Stage 2 cooling activated");
+        debugLog("Stage 2 cooling activated\n");
     }
     
     // Control fan based on fanRelayNeeded setting
@@ -3018,20 +3020,20 @@ void activateCooling()
         if (!fanOn) {
             digitalWrite(FAN_RELAY_PIN, HIGH);
             fanOn = true;
-            Serial.println("Fan activated with cooling (manual 'on' mode)");
+            debugLog("Fan activated with cooling (manual 'on' mode)\n");
         }
     } else if (fanRelayNeeded) {
         if (!fanOn) {
             digitalWrite(FAN_RELAY_PIN, HIGH);
             fanOn = true;
-            Serial.println("Fan activated with cooling");
+            debugLog("Fan activated with cooling\n");
         }
     } else {
         // HVAC controls its own fan, turn ours off
         if (fanOn) {
             digitalWrite(FAN_RELAY_PIN, LOW);
             fanOn = false;
-            Serial.println("Fan turned off during cool - HVAC controls fan");
+            debugLog("Fan turned off during cool - HVAC controls fan\n");
         }
     }
     updateStatusLEDs(); // Update LED status
@@ -3066,7 +3068,7 @@ void handleFanControl()
     if (newFanState != fanOn) {
         digitalWrite(FAN_RELAY_PIN, newFanState ? HIGH : LOW);
         fanOn = newFanState;
-        Serial.printf("[FAN] Fan state changed via handleFanControl: %s\n", fanOn ? "ON" : "OFF");
+        debugLog("[FAN] Fan state changed via handleFanControl: %s\n", fanOn ? "ON" : "OFF");
     }
     
     setDisplayUpdateFlag(); // Option C: Request display update
@@ -3080,6 +3082,7 @@ void controlFanSchedule()
         if (currentTime >= SECONDS_PER_HOUR * 1000) // Check if an hour has passed
         {
             firstHourAfterBoot = false; // Reset the flag after the first hour
+            debugLog("[FAN SCHEDULE] First hour after boot complete, enabling fan cycle\n");
         }
         return; // Skip fan schedule during the first hour
     }
@@ -3091,7 +3094,7 @@ void controlFanSchedule()
             if (!fanRelayNeeded && fanOn) {
                 digitalWrite(FAN_RELAY_PIN, LOW);
                 fanOn = false;
-                Serial.println("[FAN SCHEDULE] Stopping fan - heating/cooling active, fanRelayNeeded=false");
+                debugLog("[FAN SCHEDULE] Stopping fan - heating/cooling active, fanRelayNeeded=false\n");
             }
             return;
         }
@@ -3103,6 +3106,7 @@ void controlFanSchedule()
         // If an hour has passed, reset the cycle
         if (elapsedTime >= SECONDS_PER_HOUR)
         {
+            debugLog("[FAN SCHEDULE] Hour elapsed, resetting fan cycle\n");
             lastFanRunTime = currentTime;
             hourElapsed = 0;
         }
@@ -3128,8 +3132,10 @@ void controlFanSchedule()
         if (shouldRun != fanOn) {
             digitalWrite(FAN_RELAY_PIN, shouldRun ? HIGH : LOW);
             fanOn = shouldRun;
-            Serial.printf("[FAN SCHEDULE] Cycle mode: increment %lu/%lu, fan %s\n", 
-                         currentIncrement, totalIncrements, fanOn ? "ON" : "OFF");
+            debugLog("[FAN SCHEDULE] Cycle mode: increment %lu/%lu (%lu/%lu min), fan %s\n", 
+                         currentIncrement, totalIncrements, 
+                         currentIncrement * 5, fanMinutesPerHour,
+                         fanOn ? "ON" : "OFF");
         }
         
         updateStatusLEDs(); // Update LED status
@@ -3362,9 +3368,9 @@ void handleWebRequests()
         
         // Reconfigure weather module if weather settings were provided
         if (request->hasParam("weatherSource", true)) {
-            Serial.println("WEATHER CONFIG: Reconfiguring weather module from web interface");
-            Serial.printf("  Source: %d\n", weatherSource);
-            Serial.printf("  Update Interval: %d minutes\n", weatherUpdateInterval);
+            debugLog("WEATHER CONFIG: Reconfiguring weather module from web interface\n");
+            debugLog("  Source: %d\n", weatherSource);
+            debugLog("  Update Interval: %d minutes\n", weatherUpdateInterval);
             
             weather.setUseFahrenheit(useFahrenheit);
             weather.setSource((WeatherSource)weatherSource);
@@ -3373,9 +3379,9 @@ void handleWebRequests()
             weather.setUpdateInterval(weatherUpdateInterval * 60000);
             
             bool success = weather.update(); // Force immediate update
-            Serial.printf("WEATHER CONFIG: Immediate update %s\n", success ? "SUCCESS" : "FAILED");
+            debugLog("WEATHER CONFIG: Immediate update %s\n", success ? "SUCCESS" : "FAILED");
             if (!success) {
-                Serial.printf("WEATHER CONFIG: Error: %s\n", weather.getLastError().c_str());
+                debugLog("WEATHER CONFIG: Error: %s\n", weather.getLastError().c_str());
             }
         }
         
@@ -3583,14 +3589,14 @@ void handleWebRequests()
             otaInProgress = false;
             if (updateSuccess) {
                 otaRebooting = true;
-                Serial.println("[OTA] Update SUCCESS - sending response and scheduling reboot...");
+                debugLog("[OTA] Update SUCCESS - sending response and scheduling reboot...\n");
                 // Send response immediately so client gets it before connection drops
                 AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", "Update successful! Rebooting...");
                 response->addHeader("Connection", "close");
                 request->send(response);
                 // Longer delay to ensure response is fully transmitted before reboot
                 delay(1500);
-                Serial.println("[OTA] Rebooting now...");
+                debugLog("[OTA] Rebooting now...\n");
                 ESP.restart();
             } else {
                 otaRebooting = false;
@@ -3600,24 +3606,24 @@ void handleWebRequests()
                 else if (Update.getError() == UPDATE_ERROR_MD5) error += "MD5 check failed";
                 else if (Update.getError() == UPDATE_ERROR_MAGIC_BYTE) error += "Invalid firmware file";
                 else error += "Error code " + String(Update.getError());
-                Serial.printf("[OTA] Update FAILED: %s\n", error.c_str());
+                debugLog("[OTA] Update FAILED: %s\n", error.c_str());
                 request->send(500, "text/plain", error);
             }
         },
         [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
             if (!index) {
-                Serial.println("\n[OTA] Starting firmware update...");
-                Serial.printf("[OTA] Filename: %s\n", filename.c_str());
-                Serial.printf("[OTA] Free space: %u bytes\n", ESP.getFreeSketchSpace());
+                debugLog("\n[OTA] Starting firmware update...\n");
+                debugLog("[OTA] Filename: %s\n", filename.c_str());
+                debugLog("[OTA] Free space: %u bytes\n", ESP.getFreeSketchSpace());
                 otaBytesWritten = 0;
                 otaTotalSize = request->contentLength(); // Capture total upload size
-                Serial.printf("[OTA] Total size: %u bytes\n", (unsigned)otaTotalSize);
+                debugLog("[OTA] Total size: %u bytes\n", (unsigned)otaTotalSize);
                 otaInProgress = true;
                 otaRebooting = false;
                 otaStartTime = millis();
                 otaLastUpdateLog = otaStartTime;
                 if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
-                    Serial.printf("[OTA] Update.begin() failed: %s\n", Update.errorString());
+                    debugLog("[OTA] Update.begin() failed: %s\n", Update.errorString());
                     otaInProgress = false;
                     return;
                 }
@@ -3626,7 +3632,7 @@ void handleWebRequests()
             if (len) {
                 size_t written = Update.write(data, len);
                 if (written != len) {
-                    Serial.printf("[OTA] Write error: expected %u bytes, wrote %u bytes\n", len, written);
+                    debugLog("[OTA] Write error: expected %u bytes, wrote %u bytes\n", len, written);
                     otaInProgress = false;
                     return;
                 }
@@ -3634,16 +3640,16 @@ void handleWebRequests()
                 unsigned long now = millis();
                 if (now - otaLastUpdateLog > 1000) { // Update every second for smoother progress
                     int pct = otaTotalSize > 0 ? (otaBytesWritten * 100) / otaTotalSize : 0;
-                    Serial.printf("[OTA] Flash write: %u / %u bytes (%d%%)\n", 
+                    debugLog("[OTA] Flash write: %u / %u bytes (%d%%)\n", 
                                   (unsigned)otaBytesWritten, (unsigned)otaTotalSize, pct);
                     otaLastUpdateLog = now;
                 }
             }
             if (final) {
                 if (Update.end(true)) {
-                    Serial.printf("[OTA] Update complete! Total bytes: %u\n", (unsigned)(index + len));
+                    debugLog("[OTA] Update complete! Total bytes: %u\n", (unsigned)(index + len));
                 } else {
-                    Serial.printf("[OTA] Update.end() failed: %s\n", Update.errorString());
+                    debugLog("[OTA] Update.end() failed: %s\n", Update.errorString());
                 }
             }
         }
@@ -3758,7 +3764,7 @@ void handleWebRequests()
         if (settingsChanged) {
             scheduleUpdatedFlag = true;
             saveScheduleSettings();
-            Serial.println("SCHEDULE: Settings updated via web interface");
+            debugLog("SCHEDULE: Settings updated via web interface\n");
         }
         
         request->send(200, "text/plain", "Schedule settings updated!");
@@ -3775,7 +3781,7 @@ void handleWebRequests()
         String logOutput = getDebugLog();
         
         // Use ArduinoJson for proper JSON serialization
-        DynamicJsonDocument doc(16384);  // 16KB for debug buffer + overhead
+        DynamicJsonDocument doc(40960);  // 40KB for 32KB buffer + overhead
         doc["log"] = logOutput;
         
         String json;
@@ -3880,16 +3886,16 @@ void updateDisplay(float currentTemp, float currentHumidity)
     }
     
     unsigned long displayStart = millis();
-    Serial.printf("[DEBUG] updateDisplay start at %lu\n", displayStart);
+    debugLog("[DEBUG] updateDisplay start at %lu\n", displayStart);
     
     // Get current time - skip if no WiFi to avoid 5-second delay
     unsigned long beforeTime = millis();
-    Serial.printf("[DEBUG] About to call getLocalTime\n");
+    debugLog("[DEBUG] About to call getLocalTime\n");
     struct tm timeinfo;
     if (WiFi.status() == WL_CONNECTED && getLocalTime(&timeinfo))
     {
         unsigned long afterTime = millis();
-        Serial.printf("[DEBUG] getLocalTime took %lu ms\n", afterTime - beforeTime);
+        debugLog("[DEBUG] getLocalTime took %lu ms\n", afterTime - beforeTime);
         // Build formatted time string: "10:40 Mon Dec 1 2025"
         char timePart[8];
         if (use24HourClock) {
@@ -3931,10 +3937,10 @@ void updateDisplay(float currentTemp, float currentHumidity)
         }
         
         unsigned long afterTimeOps = millis();
-        Serial.printf("[DEBUG] Time operations took %lu ms\n", afterTimeOps - beforeTime);
+        debugLog("[DEBUG] Time operations took %lu ms\n", afterTimeOps - beforeTime);
     } else {
         unsigned long afterFailedTime = millis();
-        Serial.printf("[DEBUG] getLocalTime failed, took %lu ms\n", afterFailedTime - beforeTime);
+        debugLog("[DEBUG] getLocalTime failed, took %lu ms\n", afterFailedTime - beforeTime);
     }
     
     // Display weather if enabled and data is valid
@@ -3944,22 +3950,22 @@ void updateDisplay(float currentTemp, float currentHumidity)
     }
     if (weatherSource != 0 && weather.isDataValid()) {
         if (!lastWeatherDisplayState) {
-            Serial.println("WEATHER DISPLAY: Showing weather on TFT");
+            debugLog("WEATHER DISPLAY: Showing weather on TFT\n");
             WeatherData data = weather.getData();
-            Serial.printf("  Temp: %.1f, Condition: %s\n", data.temperature, data.condition.c_str());
+            debugLog("  Temp: %.1f, Condition: %s\n", data.temperature, data.condition.c_str());
             lastWeatherDisplayState = true;
         }
         weather.displayOnTFT(tft, 5, 25, useFahrenheit);
     } else if (weatherSource != 0) {
         if (lastWeatherDisplayState) {
-            Serial.printf("WEATHER DISPLAY: Clearing (source=%d, valid=%d)\n", 
+            debugLog("WEATHER DISPLAY: Clearing (source=%d, valid=%d)\n", 
                          weatherSource, weather.isDataValid());
             lastWeatherDisplayState = false;
         }
         // Clear weather area if weather is enabled but data invalid
         tft.fillRect(5, 25, 110, 40, COLOR_BACKGROUND);
     } else if (lastWeatherDisplayState) {
-        Serial.println("WEATHER DISPLAY: Weather disabled, clearing display");
+        debugLog("WEATHER DISPLAY: Weather disabled, clearing display\n");
         tft.fillRect(5, 25, 110, 40, COLOR_BACKGROUND);
         lastWeatherDisplayState = false;
     }
@@ -4196,42 +4202,42 @@ void updateDisplay(float currentTemp, float currentHumidity)
 
 void saveSettings()
 {
-    Serial.println("Saving settings:");
-    Serial.print("setTempHeat: "); Serial.println(setTempHeat);
-    Serial.print("setTempCool: "); Serial.println(setTempCool);
-    Serial.print("setTempAuto: "); Serial.println(setTempAuto);
-    Serial.print("tempSwing: "); Serial.println(tempSwing);
-    Serial.print("autoTempSwing: "); Serial.println(autoTempSwing);
-    Serial.print("fanRelayNeeded: "); Serial.println(fanRelayNeeded);
-    Serial.print("useFahrenheit: "); Serial.println(useFahrenheit);
-    Serial.print("mqttEnabled: "); Serial.println(mqttEnabled);
-    Serial.print("fanMinutesPerHour: "); Serial.println(fanMinutesPerHour);
-    Serial.print("mqttServer: "); Serial.println(mqttServer);
-    Serial.print("mqttPort: "); Serial.println(mqttPort);
-    Serial.print("mqttUsername: "); Serial.println(mqttUsername);
-    Serial.print("mqttPassword: "); Serial.println(mqttPassword);
-    Serial.print("wifiSSID: "); Serial.println(wifiSSID);
-    Serial.print("wifiPassword: "); Serial.println(wifiPassword);
-    Serial.print("thermostatMode: "); Serial.println(thermostatMode);
-    Serial.print("fanMode: "); Serial.println(fanMode);
-    Serial.print("timeZone: "); Serial.println(timeZone);
-    Serial.print("use24HourClock: "); Serial.println(use24HourClock);
-    Serial.print("hydronicHeatingEnabled: "); Serial.println(hydronicHeatingEnabled);
-    Serial.print("hydronicTempLow: "); Serial.println(hydronicTempLow);
-    Serial.print("hydronicTempHigh: "); Serial.println(hydronicTempHigh);
-    Serial.print("hostname: "); Serial.println(hostname);
-    Serial.print("stage1MinRuntime: "); Serial.println(stage1MinRuntime);
-    Serial.print("stage2TempDelta: "); Serial.println(stage2TempDelta);
-    Serial.print("stage2HeatingEnabled: "); Serial.println(stage2HeatingEnabled);
-    Serial.print("stage2CoolingEnabled: "); Serial.println(stage2CoolingEnabled);
-    Serial.print("weatherSource: "); Serial.println(weatherSource);
-    Serial.print("owmApiKey: "); Serial.println(owmApiKey.length() > 0 ? "[SET]" : "[NOT SET]");
-    Serial.print("owmCity: "); Serial.println(owmCity);
-    Serial.print("owmCountry: "); Serial.println(owmCountry);
-    Serial.print("haUrl: "); Serial.println(haUrl);
-    Serial.print("haToken: "); Serial.println(haToken.length() > 0 ? "[SET]" : "[NOT SET]");
-    Serial.print("haEntityId: "); Serial.println(haEntityId);
-    Serial.print("weatherUpdateInterval: "); Serial.println(weatherUpdateInterval);
+    debugLog("Saving settings:\n");
+    debugLog("setTempHeat: "); Serial.println(setTempHeat);
+    debugLog("setTempCool: "); Serial.println(setTempCool);
+    debugLog("setTempAuto: "); Serial.println(setTempAuto);
+    debugLog("tempSwing: "); Serial.println(tempSwing);
+    debugLog("autoTempSwing: "); Serial.println(autoTempSwing);
+    debugLog("fanRelayNeeded: "); Serial.println(fanRelayNeeded);
+    debugLog("useFahrenheit: "); Serial.println(useFahrenheit);
+    debugLog("mqttEnabled: "); Serial.println(mqttEnabled);
+    debugLog("fanMinutesPerHour: "); Serial.println(fanMinutesPerHour);
+    debugLog("mqttServer: "); Serial.println(mqttServer);
+    debugLog("mqttPort: "); Serial.println(mqttPort);
+    debugLog("mqttUsername: "); Serial.println(mqttUsername);
+    debugLog("mqttPassword: "); Serial.println(mqttPassword);
+    debugLog("wifiSSID: "); Serial.println(wifiSSID);
+    debugLog("wifiPassword: "); Serial.println(wifiPassword);
+    debugLog("thermostatMode: "); Serial.println(thermostatMode);
+    debugLog("fanMode: "); Serial.println(fanMode);
+    debugLog("timeZone: "); Serial.println(timeZone);
+    debugLog("use24HourClock: "); Serial.println(use24HourClock);
+    debugLog("hydronicHeatingEnabled: "); Serial.println(hydronicHeatingEnabled);
+    debugLog("hydronicTempLow: "); Serial.println(hydronicTempLow);
+    debugLog("hydronicTempHigh: "); Serial.println(hydronicTempHigh);
+    debugLog("hostname: "); Serial.println(hostname);
+    debugLog("stage1MinRuntime: "); Serial.println(stage1MinRuntime);
+    debugLog("stage2TempDelta: "); Serial.println(stage2TempDelta);
+    debugLog("stage2HeatingEnabled: "); Serial.println(stage2HeatingEnabled);
+    debugLog("stage2CoolingEnabled: "); Serial.println(stage2CoolingEnabled);
+    debugLog("weatherSource: "); Serial.println(weatherSource);
+    debugLog("owmApiKey: "); Serial.println(owmApiKey.length() > 0 ? "[SET]" : "[NOT SET]");
+    debugLog("owmCity: "); Serial.println(owmCity);
+    debugLog("owmCountry: "); Serial.println(owmCountry);
+    debugLog("haUrl: "); Serial.println(haUrl);
+    debugLog("haToken: "); Serial.println(haToken.length() > 0 ? "[SET]" : "[NOT SET]");
+    debugLog("haEntityId: "); Serial.println(haEntityId);
+    debugLog("weatherUpdateInterval: "); Serial.println(weatherUpdateInterval);
 
     preferences.putFloat("setHeat", setTempHeat);
     preferences.putFloat("setCool", setTempCool);
@@ -4284,7 +4290,7 @@ void saveSettings()
     }
 
     // Debug print to confirm settings are saved
-    Serial.print("Settings saved.");
+    debugLog("Settings saved.");
 }
 
 void loadSettings()
@@ -4334,51 +4340,51 @@ void loadSettings()
     weatherUpdateInterval = preferences.getInt("weatherInt", 10);
     
     // Debug print to confirm settings are loaded
-    Serial.println("Loading settings:");
-    Serial.print("setTempHeat: "); Serial.println(setTempHeat);
-    Serial.print("setTempCool: "); Serial.println(setTempCool);
-    Serial.print("setTempAuto: "); Serial.println(setTempAuto);
-    Serial.print("tempSwing: "); Serial.println(tempSwing);
-    Serial.print("autoTempSwing: "); Serial.println(autoTempSwing);
-    Serial.print("fanRelayNeeded: "); Serial.println(fanRelayNeeded);
-    Serial.print("useFahrenheit: "); Serial.println(useFahrenheit);
-    Serial.print("mqttEnabled: "); Serial.println(mqttEnabled);
-    Serial.print("fanMinutesPerHour: "); Serial.println(fanMinutesPerHour);
-    Serial.print("mqttServer: "); Serial.println(mqttServer);
-    Serial.print("mqttPort: "); Serial.println(mqttPort);
-    Serial.print("mqttUsername: "); Serial.println(mqttUsername);
-    Serial.print("mqttPassword: "); Serial.println(mqttPassword);
-    Serial.print("wifiSSID: "); Serial.println(wifiSSID);
-    Serial.print("wifiPassword: "); Serial.println(wifiPassword);
-    Serial.print("thermostatMode: "); Serial.println(thermostatMode);
-    Serial.print("fanMode: "); Serial.println(fanMode);
-    Serial.print("timeZone: "); Serial.println(timeZone);
-    Serial.print("use24HourClock: "); Serial.println(use24HourClock);
-    Serial.print("hydronicHeatingEnabled: "); Serial.println(hydronicHeatingEnabled);
-    Serial.print("hydronicTempLow: "); Serial.println(hydronicTempLow);
-    Serial.print("hydronicTempHigh: "); Serial.println(hydronicTempHigh);
-    Serial.print("hydronicLowTempAlertSent: "); Serial.println(hydronicLowTempAlertSent);
-    Serial.print("hostname: "); Serial.println(hostname);
-    Serial.print("stage1MinRuntime: "); Serial.println(stage1MinRuntime);
-    Serial.print("stage2TempDelta: "); Serial.println(stage2TempDelta);
-    Serial.print("stage2HeatingEnabled: "); Serial.println(stage2HeatingEnabled);
-    Serial.print("stage2CoolingEnabled: "); Serial.println(stage2CoolingEnabled);
-    Serial.print("tempOffset: "); Serial.println(tempOffset);
-    Serial.print("humidityOffset: "); Serial.println(humidityOffset);
-    Serial.print("displaySleepEnabled: "); Serial.println(displaySleepEnabled);
-    Serial.print("displaySleepTimeout: "); Serial.println(displaySleepTimeout);
-    Serial.print("weatherSource: "); Serial.println(weatherSource);
-    Serial.print("owmApiKey: "); Serial.println(owmApiKey.length() > 0 ? "[SET]" : "[NOT SET]");
-    Serial.print("owmCity: "); Serial.println(owmCity);
-    Serial.print("owmState: "); Serial.println(owmState);
-    Serial.print("owmCountry: "); Serial.println(owmCountry);
-    Serial.print("haUrl: "); Serial.println(haUrl);
-    Serial.print("haToken: "); Serial.println(haToken.length() > 0 ? "[SET]" : "[NOT SET]");
-    Serial.print("haEntityId: "); Serial.println(haEntityId);
-    Serial.print("weatherUpdateInterval: "); Serial.println(weatherUpdateInterval);
+    debugLog("Loading settings:\n");
+    debugLog("setTempHeat: "); Serial.println(setTempHeat);
+    debugLog("setTempCool: "); Serial.println(setTempCool);
+    debugLog("setTempAuto: "); Serial.println(setTempAuto);
+    debugLog("tempSwing: "); Serial.println(tempSwing);
+    debugLog("autoTempSwing: "); Serial.println(autoTempSwing);
+    debugLog("fanRelayNeeded: "); Serial.println(fanRelayNeeded);
+    debugLog("useFahrenheit: "); Serial.println(useFahrenheit);
+    debugLog("mqttEnabled: "); Serial.println(mqttEnabled);
+    debugLog("fanMinutesPerHour: "); Serial.println(fanMinutesPerHour);
+    debugLog("mqttServer: "); Serial.println(mqttServer);
+    debugLog("mqttPort: "); Serial.println(mqttPort);
+    debugLog("mqttUsername: "); Serial.println(mqttUsername);
+    debugLog("mqttPassword: "); Serial.println(mqttPassword);
+    debugLog("wifiSSID: "); Serial.println(wifiSSID);
+    debugLog("wifiPassword: "); Serial.println(wifiPassword);
+    debugLog("thermostatMode: "); Serial.println(thermostatMode);
+    debugLog("fanMode: "); Serial.println(fanMode);
+    debugLog("timeZone: "); Serial.println(timeZone);
+    debugLog("use24HourClock: "); Serial.println(use24HourClock);
+    debugLog("hydronicHeatingEnabled: "); Serial.println(hydronicHeatingEnabled);
+    debugLog("hydronicTempLow: "); Serial.println(hydronicTempLow);
+    debugLog("hydronicTempHigh: "); Serial.println(hydronicTempHigh);
+    debugLog("hydronicLowTempAlertSent: "); Serial.println(hydronicLowTempAlertSent);
+    debugLog("hostname: "); Serial.println(hostname);
+    debugLog("stage1MinRuntime: "); Serial.println(stage1MinRuntime);
+    debugLog("stage2TempDelta: "); Serial.println(stage2TempDelta);
+    debugLog("stage2HeatingEnabled: "); Serial.println(stage2HeatingEnabled);
+    debugLog("stage2CoolingEnabled: "); Serial.println(stage2CoolingEnabled);
+    debugLog("tempOffset: "); Serial.println(tempOffset);
+    debugLog("humidityOffset: "); Serial.println(humidityOffset);
+    debugLog("displaySleepEnabled: "); Serial.println(displaySleepEnabled);
+    debugLog("displaySleepTimeout: "); Serial.println(displaySleepTimeout);
+    debugLog("weatherSource: "); Serial.println(weatherSource);
+    debugLog("owmApiKey: "); Serial.println(owmApiKey.length() > 0 ? "[SET]" : "[NOT SET]");
+    debugLog("owmCity: "); Serial.println(owmCity);
+    debugLog("owmState: "); Serial.println(owmState);
+    debugLog("owmCountry: "); Serial.println(owmCountry);
+    debugLog("haUrl: "); Serial.println(haUrl);
+    debugLog("haToken: "); Serial.println(haToken.length() > 0 ? "[SET]" : "[NOT SET]");
+    debugLog("haEntityId: "); Serial.println(haEntityId);
+    debugLog("weatherUpdateInterval: "); Serial.println(weatherUpdateInterval);
 
     // Debug print to confirm settings are loaded
-    Serial.print("Settings loaded.");
+    debugLog("Settings loaded.");
 }
 
 float convertCtoF(float celsius)
@@ -4407,11 +4413,11 @@ void calibrateTouchScreen()
 
     if (calDataOK && tft.getTouchRaw(&calData[0], &calData[1]))
     {
-        Serial.println("Touch screen calibration data loaded from Preferences");
+        debugLog("Touch screen calibration data loaded from Preferences\n");
     }
     else
     {
-        Serial.println("Calibrating touch screen...");
+        debugLog("Calibrating touch screen...\n");
         tft.fillScreen(COLOR_BACKGROUND);
         tft.setCursor(20, 0);
         tft.setTextFont(2);
@@ -4476,23 +4482,23 @@ void handleKeyboardTouch(uint16_t x, uint16_t y, bool isUpperCaseKeyboard)
             if (x >= expandedX && x <= expandedX + expandedWidth &&
                 y >= expandedY && y <= expandedY + expandedHeight)
             {
-                Serial.print("Touch at (");
+                debugLog("Touch at (");
                 Serial.print(x);
-                Serial.print(",");
+                debugLog(",");
                 Serial.print(y);
-                Serial.print(") -> Key[");
+                debugLog(") -> Key[");
                 Serial.print(row);
-                Serial.print(",");
+                debugLog(",");
                 Serial.print(col);
-                Serial.print("] KeyArea(");
+                debugLog("] KeyArea(");
                 Serial.print(keyX);
-                Serial.print(",");
+                debugLog(",");
                 Serial.print(keyY);
-                Serial.print(" ");
+                debugLog(" ");
                 Serial.print(KEY_WIDTH);
-                Serial.print("x");
+                debugLog("x");
                 Serial.print(KEY_HEIGHT);
-                Serial.println(")");
+                debugLog(")\n");
                 
                 // Process the key press
                 handleKeyPress(row, col);
@@ -4650,7 +4656,7 @@ void checkDisplaySleep() {
         if (dataAge > RADAR_DATA_MAX_AGE) {
             // Data is stale, skip this check
             if (firstMotionTime > 0) {
-                Serial.printf("[MOTION_WAKE] Data too old (%lums), resetting tracker\n", dataAge);
+                debugLog("[MOTION_WAKE] Data too old (%lums), resetting tracker\n", dataAge);
                 firstMotionTime = 0;
             }
             return;
@@ -4677,12 +4683,12 @@ void checkDisplaySleep() {
                 // Start or continue tracking
                 if (firstMotionTime == 0) {
                     firstMotionTime = currentTime;
-                    Serial.printf("[MOTION_WAKE] Started tracking: %lucm, signal %d\n", distance, signal);
+                    debugLog("[MOTION_WAKE] Started tracking: %lucm, signal %d\n", distance, signal);
                 } else {
                     // Check if sustained long enough
                     unsigned long duration = currentTime - firstMotionTime;
                     if (duration >= MOTION_WAKE_DEBOUNCE) {
-                        Serial.printf("[MOTION_WAKE] Sustained %lums: %lucm, signal %d - WAKING\n", 
+                        debugLog("[MOTION_WAKE] Sustained %lums: %lucm, signal %d - WAKING\n", 
                                       duration, distance, signal);
                         firstMotionTime = 0;
                         wakeDisplay();
@@ -4692,7 +4698,7 @@ void checkDisplaySleep() {
             } else {
                 // Log why motion was filtered
                 if (currentTime - lastFilterLog > 2000) {
-                    Serial.printf("[MOTION_WAKE] Filtered: %lucm (max %d), signal %d (range %d-%d)\n",
+                    debugLog("[MOTION_WAKE] Filtered: %lucm (max %d), signal %d (range %d-%d)\n",
                                   distance, MOTION_WAKE_MAX_DISTANCE, signal, 
                                   MOTION_WAKE_MIN_SIGNAL, MOTION_WAKE_MAX_SIGNAL);
                     lastFilterLog = currentTime;
@@ -4704,7 +4710,7 @@ void checkDisplaySleep() {
         
         // Reset if motion stopped or invalid
         if (!validMotion && firstMotionTime > 0) {
-            Serial.println("[MOTION_WAKE] Motion lost - resetting tracker");
+            debugLog("[MOTION_WAKE] Motion lost - resetting tracker\n");
             firstMotionTime = 0;
         }
     } else {
@@ -4718,7 +4724,7 @@ void checkDisplaySleep() {
     
     // Check if display should go to sleep
     if (!displayIsAsleep && (timeSinceInteraction > displaySleepTimeout)) {
-        Serial.printf("[SLEEP] Display going to sleep after %lu ms\n", timeSinceInteraction);
+        debugLog("[SLEEP] Display going to sleep after %lu ms\n", timeSinceInteraction);
         sleepDisplay();
     }
 }
@@ -4762,14 +4768,14 @@ bool waitForLD2410Response(unsigned long timeoutMs) {
 
 // Configure LD2410 using raw UART commands (bypasses library initialization)
 bool configureLD2410ViaRawUART() {
-    Serial.println("LD2410: Configuring via raw UART commands...");
+    debugLog("LD2410: Configuring via raw UART commands...\n");
     
     // Clear buffer
     while (Serial2.available()) Serial2.read();
     delay(100);
     
     // Enter config mode
-    Serial.println("  Entering config mode...");
+    debugLog("  Entering config mode...\n");
     uint8_t enableConfig[] = {0xFD, 0xFC, 0xFB, 0xFA, 0x04, 0x00, 
                                0xFF, 0x00, 0x01, 0x00, 
                                0x04, 0x03, 0x02, 0x01};
@@ -4777,16 +4783,16 @@ bool configureLD2410ViaRawUART() {
     delay(200);
     
     if (waitForLD2410Response(200)) {
-        Serial.println("    ✓ Config mode enabled");
+        debugLog("    ✓ Config mode enabled\n");
         // Clear the response
         while (Serial2.available()) Serial2.read();
     } else {
-        Serial.println("    ✗ No config mode response");
+        debugLog("    ✗ No config mode response\n");
         return false;
     }
     
     // Set max distance: 4 gates = 3 meters, 5 second timeout
-    Serial.println("  Setting max distance (4 gates = 3m, 5s timeout)...");
+    debugLog("  Setting max distance (4 gates = 3m, 5s timeout)...\n");
     uint8_t setMaxDist[] = {0xFD, 0xFC, 0xFB, 0xFA, 0x14, 0x00, 
                              0x60, 0x00, 0x00, 0x00, 
                              0x04, 0x00, 0x00, 0x00, // Max motion gate
@@ -4797,14 +4803,14 @@ bool configureLD2410ViaRawUART() {
     delay(200);
     
     if (waitForLD2410Response(200)) {
-        Serial.println("    ✓ Max distance set");
+        debugLog("    ✓ Max distance set\n");
         while (Serial2.available()) Serial2.read();
     } else {
-        Serial.println("    ✗ No max distance response");
+        debugLog("    ✗ No max distance response\n");
     }
     
     // Set sensitivity for each gate (reduce false positives)
-    Serial.println("  Setting sensitivity per gate (Motion=30, Static=20)...");
+    debugLog("  Setting sensitivity per gate (Motion=30, Static=20)...\n");
     for (uint8_t gate = 0; gate <= 4; gate++) {
         uint8_t setSensitivity[] = {0xFD, 0xFC, 0xFB, 0xFA, 0x14, 0x00,
                                      0x64, 0x00, 0x00, 0x00,
@@ -4816,37 +4822,37 @@ bool configureLD2410ViaRawUART() {
         delay(100);
         
         if (waitForLD2410Response(100)) {
-            Serial.printf("    ✓ Gate %d configured\n", gate);
+            debugLog("    ✓ Gate %d configured\n", gate);
             while (Serial2.available()) Serial2.read();
         }
     }
     
     // Exit config mode
-    Serial.println("  Exiting config mode...");
+    debugLog("  Exiting config mode...\n");
     uint8_t endConfig[] = {0xFD, 0xFC, 0xFB, 0xFA, 0x02, 0x00, 
                             0xFE, 0x00, 
                             0x04, 0x03, 0x02, 0x01};
     Serial2.write(endConfig, sizeof(endConfig));
     delay(500);
     
-    Serial.println("LD2410: Raw UART configuration complete");
+    debugLog("LD2410: Raw UART configuration complete\n");
     return true;
 }
 
 bool configureLD2410Sensitivity() {
-    Serial.println("LD2410: Configuring sensor sensitivity...");
+    debugLog("LD2410: Configuring sensor sensitivity...\n");
     
     // Enter configuration mode
     if (!radar.configMode()) {
-        Serial.println("  ✗ Failed to enter config mode");
+        debugLog("  ✗ Failed to enter config mode\n");
         return false;
     }
     
     // Read current configuration
     radar.requestParameters();
-    Serial.println("  Current configuration:");
-    Serial.printf("    Max range: %lu cm\n", radar.getRange_cm());
-    Serial.printf("    No-one window: %d seconds\n", radar.getNoOneWindow());
+    debugLog("  Current configuration:\n");
+    debugLog("    Max range: %lu cm\n", radar.getRange_cm());
+    debugLog("    No-one window: %d seconds\n", radar.getNoOneWindow());
     
     // Set conservative parameters to reduce false positives:
     // - Max gate 4 (~3 meters)
@@ -4864,52 +4870,52 @@ bool configureLD2410Sensitivity() {
         stationaryThresholds.values[i] = (i <= 4) ? 20 : 10;  // Gates 0-4: 20, 5-8: 10
     }
     
-    Serial.println("  Setting gate parameters...");
+    debugLog("  Setting gate parameters...\n");
     if (!radar.setGateParameters(movingThresholds, stationaryThresholds, 5)) {
-        Serial.println("  ✗ Failed to set gate parameters");
+        debugLog("  ✗ Failed to set gate parameters\n");
         radar.configMode(false);
         return false;
     }
-    Serial.println("    ✓ Gate parameters set");
+    debugLog("    ✓ Gate parameters set\n");
     
     // Exit configuration mode
     radar.configMode(false);
     
-    Serial.println("LD2410: Configuration complete");
+    debugLog("LD2410: Configuration complete\n");
     return true;
 }
 
 bool testLD2410Connection() {
-    Serial.println("LD2410: Testing motion sensor with MyLD2410 library...");
-    Serial.println("LD2410: UART Debug Info:");
-    Serial.printf("  RX Pin: %d, TX Pin: %d, Baud: 256000\n", LD2410_RX_PIN, LD2410_TX_PIN);
-    Serial.printf("  Serial2 available: %d bytes\n", Serial2.available());
+    debugLog("LD2410: Testing motion sensor with MyLD2410 library...\n");
+    debugLog("LD2410: UART Debug Info:\n");
+    debugLog("  RX Pin: %d, TX Pin: %d, Baud: 256000\n", LD2410_RX_PIN, LD2410_TX_PIN);
+    debugLog("  Serial2 available: %d bytes\n", Serial2.available());
     
     // MyLD2410 library handles continuous stream naturally via check() method
-    Serial.println("  Initializing with MyLD2410 library...");
+    debugLog("  Initializing with MyLD2410 library...\n");
     
     if (radar.begin()) {
-        Serial.println("LD2410: ✓ Library initialized!");
+        debugLog("LD2410: ✓ Library initialized!\n");
         
         // Request configuration mode to read firmware
         radar.configMode();
-        Serial.printf("  Firmware: %s\n", radar.getFirmware().c_str());
-        Serial.printf("  Protocol version: %lu\n", radar.getVersion());
+        debugLog("  Firmware: %s\n", radar.getFirmware().c_str());
+        debugLog("  Protocol version: %lu\n", radar.getVersion());
         radar.configMode(false);
         
         // Configure sensor to reduce false positives
         if (configureLD2410Sensitivity()) {
-            Serial.println("LD2410: ✓ Sensor configured successfully");
+            debugLog("LD2410: ✓ Sensor configured successfully\n");
         } else {
-            Serial.println("LD2410: ✗ Warning - configuration may have failed");
+            debugLog("LD2410: ✗ Warning - configuration may have failed\n");
         }
         
         return true;
     } else {
-        Serial.println("LD2410: ✗ Library initialization failed");
+        debugLog("LD2410: ✗ Library initialization failed\n");
         
         // Check digital pin as fallback
-        Serial.println("  Checking digital OUT pin as fallback...");
+        debugLog("  Checking digital OUT pin as fallback...\n");
         pinMode(LD2410_MOTION_PIN, INPUT_PULLDOWN);
         delay(100);
         
@@ -4919,10 +4925,10 @@ bool testLD2410Connection() {
             delay(10);
         }
         
-        Serial.printf("  Digital pin readings: %d %d %d %d %d\n", 
+        debugLog("  Digital pin readings: %d %d %d %d %d\n", 
                       readings[0], readings[1], readings[2], readings[3], readings[4]);
         
-        Serial.println("  WARNING: Using digital OUT pin only");
+        debugLog("  WARNING: Using digital OUT pin only\n");
         return false;
     }
 }
@@ -4980,19 +4986,19 @@ void readMotionSensor() {
     
     if (currentPresence != lastPresenceState) {
         unsigned long now = millis();
-        Serial.printf("LD2410: Presence %s after %lu ms\n", 
+        debugLog("LD2410: Presence %s after %lu ms\n", 
                       currentPresence ? "DETECTED" : "CLEARED",
                       now - lastPresenceChangeTime);
         
         // Show what type of target was detected
         if (currentPresence) {
             if (radar.movingTargetDetected()) {
-                Serial.printf("  Moving target at %lu cm (signal: %d)\n",
+                debugLog("  Moving target at %lu cm (signal: %d)\n",
                               radar.movingTargetDistance(),
                               radar.movingTargetSignal());
             }
             if (radar.stationaryTargetDetected()) {
-                Serial.printf("  Stationary target at %lu cm (signal: %d)\n",
+                debugLog("  Stationary target at %lu cm (signal: %d)\n",
                               radar.stationaryTargetDistance(),
                               radar.stationaryTargetSignal());
             }
@@ -5007,10 +5013,10 @@ void readMotionSensor() {
                 // Apply same filters as sustained motion wake
                 if (distance > 0 && distance < MOTION_WAKE_MAX_DISTANCE && 
                     signal >= MOTION_WAKE_MIN_SIGNAL && signal <= MOTION_WAKE_MAX_SIGNAL) {
-                    Serial.printf("LD2410: Waking display - NEW moving target: %lucm, signal %d\n", distance, signal);
+                    debugLog("LD2410: Waking display - NEW moving target: %lucm, signal %d\n", distance, signal);
                     wakeDisplay();
                 } else {
-                    Serial.printf("LD2410: Filtered NEW moving target: %lucm (max %d), signal %d (range %d-%d)\n",
+                    debugLog("LD2410: Filtered NEW moving target: %lucm (max %d), signal %d (range %d-%d)\n",
                                   distance, MOTION_WAKE_MAX_DISTANCE, signal, 
                                   MOTION_WAKE_MIN_SIGNAL, MOTION_WAKE_MAX_SIGNAL);
                 }
@@ -5023,14 +5029,14 @@ void readMotionSensor() {
     
     if (currentPresence) {
         if (!motionDetected) {
-            Serial.println("LD2410: Presence activated - starting presence timer");
+            debugLog("LD2410: Presence activated - starting presence timer\n");
         }
         motionDetected = true;
         lastMotionTime = millis();
     } else {
         // Presence cleared by sensor's internal timeout (configured in no-one window parameter)
         if (motionDetected) {
-            Serial.println("LD2410: Presence timeout - clearing motion flag");
+            debugLog("LD2410: Presence timeout - clearing motion flag\n");
             motionDetected = false;
         }
     }
@@ -5039,7 +5045,7 @@ void readMotionSensor() {
     static unsigned long lastDebugTime = 0;
     if (millis() - lastDebugTime > 10000) {
         lastDebugTime = millis();
-        Serial.printf("LD2410: Presence=%s, Motion Flag=%s, Age=%lu ms\n",
+        debugLog("LD2410: Presence=%s, Motion Flag=%s, Age=%lu ms\n",
                       currentPresence ? "YES" : "NO",
                       motionDetected ? "ACTIVE" : "INACTIVE",
                       millis() - lastMotionTime);
@@ -5047,12 +5053,12 @@ void readMotionSensor() {
         // Show target details if present
         if (currentPresence) {
             if (radar.movingTargetDetected()) {
-                Serial.printf("  Moving: %lucm @ signal %d\n",
+                debugLog("  Moving: %lucm @ signal %d\n",
                               radar.movingTargetDistance(),
                               radar.movingTargetSignal());
             }
             if (radar.stationaryTargetDetected()) {
-                Serial.printf("  Stationary: %lucm @ signal %d\n",
+                debugLog("  Stationary: %lucm @ signal %d\n",
                               radar.stationaryTargetDistance(),
                               radar.stationaryTargetSignal());
             }

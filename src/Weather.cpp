@@ -19,19 +19,19 @@ Weather::Weather() {
 }
 
 void Weather::begin() {
-    Serial.println("[Weather] begin() called - initializing weather module");
+    debugLog("[Weather] begin() called - initializing weather module\n");
     _data.valid = false;
     _lastError = "";
-    Serial.printf("[Weather] Source: %d, Update interval: %lu ms\n", _source, _updateInterval);
+    debugLog("[Weather] Source: %d, Update interval: %lu ms\n", _source, _updateInterval);
 }
 
 void Weather::setSource(WeatherSource source) {
-    Serial.printf("[Weather] setSource() called - changing from %d to %d\n", _source, source);
+    debugLog("[Weather] setSource() called - changing from %d to %d\n", _source, source);
     _source = source;
 }
 
 void Weather::setOpenWeatherMapConfig(String apiKey, String city, String state, String countryCode) {
-    Serial.printf("[Weather] setOpenWeatherMapConfig() - City: %s, State: %s, Country: %s, API Key: %s\n", 
+    debugLog("[Weather] setOpenWeatherMapConfig() - City: %s, State: %s, Country: %s, API Key: %s\n", 
                   city.c_str(), 
                   state.c_str(),
                   countryCode.c_str(), 
@@ -43,7 +43,7 @@ void Weather::setOpenWeatherMapConfig(String apiKey, String city, String state, 
 }
 
 void Weather::setHomeAssistantConfig(String haUrl, String haToken, String entityId) {
-    Serial.printf("[Weather] setHomeAssistantConfig() - URL: %s, Entity: %s, Token: %s\n", 
+    debugLog("[Weather] setHomeAssistantConfig() - URL: %s, Entity: %s, Token: %s\n", 
                   haUrl.c_str(), 
                   entityId.c_str(), 
                   haToken.isEmpty() ? "[NOT SET]" : "[SET]");
@@ -65,37 +65,37 @@ bool Weather::update() {
     
     // Check if it's time to update (unless forced)
     if (!_forceNextUpdate && currentTime - _lastUpdateAttempt < _updateInterval) {
-        // Serial.printf("[Weather] update() - skipping, %lu ms until next update\n", 
+        // debugLog("[Weather] update() - skipping, %lu ms until next update\n", 
         //               _updateInterval - (currentTime - _lastUpdateAttempt));
         return _data.valid;
     }
     
-    Serial.printf("[Weather] update() - starting update (source: %d, forced: %d)\n", _source, _forceNextUpdate);
+    debugLog("[Weather] update() - starting update (source: %d, forced: %d)\n", _source, _forceNextUpdate);
     _forceNextUpdate = false; // Clear force flag after first use
     _lastUpdateAttempt = currentTime;
     
     if (_source == WEATHER_DISABLED) {
-        Serial.println("[Weather] update() - weather source is DISABLED");
+        debugLog("[Weather] update() - weather source is DISABLED\n");
         _lastError = "Weather disabled";
         return false;
     }
     
     bool success = false;
     if (_source == WEATHER_OPENWEATHERMAP) {
-        Serial.println("[Weather] update() - calling updateFromOpenWeatherMap()");
+        debugLog("[Weather] update() - calling updateFromOpenWeatherMap()\n");
         success = updateFromOpenWeatherMap();
     } else if (_source == WEATHER_HOMEASSISTANT) {
-        Serial.println("[Weather] update() - calling updateFromHomeAssistant()");
+        debugLog("[Weather] update() - calling updateFromHomeAssistant()\n");
         success = updateFromHomeAssistant();
     } else {
-        Serial.printf("[Weather] update() - UNKNOWN source: %d\n", _source);
+        debugLog("[Weather] update() - UNKNOWN source: %d\n", _source);
     }
     
     if (success) {
         _data.lastUpdate = currentTime;
-        Serial.println("[Weather] update() - SUCCESS");
+        debugLog("[Weather] update() - SUCCESS\n");
     } else {
-        Serial.printf("[Weather] update() - FAILED: %s\n", _lastError.c_str());
+        debugLog("[Weather] update() - FAILED: %s\n", _lastError.c_str());
     }
     
     return success;
@@ -107,11 +107,11 @@ void Weather::forceUpdate() {
 }
 
 bool Weather::updateFromOpenWeatherMap() {
-    Serial.println("[Weather] updateFromOpenWeatherMap() - starting");
+    debugLog("[Weather] updateFromOpenWeatherMap() - starting\n");
     
     if (_owmApiKey.isEmpty() || _owmCity.isEmpty()) {
         _lastError = "OpenWeatherMap not configured";
-        Serial.printf("[Weather] OWM - Config error: API Key %s, City %s\n",
+        debugLog("[Weather] OWM - Config error: API Key %s, City %s\n",
                       _owmApiKey.isEmpty() ? "EMPTY" : "OK",
                       _owmCity.isEmpty() ? "EMPTY" : "OK");
         return false;
@@ -142,19 +142,19 @@ bool Weather::updateFromOpenWeatherMap() {
     
     http.begin(url);
     http.setTimeout(5000);
-    Serial.println("[Weather] OWM - Sending HTTP GET request...");
+    debugLog("[Weather] OWM - Sending HTTP GET request...\n");
     int httpCode = http.GET();
-    Serial.printf("[Weather] OWM - HTTP response code: %d\n", httpCode);
+    debugLog("[Weather] OWM - HTTP response code: %d\n", httpCode);
     
     if (httpCode != 200) {
         _lastError = "HTTP error: " + String(httpCode);
-        Serial.printf("[Weather] OWM - HTTP FAILED: %d\n", httpCode);
+        debugLog("[Weather] OWM - HTTP FAILED: %d\n", httpCode);
         http.end();
         return false;
     }
     
     String payload = http.getString();
-    Serial.printf("[Weather] OWM - Received payload length: %d bytes\n", payload.length());
+    debugLog("[Weather] OWM - Received payload length: %d bytes\n", payload.length());
     http.end();
     
     // Parse JSON response
@@ -163,14 +163,14 @@ bool Weather::updateFromOpenWeatherMap() {
     
     if (error) {
         _lastError = "JSON parse error: " + String(error.c_str());
-        Serial.printf("[Weather] OWM - JSON parse FAILED: %s\n", error.c_str());
+        debugLog("[Weather] OWM - JSON parse FAILED: %s\n", error.c_str());
         Serial.println("[Weather] OWM - Payload: " + payload);
         return false;
     }
-    Serial.println("[Weather] OWM - JSON parsed successfully");
+    debugLog("[Weather] OWM - JSON parsed successfully\n");
     
     // Extract weather data
-    Serial.println("[Weather] OWM - Extracting weather data from JSON...");
+    debugLog("[Weather] OWM - Extracting weather data from JSON...\n");
     _data.temperature = doc["main"]["temp"];
     _data.tempHigh = doc["main"]["temp_max"];
     _data.tempLow = doc["main"]["temp_min"];
@@ -183,7 +183,7 @@ bool Weather::updateFromOpenWeatherMap() {
     _data.valid = true;
     _lastError = "";
     
-    Serial.printf("[Weather] OWM - SUCCESS: Temp=%.1f%s, High=%.1f, Low=%.1f, Condition=%s, Humidity=%d%%\n", 
+    debugLog("[Weather] OWM - SUCCESS: Temp=%.1f%s, High=%.1f, Low=%.1f, Condition=%s, Humidity=%d%%\n", 
                   _data.temperature, 
                   _useFahrenheit ? "F" : "C",
                   _data.tempHigh,
@@ -195,11 +195,11 @@ bool Weather::updateFromOpenWeatherMap() {
 }
 
 bool Weather::updateFromHomeAssistant() {
-    Serial.println("[Weather] updateFromHomeAssistant() - starting");
+    debugLog("[Weather] updateFromHomeAssistant() - starting\n");
     
     if (_haUrl.isEmpty() || _haToken.isEmpty() || _haEntityId.isEmpty()) {
         _lastError = "Home Assistant not configured";
-        Serial.printf("[Weather] HA - Config error: URL %s, Token %s, Entity %s\n",
+        debugLog("[Weather] HA - Config error: URL %s, Token %s, Entity %s\n",
                       _haUrl.isEmpty() ? "EMPTY" : "OK",
                       _haToken.isEmpty() ? "EMPTY" : "OK",
                       _haEntityId.isEmpty() ? "EMPTY" : "OK");
@@ -215,20 +215,20 @@ bool Weather::updateFromHomeAssistant() {
     http.setTimeout(5000);
     http.addHeader("Authorization", "Bearer " + _haToken);
     http.addHeader("Content-Type", "application/json");
-    Serial.println("[Weather] HA - Headers set, sending HTTP GET request...");
+    debugLog("[Weather] HA - Headers set, sending HTTP GET request...\n");
     
     int httpCode = http.GET();
-    Serial.printf("[Weather] HA - HTTP response code: %d\n", httpCode);
+    debugLog("[Weather] HA - HTTP response code: %d\n", httpCode);
     
     if (httpCode != 200) {
         _lastError = "HTTP error: " + String(httpCode);
-        Serial.printf("[Weather] HA - HTTP FAILED: %d\n", httpCode);
+        debugLog("[Weather] HA - HTTP FAILED: %d\n", httpCode);
         http.end();
         return false;
     }
     
     String payload = http.getString();
-    Serial.printf("[Weather] HA - Received payload length: %d bytes\n", payload.length());
+    debugLog("[Weather] HA - Received payload length: %d bytes\n", payload.length());
     http.end();
     
     // Parse JSON response
@@ -237,28 +237,28 @@ bool Weather::updateFromHomeAssistant() {
     
     if (error) {
         _lastError = "JSON parse error: " + String(error.c_str());
-        Serial.printf("[Weather] HA - JSON parse FAILED: %s\n", error.c_str());
+        debugLog("[Weather] HA - JSON parse FAILED: %s\n", error.c_str());
         Serial.println("[Weather] HA - Payload: " + payload);
         return false;
     }
-    Serial.println("[Weather] HA - JSON parsed successfully");
+    debugLog("[Weather] HA - JSON parsed successfully\n");
     
     // Extract weather data from Home Assistant entity
-    Serial.println("[Weather] HA - Extracting weather data from JSON...");
+    debugLog("[Weather] HA - Extracting weather data from JSON...\n");
     _data.temperature = doc["attributes"]["temperature"];
     _data.humidity = doc["attributes"]["humidity"];
     _data.condition = doc["state"].as<String>();
     
     // Optional attributes (may not be present)
     if (doc["attributes"].containsKey("forecast")) {
-        Serial.println("[Weather] HA - Forecast data found");
+        debugLog("[Weather] HA - Forecast data found\n");
         JsonArray forecast = doc["attributes"]["forecast"];
         if (forecast.size() > 0) {
             _data.tempHigh = forecast[0]["temperature"];
             _data.tempLow = forecast[0]["templow"];
         }
     } else {
-        Serial.println("[Weather] HA - No forecast data available");
+        debugLog("[Weather] HA - No forecast data available\n");
     }
     
     if (doc["attributes"].containsKey("wind_speed")) {
@@ -269,7 +269,7 @@ bool Weather::updateFromHomeAssistant() {
     _data.valid = true;
     _lastError = "";
     
-    Serial.printf("[Weather] HA - SUCCESS: Temp=%.1f%s, Condition=%s, Humidity=%d%%\n", 
+    debugLog("[Weather] HA - SUCCESS: Temp=%.1f%s, Condition=%s, Humidity=%d%%\n", 
                   _data.temperature, 
                   _useFahrenheit ? "F" : "C",
                   _data.condition.c_str(),
@@ -436,10 +436,10 @@ void Weather::drawWeatherIcon(TFT_eSPI &tft, int x, int y, String condition) {
 }
 
 void Weather::displayOnTFT(TFT_eSPI &tft, int x, int y, bool useFahrenheit) {
-    Serial.printf("[Weather] displayOnTFT() - called at position (%d, %d), data valid: %d\n", x, y, _data.valid);
+    debugLog("[Weather] displayOnTFT() - called at position (%d, %d), data valid: %d\n", x, y, _data.valid);
     
     if (!_data.valid) {
-        Serial.println("[Weather] displayOnTFT() - data not valid, skipping display");
+        debugLog("[Weather] displayOnTFT() - data not valid, skipping display\n");
         return;
     }
     
@@ -459,7 +459,7 @@ void Weather::displayOnTFT(TFT_eSPI &tft, int x, int y, bool useFahrenheit) {
     prevUnitsF = useFahrenheit;
     prevX = x; prevY = y;
 
-    Serial.printf("[Weather] displayOnTFT() - Redraw: Temp=%.1f%s, Cond=%s\n",
+    debugLog("[Weather] displayOnTFT() - Redraw: Temp=%.1f%s, Cond=%s\n",
                   _data.temperature,
                   useFahrenheit ? "F" : "C",
                   _data.condition.c_str());
