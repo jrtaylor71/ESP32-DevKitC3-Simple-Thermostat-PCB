@@ -316,6 +316,7 @@ void exitKeyboardToPreviousScreen();
 void restoreDefaultSettings();
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 void sendMQTTData();
+void resetMQTTDataCache(); // Force republish all MQTT data on next sendMQTTData call
 void readLightSensor();
 void updateDisplayBrightness();
 
@@ -388,6 +389,16 @@ float previousHumidity = 0.0;
 float previousSetTemp = 0.0;
 // bool firstHourAfterBoot = true; // Flag to track the first hour after bootup - DISABLED
 volatile bool mqttFeedbackNeeded = false; // Flag for immediate MQTT feedback on settings change
+
+// MQTT state tracking variables (moved from sendMQTTData to allow reset on reconnect)
+float mqttLastTemp = 0.0;
+float mqttLastHumidity = 0.0;
+float mqttLastSetTempHeat = 0.0;
+float mqttLastSetTempCool = 0.0;
+float mqttLastSetTempAuto = 0.0;
+String mqttLastThermostatMode = "";
+String mqttLastFanMode = "";
+String mqttLastAction = "";
 
 // Temperature and humidity filtering (exponential moving average)
 float filteredTemp = 0.0;              // EMA-filtered temperature
@@ -1136,6 +1147,10 @@ void setup()
     // Ensure buzzer is off during bootup
     ledcWrite(PWM_CHANNEL_BUZZER, 0);
 
+    // Initialize WiFi in station mode to set up TCP/IP stack
+    // This must be done before any WiFi operations (even WiFi.status() calls in loop)
+    WiFi.mode(WIFI_STA);
+    
     // Load WiFi credentials but don't force connection
     wifiSSID = preferences.getString("wifiSSID", "");
     wifiPassword = preferences.getString("wifiPassword", "");
@@ -2231,6 +2246,12 @@ void reconnectMQTT()
 
             // Publish Home Assistant discovery messages
             publishHomeAssistantDiscovery();
+            
+            // Reset MQTT data cache so all values get republished
+            resetMQTTDataCache();
+            
+            // Immediately publish current state so Home Assistant doesn't show "unknown"
+            sendMQTTData();
         }
         else
         {
@@ -2269,10 +2290,13 @@ void publishHomeAssistantDiscovery()
         char buffer[1024];
         StaticJsonDocument<1024> doc;
 
+        // Get unique device ID from MAC address
+        String deviceId = String(ESP.getEfuseMac(), HEX);
+        
         // Publish discovery message for the thermostat device
         String configTopic = "homeassistant/climate/" + hostname + "/config";
         doc["name"] = "";
-        doc["unique_id"] = hostname;
+        doc["unique_id"] = deviceId;
         doc["current_temperature_topic"] = hostname + "/current_temperature";
         doc["current_humidity_topic"] = hostname + "/current_humidity";
         doc["temperature_command_topic"] = hostname + "/target_temperature/set";
@@ -2281,12 +2305,12 @@ void publishHomeAssistantDiscovery()
         doc["mode_state_topic"] = hostname + "/mode";
         doc["fan_mode_command_topic"] = hostname + "/fan_mode/set";
         doc["fan_mode_state_topic"] = hostname + "/fan_mode";
+        doc["action_topic"] = hostname + "/action";
         doc["availability_topic"] = hostname + "/availability";
         doc["min_temp"] = 50; // Minimum temperature in Fahrenheit
         doc["max_temp"] = 90; // Maximum temperature in Fahrenheit
         doc["temp_step"] = 0.5; // Temperature step
         doc["precision"] = 0.1; // Precision for temperature display (1 decimal place)
-        doc["value_template"] = "{{ value | round(1) }}"; // Round to 1 decimal place
 
         JsonArray modes = doc.createNestedArray("modes");
         modes.add("off");
@@ -2300,7 +2324,8 @@ void publishHomeAssistantDiscovery()
         fanModes.add("cycle");
 
         JsonObject device = doc.createNestedObject("device");
-        device["identifiers"] = hostname;
+        JsonArray identifiers = device.createNestedArray("identifiers");
+        identifiers.add(hostname);
         device["name"] = hostname;
         device["manufacturer"] = "TDC";
         device["model"] = PROJECT_NAME_SHORT;
@@ -2378,6 +2403,20 @@ void publishHomeAssistantDiscovery()
         mqttClient.publish(configTopic.c_str(), "");
         mqttClient.publish(availabilityTopic.c_str(), "offline", true);
     }
+}
+
+// Reset MQTT data cache to force republish all values
+void resetMQTTDataCache()
+{
+    debugLog("[MQTT] Resetting data cache - all values will be republished\n");
+    mqttLastTemp = 0.0;
+    mqttLastHumidity = 0.0;
+    mqttLastSetTempHeat = 0.0;
+    mqttLastSetTempCool = 0.0;
+    mqttLastSetTempAuto = 0.0;
+    mqttLastThermostatMode = "";
+    mqttLastFanMode = "";
+    mqttLastAction = "";
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length)
@@ -2469,32 +2508,24 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
 
 void sendMQTTData()
 {
-    static float lastTemp = 0.0;
-    static float lastHumidity = 0.0;
-    static float lastSetTempHeat = 0.0;
-    static float lastSetTempCool = 0.0;
-    static float lastSetTempAuto = 0.0; // Track last auto temp
-    static String lastThermostatMode = "";
-    static String lastFanMode = "";
-
     if (mqttClient.connected())
     {
         // Publish current temperature
-        if (!isnan(currentTemp) && currentTemp != lastTemp)
+        if (!isnan(currentTemp) && currentTemp != mqttLastTemp)
         {
             String currentTempTopic = hostname + "/current_temperature";
             char tempStr[10];
             snprintf(tempStr, sizeof(tempStr), "%.1f", currentTemp);
             mqttClient.publish(currentTempTopic.c_str(), tempStr, true);
-            lastTemp = currentTemp;
+            mqttLastTemp = currentTemp;
         }
 
         // Publish current humidity
-        if (!isnan(currentHumidity) && currentHumidity != lastHumidity)
+        if (!isnan(currentHumidity) && currentHumidity != mqttLastHumidity)
         {
             String currentHumidityTopic = hostname + "/current_humidity";
             mqttClient.publish(currentHumidityTopic.c_str(), String(currentHumidity, 1).c_str(), true);
-            lastHumidity = currentHumidity;
+            mqttLastHumidity = currentHumidity;
         }
         
         // Publish barometric pressure if BME280 sensor is active
@@ -2511,39 +2542,56 @@ void sendMQTTData()
         }
 
         // Publish target temperature (set temperature for heating, cooling, or auto)
-        if (thermostatMode == "heat" && setTempHeat != lastSetTempHeat)
+        if (thermostatMode == "heat" && setTempHeat != mqttLastSetTempHeat)
         {
             String targetTempTopic = hostname + "/target_temperature";
             mqttClient.publish(targetTempTopic.c_str(), String(setTempHeat, 1).c_str(), true);
-            lastSetTempHeat = setTempHeat;
+            mqttLastSetTempHeat = setTempHeat;
         }
-        else if (thermostatMode == "cool" && setTempCool != lastSetTempCool)
+        else if (thermostatMode == "cool" && setTempCool != mqttLastSetTempCool)
         {
             String targetTempTopic = hostname + "/target_temperature";
             mqttClient.publish(targetTempTopic.c_str(), String(setTempCool, 1).c_str(), true);
-            lastSetTempCool = setTempCool;
+            mqttLastSetTempCool = setTempCool;
         }
-        else if (thermostatMode == "auto" && setTempAuto != lastSetTempAuto)
+        else if (thermostatMode == "auto" && setTempAuto != mqttLastSetTempAuto)
         {
             String targetTempTopic = hostname + "/target_temperature";
             mqttClient.publish(targetTempTopic.c_str(), String(setTempAuto, 1).c_str(), true);
-            lastSetTempAuto = setTempAuto;
+            mqttLastSetTempAuto = setTempAuto;
         }
 
         // Publish thermostat mode
-        if (thermostatMode != lastThermostatMode)
+        if (thermostatMode != mqttLastThermostatMode)
         {
             String modeTopic = hostname + "/mode";
             mqttClient.publish(modeTopic.c_str(), thermostatMode.c_str(), true);
-            lastThermostatMode = thermostatMode;
+            mqttLastThermostatMode = thermostatMode;
         }
 
         // Publish fan mode
-        if (fanMode != lastFanMode)
+        if (fanMode != mqttLastFanMode)
         {
             String fanModeTopic = hostname + "/fan_mode";
             mqttClient.publish(fanModeTopic.c_str(), fanMode.c_str(), true);
-            lastFanMode = fanMode;
+            mqttLastFanMode = fanMode;
+        }
+
+        // Publish HVAC action (heating, cooling, idle, off)
+        String currentAction = "off";
+        if (thermostatMode != "off") {
+            if (digitalRead(HEAT_RELAY_1_PIN) == HIGH || digitalRead(HEAT_RELAY_2_PIN) == HIGH) {
+                currentAction = "heating";
+            } else if (digitalRead(COOL_RELAY_1_PIN) == HIGH) {
+                currentAction = "cooling";
+            } else {
+                currentAction = "idle";
+            }
+        }
+        if (currentAction != mqttLastAction) {
+            String actionTopic = hostname + "/action";
+            mqttClient.publish(actionTopic.c_str(), currentAction.c_str(), true);
+            mqttLastAction = currentAction;
         }
 
         // Publish hydronic temperature if hydronic heating is enabled
