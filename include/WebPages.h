@@ -3,6 +3,7 @@
 
 #include "WebInterface.h"
 #include "HardwarePins.h"
+#include "Weather.h"
 
 // Schedule system structures
 struct SchedulePeriod {
@@ -57,6 +58,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
                          float tempSwing, float autoTempSwing,
                          bool fanRelayNeeded, unsigned long stage1MinRuntime, 
                          float stage2TempDelta, int fanMinutesPerHour,
+                         bool showerModeEnabled, int showerModeDuration,
                          bool stage2HeatingEnabled, bool stage2CoolingEnabled,
                          bool reversingValveEnabled,
                          float hydronicTempLow, float hydronicTempHigh,
@@ -70,7 +72,8 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
                          bool scheduleOverride,
                          // Weather variables
                          int weatherSource, String owmApiKey, String owmCity, String owmState, String owmCountry,
-                         String haUrl, String haToken, String haEntityId, int weatherUpdateInterval) {
+                         String haUrl, String haToken, String haEntityId, int weatherUpdateInterval,
+                         WeatherData weatherData) {
     
     String html = "<!DOCTYPE html><html lang='en'><head>";
     html += "<meta charset='UTF-8'>";
@@ -89,12 +92,23 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     
     // Navigation tabs
     html += "<div class='nav-tabs'>";
-    html += "<button class='nav-tab active' onclick='showTab(\"status\")'>Status</button>";
-    html += "<button class='nav-tab' onclick='showTab(\"settings\")'>Settings</button>";
-    html += "<button class='nav-tab' onclick='showTab(\"schedule\")'>Schedule</button>";
-    html += "<button class='nav-tab' onclick='showTab(\"weather\")'>Weather</button>";
-    html += "<button class='nav-tab' onclick='showTab(\"system\")'>System</button>";
+    html += "<button type='button' class='nav-tab active' data-tab='status' onclick='showTab(\"status\")'>Status</button>";
+    html += "<button type='button' class='nav-tab' data-tab='settings' onclick='showTab(\"settings\")'>Settings</button>";
+    html += "<button type='button' class='nav-tab' data-tab='schedule' onclick='showTab(\"schedule\")'>Schedule</button>";
+    html += "<button type='button' class='nav-tab' data-tab='weather' onclick='showTab(\"weather\")'>Weather</button>";
+    html += "<button type='button' class='nav-tab' data-tab='system' onclick='showTab(\"system\")'>System</button>";
     html += "</div>";
+
+    // Tab handler: reload when clicking Status to clear stale cache
+    html += "<script>";
+    html += "function showTab(tab){";
+    html += "  if(tab==='status'){ window.location.href='/?r=' + Date.now(); return; }";
+    html += "  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));";
+    html += "  const target=document.getElementById(tab+'-content'); if(target){target.classList.add('active');}";
+    html += "  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));";
+    html += "  const btn=document.querySelector('.nav-tab[data-tab=\\\"' + tab + '\\\"]'); if(btn){btn.classList.add('active');}";
+    html += "}";
+    html += "</script>";
     
     // Status tab content
     html += "<div id='status-content' class='tab-content content active'>";
@@ -146,6 +160,23 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
         html += "</div>";
         html += "<div style='text-align: center; font-size: 2rem; color: var(--warning);'>";
         html += String(hydronicTemp, 1) + "<span style='font-size: 1rem; opacity: 0.7;'>&deg;F</span></div>";
+        html += "</div>";
+    }
+    
+    // Weather card (if enabled and valid)
+    if (weatherSource != 0 && weatherData.valid) {
+        html += "<div class='status-card'>";
+        html += "<div class='card-header'>";
+        html += "<svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'><path d='M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41'></path><circle cx='12' cy='12' r='5'></circle></svg>";
+        html += "<h3 class='card-title'>Weather</h3>";
+        html += "</div>";
+        html += "<div style='text-align: center; margin: 16px 0;'>";
+        html += "<div style='font-size: 2rem; color: var(--secondary-color);'>" + String(weatherData.temperature, 1) + "<span style='font-size: 1rem; opacity: 0.7;'>&deg;" + String(useFahrenheit ? "F" : "C") + "</span></div>";
+        html += "<div style='font-size: 0.9rem; opacity: 0.7; margin-top: 8px;'>" + weatherData.description + "</div>";
+        if (weatherData.tempHigh != 0 || weatherData.tempLow != 0) {
+            html += "<div style='font-size: 0.8rem; opacity: 0.6; margin-top: 4px;'>H: " + String(weatherData.tempHigh, 0) + "&deg; L: " + String(weatherData.tempLow, 0) + "&deg;</div>";
+        }
+        html += "</div>";
         html += "</div>";
     }
     
@@ -296,7 +327,17 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "</div>";
     
     html += "</div>"; // End grid
+
+    html += "<div class='form-checkbox'>";
+    html += "<input type='checkbox' id='showerModeEnabled' name='showerModeEnabled' " + String(showerModeEnabled ? "checked" : "") + ">";
+    html += "<label class='form-label'>Enable Shower Mode</label>";
+    html += "</div>";
     
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Shower Mode Duration (minutes)</label>";
+    html += "<input type='number' name='showerModeDuration' value='" + String(showerModeDuration) + "' min='5' max='120' class='form-input'>";
+    html += "</div>";
+
     html += "<div class='form-checkbox'>";
     html += "<input type='checkbox' id='stage2HeatingEnabled' name='stage2HeatingEnabled' " + String(stage2HeatingEnabled ? "checked" : "") + ">";
     html += "<label class='form-label'>Enable 2nd Stage Heating</label>";
@@ -799,6 +840,7 @@ String generateSettingsPage(String thermostatMode, String fanMode, float setTemp
                            bool reversingValveEnabled,
                            bool hydronicHeatingEnabled, float hydronicTempLow, 
                            float hydronicTempHigh, int fanMinutesPerHour,
+                           bool showerModeEnabled, int showerModeDuration,
                            String mqttServer, int mqttPort, String mqttUsername,
                            String mqttPassword, String wifiSSID, String wifiPassword,
                            String hostname, bool use24HourClock, String timeZone,
@@ -916,6 +958,16 @@ String generateSettingsPage(String thermostatMode, String fanMode, float setTemp
     
     html += "</div>"; // End grid
     
+    html += "<div class='form-checkbox'>";
+    html += "<input type='checkbox' id='showerModeEnabled' name='showerModeEnabled' " + String(showerModeEnabled ? "checked" : "") + ">";
+    html += "<label class='form-label'>Enable Shower Mode</label>";
+    html += "</div>";
+    
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Shower Mode Duration (minutes)</label>";
+    html += "<input type='number' name='showerModeDuration' value='" + String(showerModeDuration) + "' min='5' max='120' class='form-input'>";
+    html += "</div>";
+
     html += "<div class='form-checkbox'>";
     html += "<input type='checkbox' id='stage2HeatingEnabled' name='stage2HeatingEnabled' " + String(stage2HeatingEnabled ? "checked" : "") + ">";
     html += "<label class='form-label'>Enable 2nd Stage Heating</label>";

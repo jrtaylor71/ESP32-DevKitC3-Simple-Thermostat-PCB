@@ -9,15 +9,17 @@ A comprehensive, feature-rich simple thermostat system built on the ESP32 platfo
 - **📱 Local Touch Control**: ILI9341 TFT LCD with intuitive touch interface
 - **🏠 Smart Home Ready**: Full MQTT integration with Home Assistant auto-discovery
 - **📅 7-Day Scheduling**: Comprehensive inline scheduling with day/night periods and editable Heat/Cool/Auto temperatures
-- **🌡️ Dual Sensors**: AHT20 for ambient conditions + DS18B20 for hydronic systems
+- **🌡️ Multiple Sensors**: AHT20/BME280 for ambient conditions + DS18B20 for hydronic systems
 - **⚡ Multi-Stage HVAC**: Support for 2-stage heating and cooling systems
 - **💨 Advanced Fan Control**: Auto, continuous, and scheduled cycling modes
+- **🚿 Shower Mode**: Pause heating for 5-120 minutes with countdown timer and buzzer alert
 - **🌤️ Weather Integration**: OpenWeatherMap and Home Assistant weather with color-coded icons on display
 - **🌐 Modern Web Interface**: Complete tabbed interface with embedded scheduling - no separate pages
 - **📡 Offline Operation**: Full functionality without WiFi connection
 - **🔧 Professional PCB**: Custom PCB design for clean, permanent installation
 - **🔄 OTA Updates**: Over-the-air firmware updates with real-time progress tracking
 - **🔒 Factory Reset**: Built-in reset capability via boot button
+- **🎭 Motion Detection**: LD2410 24GHz mmWave sensor for automatic display wake
 
 ## 🚀 Quick Start
 
@@ -25,22 +27,49 @@ A comprehensive, feature-rich simple thermostat system built on the ESP32 platfo
 ![Hardware-Main-Display](pcb/ESP32-DevKitC3-Simple-Thermostat-PCB_back.png)
 
 ### Hardware Requirements
-- ESP32-S3-WROOM-1-N16 (16MB Flash, No PSRAM) 
+- ESP32-S3-WROOM-1-N16 (16MB Flash, No PSRAM) or N8/N32 variants
 - ILI9341 320x240 TFT LCD with XPT2046 Touch Controller
-- AHT20 Temperature/Humidity Sensor (I2C)
+- AHT20 or BME280 Temperature/Humidity Sensor (I2C)
 - DS18B20 Temperature Sensor (optional, for hydronic heating)
 - LD2410 24GHz mmWave Motion Sensor (optional, for display wake)
 - 5x Relay Module for HVAC control
 - Custom PCB that can use either onboard relay or external relays via pin header
 
 ### Software Setup
+
+#### Option 1: Use Prebuilt Firmware (Recommended)
+1. Clone this repository
+2. Navigate to `firmware/N8/`, `firmware/N16/`, or `firmware/N32/` directory
+3. Find the latest build folder (e.g., `build_YYYYMMDD-HHMMSS/`)
+4. Flash using the variant-specific script: `./firmware/latest_flash_N8.sh`, `latest_flash_N16.sh`, or `latest_flash_N32.sh`
+5. Use touch interface to configure WiFi and settings
+
+#### Option 2: Build from Source
 1. Install [PlatformIO](https://platformio.org/) IDE
 2. Clone this repository
 3. Open project in PlatformIO
-4. Configuration optimized for ESP32-S3-DevKitC3 (16MB flash)
-5. Memory usage: RAM 15.2% (49728/327680 bytes); Flash 18.5% (1209901/6553600 bytes, default_16mb.csv partition)
-6. Build and upload to ESP32-S3
-7. Use touch interface to configure WiFi and settings
+4. Build firmware using `./build.sh` with options:
+   - **Interactive mode**: `./build.sh` (select from menu)
+   - **Specific variant**: `./build.sh 1` (N8), `./build.sh 2` (N16), or `./build.sh 3` (N32)
+   - **All variants**: `./build.sh all` or `./build.sh 4`
+   - **Additional flags**: `clean`, `quiet`, `cleanlibs`
+   - **Examples**: 
+     - `./build.sh 2` - Build 16MB variant (default)
+     - `./build.sh all clean` - Clean build all variants
+     - `./build.sh 3 quiet` - Build 32MB silently
+     - `./build.sh cleanlibs` - Remove all libraries and packages
+5. Memory usage: RAM 25.2% (82728/327680 bytes); Flash 19.0% (1246KB/6553KB for N16)
+6. Firmware organized in `firmware/N8/`, `firmware/N16/`, `firmware/N32/` directories
+7. Flash using variant-specific scripts: `./firmware/latest_flash_N8.sh`, `latest_flash_N16.sh`, or `latest_flash_N32.sh`
+8. Use touch interface to configure WiFi and settings
+
+#### Flashing Requirements
+- **esptool.py** (installed automatically with PlatformIO)
+- **USB connection** to ESP32-S3
+- **Boot mode**: Hold BOOT button while connecting USB (if needed)
+- **Default serial port**: `/dev/ttyACM0` (Linux/Mac) or `COM3` (Windows)
+
+For detailed build and flash instructions, see [USER_MANUAL.md](USER_MANUAL.md)
 
 ## 💻 Web Interface
 
@@ -52,6 +81,8 @@ Access the thermostat's web interface by navigating to its IP address:
 - Current temperature and humidity
 - Thermostat and fan modes
 - Relay states and system status
+- Weather information (when configured)
+- Barometric pressure (with BME280 sensor)
 
 **Settings Tab**: Complete configuration interface for:
 
@@ -61,6 +92,9 @@ Access the thermostat's web interface by navigating to its IP address:
 - Multi-stage HVAC parameters
 - Hydronic heating controls
 - Fan scheduling options
+- Shower mode enable/disable and duration (5-120 minutes)
+- Display brightness and sleep settings
+- Temperature/humidity sensor calibration
 
 **Schedule Tab**: Comprehensive 7-day scheduling:
 - Day and night periods for each day of the week
@@ -69,8 +103,19 @@ Access the thermostat's web interface by navigating to its IP address:
 - Schedule enable/disable and override controls
 - All options always visible - no hidden menus
 
+**Weather Tab**: Weather data configuration:
+- OpenWeatherMap API integration
+- Home Assistant weather entity integration
+- Configurable update intervals (5-60 minutes)
+- City/state/country configuration
 
-**System Tab**: Device information and firmware updates
+**System Tab**: Device information and firmware updates:
+- System information and uptime
+- Firmware version details
+- OTA firmware upload with progress tracking
+- Reboot and factory reset options
+
+For complete usage instructions, see [USER_MANUAL.md](USER_MANUAL.md)
 
 ## 🏠 Home Assistant Integration
 
@@ -176,8 +221,22 @@ Contributions welcome! Please:
 
 ## ⭐ Version
 
-**Current Version**: 1.3.8 (December 2025)
-- **Weather Integration**: Dual-source weather support (OpenWeatherMap and Home Assistant)
+**Current Version**: 1.3.9 (January 2026)
+
+### Latest Features (v1.3.9)
+- **Shower Mode**: Pause heating for configurable duration (5-120 minutes) with countdown timer
+  - Touch screen toggle on/off
+  - Web interface enable/disable and duration control
+  - MQTT/Home Assistant switch integration with auto-discovery
+  - Visual countdown display with buzzer alert (5 beeps during last 5 seconds)
+  - Heating automatically blocked while shower mode is active
+- **Enhanced Fan Cycle Control**: Skip first fan cycle on boot to prevent immediate fan run
+- **Status Page Reload**: Force page refresh when clicking Status tab to clear stale cache
+- **BME280 Barometric Pressure**: Display atmospheric pressure on main screen when BME280 sensor is used
+- **Weather on Status Tab**: Weather data now appears on main Status page for quick access
+
+### Previous Features
+- **Weather Integration** (v1.3.8): Dual-source weather support (OpenWeatherMap and Home Assistant)
 - **Weather Display**: Color-coded standard OWM icons with temperature, conditions, and high/low display
 - **Weather Web Interface**: Dedicated weather tab with AJAX form submission
 - **Anti-Flicker Display**: Cached redraw optimization for time and weather elements

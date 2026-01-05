@@ -219,8 +219,14 @@ String timeZone = "CST6CDT,M3.2.0,M11.1.0"; // Default time zone (Central Standa
 // Add a preference for hostname
 String hostname = DEFAULT_HOSTNAME; // Default hostname via ProjectConfig
 
+// Shower Mode settings
+bool showerModeEnabled = false; // Master enable/disable for shower mode feature
+int showerModeDuration = 30; // Duration in minutes (default 30)
+bool showerModeActive = false;
+unsigned long showerModeStartTime = 0;
+
 // Version control information
-const String sw_version = "1.3.9"; // Software version
+const String sw_version = "1.4.0"; // Software version
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -2071,6 +2077,21 @@ void handleButtonPress(uint16_t x, uint16_t y)
         return;
     }
     
+    // Shower mode toggle - touch the set temp area (center display)
+    debugLog("[DEBUG] Touch: x=%d, y=%d, showerModeEnabled=%d\n", x, y, showerModeEnabled);
+    if (showerModeEnabled && x > 60 && x < 260 && y > 100 && y < 140) {
+        showerModeActive = !showerModeActive;
+        if (showerModeActive) {
+            showerModeStartTime = millis();
+            debugLog("[SHOWER MODE] Activated - duration %d minutes\n", showerModeDuration);
+        } else {
+            debugLog("[SHOWER MODE] Deactivated\n");
+        }
+        updateDisplay(currentTemp, currentHumidity);
+        sendMQTTData();
+        return;
+    }
+    
     // Settings button (formerly WiFi) to open settings menu
     if (x > 45 && x < 125 && y > 195 && y < 245) // Settings button area
     {
@@ -2240,9 +2261,11 @@ void reconnectMQTT()
             String tempSetTopic = hostname + "/target_temperature/set";
             String modeSetTopic = hostname + "/mode/set";
             String fanModeSetTopic = hostname + "/fan_mode/set";
+            String showerModeSetTopic = hostname + "/shower_mode/set";
             mqttClient.subscribe(tempSetTopic.c_str());
             mqttClient.subscribe(modeSetTopic.c_str());
             mqttClient.subscribe(fanModeSetTopic.c_str());
+            mqttClient.subscribe(showerModeSetTopic.c_str());
 
             // Publish Home Assistant discovery messages
             publishHomeAssistantDiscovery();
@@ -2373,7 +2396,7 @@ void publishHomeAssistantDiscovery()
             StaticJsonDocument<512> pressureDoc;
             String pressureConfigTopic = "homeassistant/sensor/" + hostname + "_pressure/config";
             
-            pressureDoc["name"] = hostname + " Barometric Pressure";
+            pressureDoc["name"] = "Barometric Pressure";
             pressureDoc["device_class"] = "pressure";
             pressureDoc["state_topic"] = hostname + "/barometric_pressure";
             pressureDoc["unit_of_measurement"] = "inHg";
@@ -2393,6 +2416,41 @@ void publishHomeAssistantDiscovery()
             mqttClient.publish(pressureConfigTopic.c_str(), pressureBuffer, true);
             
             debugLog("Published BME280 pressure sensor discovery to Home Assistant\n");
+        }
+        
+        // Publish shower mode switch discovery if feature is enabled
+        if (showerModeEnabled) {
+            StaticJsonDocument<512> showerDoc;
+            String showerConfigTopic = "homeassistant/switch/" + hostname + "_shower_mode/config";
+            
+            showerDoc["name"] = "Shower Mode";
+            showerDoc["state_topic"] = hostname + "/shower_mode";
+            showerDoc["command_topic"] = hostname + "/shower_mode/set";
+            showerDoc["payload_on"] = "ON";
+            showerDoc["payload_off"] = "OFF";
+            showerDoc["state_on"] = "ON";
+            showerDoc["state_off"] = "OFF";
+            showerDoc["unique_id"] = hostname + "_shower_mode";
+            showerDoc["icon"] = "mdi:shower";
+            
+            // Link to same device as main thermostat
+            JsonObject device = showerDoc.createNestedObject("device");
+            device["identifiers"][0] = hostname;
+            device["name"] = hostname;
+            device["model"] = PROJECT_NAME_SHORT;
+            device["manufacturer"] = "TDC";
+            device["sw_version"] = sw_version;
+            
+            char showerBuffer[512];
+            serializeJson(showerDoc, showerBuffer);
+            mqttClient.publish(showerConfigTopic.c_str(), showerBuffer, true);
+            
+            debugLog("Published Shower Mode switch discovery to Home Assistant\n");
+        } else {
+            // If disabled, remove the switch entity from HA by sending empty retained config
+            String showerConfigTopic = "homeassistant/switch/" + hostname + "_shower_mode/config";
+            mqttClient.publish(showerConfigTopic.c_str(), "", true);
+            debugLog("Removed Shower Mode switch discovery from Home Assistant (disabled)\n");
         }
     }
     else
@@ -2440,6 +2498,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
     String modeSetTopic = hostname + "/mode/set";
     String fanModeSetTopic = hostname + "/fan_mode/set";
     String tempSetTopic = hostname + "/target_temperature/set";
+    String showerModeSetTopic = hostname + "/shower_mode/set";
 
     if (String(topic) == modeSetTopic)
     {
@@ -2489,6 +2548,28 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
             settingsNeedSaving = true;
         }
         controlRelays(currentTemp); // Apply changes to relays
+    }
+    else if (String(topic) == showerModeSetTopic)
+    {
+        if (showerModeEnabled) {
+            // Only allow toggle if shower mode is enabled
+            if (message == "ON" || message == "on") {
+                if (!showerModeActive) {
+                    showerModeActive = true;
+                    showerModeStartTime = millis();
+                    debugLog("[SHOWER MODE] Activated via MQTT\n");
+                    updateDisplay(currentTemp, currentHumidity);
+                    sendMQTTData(); // Publish state back to HA
+                }
+            } else if (message == "OFF" || message == "off") {
+                if (showerModeActive) {
+                    showerModeActive = false;
+                    debugLog("[SHOWER MODE] Deactivated via MQTT\n");
+                    updateDisplay(currentTemp, currentHumidity);
+                    sendMQTTData(); // Publish state back to HA
+                }
+            }
+        }
     }
 
     // Save settings to flash if they were changed
@@ -2651,6 +2732,31 @@ void sendMQTTData()
                 lastMotionDetected = motionDetected;
             }
         }
+        
+        // Publish shower mode status (only if feature enabled)
+        if (showerModeEnabled) {
+            static bool lastShowerModeActive = false;
+            static int lastMinutesRemaining = -1;
+            if (showerModeActive != lastShowerModeActive) {
+                String showerModeTopic = hostname + "/shower_mode";
+                mqttClient.publish(showerModeTopic.c_str(), showerModeActive ? "ON" : "OFF", true);
+                lastShowerModeActive = showerModeActive;
+            }
+            // Publish remaining time if active
+            if (showerModeActive) {
+                unsigned long elapsed = millis() - showerModeStartTime;
+                int minutesRemaining = showerModeDuration - (elapsed / 60000UL);
+                if (minutesRemaining < 0) minutesRemaining = 0;
+                if (minutesRemaining != lastMinutesRemaining) {
+                    String showerTimeRemainingTopic = hostname + "/shower_time_remaining";
+                    mqttClient.publish(showerTimeRemainingTopic.c_str(), String(minutesRemaining).c_str(), false);
+                    lastMinutesRemaining = minutesRemaining;
+                }
+            } else if (lastMinutesRemaining >= 0) {
+                // Reset when deactivated
+                lastMinutesRemaining = -1;
+            }
+        }
 
         // Publish schedule status
         String scheduleEnabledTopic = hostname + "/schedule_enabled";
@@ -2678,9 +2784,35 @@ void controlRelays(float currentTemp)
         return;
     }
     
+    // Check if shower mode is active and has expired
+    if (showerModeActive) {
+        unsigned long elapsed = millis() - showerModeStartTime;
+        unsigned long remaining = (showerModeDuration * 60000UL) - elapsed;
+        
+        // Buzzer alert for last 5 seconds (one beep per second)
+        static unsigned long lastBuzzTime = 0;
+        if (remaining <= 5000 && remaining > 0) {
+            int secondsRemaining = (remaining / 1000) + 1;
+            unsigned long currentSecond = 5 - secondsRemaining;
+            if (currentSecond != lastBuzzTime) {
+                buzzerBeep(100);
+                lastBuzzTime = currentSecond;
+                debugLog("[SHOWER MODE] Alert beep - %d seconds remaining\n", secondsRemaining);
+            }
+        } else if (remaining > 5000) {
+            lastBuzzTime = 0; // Reset for next countdown
+        }
+        
+        if (elapsed >= (showerModeDuration * 60000UL)) {
+            showerModeActive = false;
+            lastBuzzTime = 0; // Reset buzzer tracking
+            debugLog("[SHOWER MODE] Timer expired, resuming normal operation\n");
+        }
+    }
+    
     // Debug entry
-    debugLog("[DEBUG] controlRelays ENTRY: mode=%s, temp=%.1f, heatingOn=%d, coolingOn=%d\n", 
-                 thermostatMode.c_str(), currentTemp, heatingOn, coolingOn);
+    debugLog("[DEBUG] controlRelays ENTRY: mode=%s, temp=%.1f, heatingOn=%d, coolingOn=%d, showerMode=%d\n", 
+                 thermostatMode.c_str(), currentTemp, heatingOn, coolingOn, showerModeActive);
     
     // Track previous states to only print debug info on changes
     static bool prevHeatingOn = false;
@@ -2750,29 +2882,42 @@ void controlRelays(float currentTemp)
             stage2Active = false;
         }
         
+        // Block heating if shower mode is active
+        if (showerModeActive) {
+            if (heatingOn) {
+                debugLog("[SHOWER MODE] Blocking heating - turning off\n");
+                digitalWrite(HEAT_RELAY_1_PIN, LOW);
+                digitalWrite(HEAT_RELAY_2_PIN, LOW);
+                heatingOn = false;
+                stage1Active = false;
+                stage2Active = false;
+            }
+        }
         // Only activate heating if below setpoint - swing
-        debugLog("[DEBUG] Heat check: %.1f < %.1f? %s\n", 
-                     currentTemp, (setTempHeat - tempSwing), 
-                     (currentTemp < (setTempHeat - tempSwing)) ? "YES" : "NO");
-        if (currentTemp < (setTempHeat - tempSwing))
-        {
-            // Only call activateHeating if not already heating
-            if (!heatingOn) {
-                debugLog("[HVAC] HEAT ACTIVATED: %.1f < %.1f (setpoint-swing)\n", 
-                         currentTemp, (setTempHeat - tempSwing));
-                activateHeating();
+        else {
+            debugLog("[DEBUG] Heat check: %.1f < %.1f? %s\n", 
+                         currentTemp, (setTempHeat - tempSwing), 
+                         (currentTemp < (setTempHeat - tempSwing)) ? "YES" : "NO");
+            if (currentTemp < (setTempHeat - tempSwing))
+            {
+                // Only call activateHeating if not already heating
+                if (!heatingOn) {
+                    debugLog("[HVAC] HEAT ACTIVATED: %.1f < %.1f (setpoint-swing)\n", 
+                             currentTemp, (setTempHeat - tempSwing));
+                    activateHeating();
+                }
             }
-        }
-        // Only turn off if above setpoint (hysteresis)
-        else if (currentTemp >= setTempHeat)
-        {
-            if (heatingOn || coolingOn || fanOn) {
-                debugLog("[HVAC] HEAT DEACTIVATED: %.1f >= %.1f (setpoint)\n", 
-                         currentTemp, setTempHeat);
+            // Only turn off if above setpoint (hysteresis)
+            else if (currentTemp >= setTempHeat)
+            {
+                if (heatingOn || coolingOn || fanOn) {
+                    debugLog("[HVAC] HEAT DEACTIVATED: %.1f >= %.1f (setpoint)\n", 
+                             currentTemp, setTempHeat);
+                }
+                turnOffAllRelays();
             }
-            turnOffAllRelays();
+            // Otherwise maintain current state (hysteresis band)
         }
-        // Otherwise maintain current state (hysteresis band)
     }
     else if (thermostatMode == "cool")
     {
@@ -3232,6 +3377,7 @@ void handleWebRequests()
                                        tempSwing, autoTempSwing,
                                        fanRelayNeeded, stage1MinRuntime, 
                                        stage2TempDelta, fanMinutesPerHour,
+                                       showerModeEnabled, showerModeDuration,
                                        stage2HeatingEnabled, stage2CoolingEnabled,
                                        reversingValveEnabled,
                                        hydronicTempLow, hydronicTempHigh,
@@ -3243,7 +3389,8 @@ void handleWebRequests()
                                        weekSchedule, scheduleEnabled, activePeriod,
                                        scheduleOverride,
                                        weatherSource, owmApiKey, owmCity, owmState, owmCountry,
-                                       haUrl, haToken, haEntityId, weatherUpdateInterval);
+                                       haUrl, haToken, haEntityId, weatherUpdateInterval,
+                                       weather.getData());
         request->send(200, "text/html", html);
     });
 
@@ -3254,6 +3401,7 @@ void handleWebRequests()
                                           stage1MinRuntime, stage2TempDelta, stage2HeatingEnabled, stage2CoolingEnabled,
                                           reversingValveEnabled,
                                           hydronicHeatingEnabled, hydronicTempLow, hydronicTempHigh, fanMinutesPerHour,
+                                          showerModeEnabled, showerModeDuration,
                                           mqttServer, mqttPort, mqttUsername, mqttPassword, wifiSSID, wifiPassword,
                                           hostname, use24HourClock, timeZone, tempOffset, humidityOffset, displaySleepEnabled,
                                           displaySleepTimeout);
@@ -3320,6 +3468,16 @@ void handleWebRequests()
         }
         if (request->hasParam("fanMinutesPerHour", true)) {
             fanMinutesPerHour = request->getParam("fanMinutesPerHour", true)->value().toInt();
+        }
+        if (request->hasParam("showerModeEnabled", true)) {
+            showerModeEnabled = request->getParam("showerModeEnabled", true)->value() == "on";
+        } else {
+            showerModeEnabled = false;
+        }
+        if (request->hasParam("showerModeDuration", true)) {
+            showerModeDuration = request->getParam("showerModeDuration", true)->value().toInt();
+            if (showerModeDuration < 5) showerModeDuration = 5;
+            if (showerModeDuration > 120) showerModeDuration = 120;
         }
         if (request->hasParam("mqttServer", true)) {
             mqttServer = request->getParam("mqttServer", true)->value(); // Ensure mqttServer is updated correctly
@@ -4206,19 +4364,62 @@ void updateDisplay(float currentTemp, float currentHumidity)
     if (thermostatMode != "off")
     {
         float currentSetTemp = (thermostatMode == "heat") ? setTempHeat : (thermostatMode == "cool") ? setTempCool : setTempAuto;
-        if (currentSetTemp != previousSetTemp)
-        {
-            // Display set temperature in the center of the display
+        
+        // Display set temperature at original location (center-ish)
+        if (currentSetTemp != previousSetTemp && !showerModeActive) {
+            // Only show setpoint when NOT in shower mode
+            tft.fillRect(60, 95, 150, 50, COLOR_BACKGROUND);
             tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
             tft.setTextSize(4);
             tft.setCursor(60, 100);
             char tempStr[6];
-            dtostrf(currentSetTemp, 4, 1, tempStr); // Convert set temperature to string with 1 decimal place
+            dtostrf(currentSetTemp, 4, 1, tempStr);
             tft.print(tempStr);
             tft.println(useFahrenheit ? " F" : " C");
-
-            // Update previous value
             previousSetTemp = currentSetTemp;
+        } else if (showerModeActive && currentSetTemp != previousSetTemp) {
+            // Clear setpoint area when entering shower mode
+            tft.fillRect(60, 95, 150, 50, COLOR_BACKGROUND);
+            previousSetTemp = currentSetTemp;
+        }
+        
+        // Display shower mode countdown on left side (separate from setpoint)
+        static bool prevShowerMode = false;
+        static int prevSecondsRemaining = -1;
+        
+        if (showerModeActive) {
+            unsigned long elapsed = millis() - showerModeStartTime;
+            unsigned long totalSeconds = showerModeDuration * 60UL;
+            int secondsRemaining = totalSeconds - (elapsed / 1000UL);
+            if (secondsRemaining < 0) secondsRemaining = 0;
+            
+            // Only update display if seconds changed
+            if (!prevShowerMode || secondsRemaining != prevSecondsRemaining) {
+                // Clear the area (stop before pressure sensor at x=230 and hydronic at y=120)
+                tft.fillRect(0, 85, 225, 50, COLOR_BACKGROUND);
+                
+                tft.setTextColor(TFT_ORANGE, COLOR_BACKGROUND);
+                tft.setTextSize(2);
+                tft.setCursor(5, 90);
+                tft.print("SHOWER MODE");
+                
+                // Format as "ON for X min Y sec" on next line
+                int minutes = secondsRemaining / 60;
+                int seconds = secondsRemaining % 60;
+                char timerStr[30];
+                snprintf(timerStr, sizeof(timerStr), "ON for %d m %d s", minutes, seconds);
+                tft.setCursor(5, 115);
+                tft.print(timerStr);
+                
+                prevShowerMode = true;
+                prevSecondsRemaining = secondsRemaining;
+            }
+        } else if (prevShowerMode) {
+            // Clear shower timer when exiting shower mode and restore setpoint display
+            tft.fillRect(0, 85, 225, 50, COLOR_BACKGROUND);
+            prevShowerMode = false;
+            prevSecondsRemaining = -1;
+            previousSetTemp = -999; // Force redraw of setpoint on next update
         }
     }
     else
@@ -4368,6 +4569,8 @@ void saveSettings()
     preferences.putString("haToken", haToken);
     preferences.putString("haEntityId", haEntityId);
     preferences.putInt("weatherInt", weatherUpdateInterval);
+    preferences.putBool("showerEn", showerModeEnabled);
+    preferences.putInt("showerDur", showerModeDuration);
     
     // Save schedule settings if flag is set
     if (scheduleUpdatedFlag) {
@@ -4398,6 +4601,11 @@ void loadSettings()
     wifiPassword = preferences.getString("wifiPassword", "");
     thermostatMode = preferences.getString("thermoMd", "off");
     fanMode = preferences.getString("fanMd", "auto");
+    
+    // Initialize lastFanRunTime to skip the first fan cycle on boot
+    // Set it as if the fan already ran its cycle (fanMinutesPerHour minutes ago)
+    lastFanRunTime = millis() - (fanMinutesPerHour * 60UL * 1000UL);
+    
     timeZone = preferences.getString("tz", "CST6CDT,M3.2.0,M11.1.0");
     use24HourClock = preferences.getBool("use24Clk", true);
     hydronicHeatingEnabled = preferences.getBool("hydHeat", false);
@@ -4425,6 +4633,8 @@ void loadSettings()
     haToken = preferences.getString("haToken", "");
     haEntityId = preferences.getString("haEntityId", "");
     weatherUpdateInterval = preferences.getInt("weatherInt", 10);
+    showerModeEnabled = preferences.getBool("showerEn", false);
+    showerModeDuration = preferences.getInt("showerDur", 30);
     
     // Debug print to confirm settings are loaded
     debugLog("Loading settings:\n");
