@@ -269,6 +269,7 @@ DaySchedule weekSchedule[7] = {
 
 bool scheduleEnabled = false;        // Master schedule enable/disable
 bool scheduleOverride = false;       // Temporary override active
+const unsigned long scheduleOverrideDuration = 120; // Override duration in minutes (2 hours)
 unsigned long overrideEndTime = 0;   // When override expires (0 = permanent)
 String activePeriod = "manual";      // Current active period: "day", "night", "manual"
 bool scheduleUpdatedFlag = false;    // Flag to indicate schedule needs to be saved
@@ -779,11 +780,13 @@ void checkSchedule() {
     int currentHour = timeinfo.tm_hour;
     int currentMinute = timeinfo.tm_min;
     int currentDayOfWeek = timeinfo.tm_wday;
+    bool overrideExpired = false;
     
     // Check if override has expired
     if (scheduleOverride && overrideEndTime > 0 && millis() >= overrideEndTime) {
         scheduleOverride = false;
         overrideEndTime = 0;
+        overrideExpired = true;
         debugLog("SCHEDULE: Override expired, resuming schedule\n");
     }
     
@@ -825,8 +828,9 @@ void checkSchedule() {
         }
     }
     
-    // Apply schedule if period changed
-    if (newPeriod != activePeriod) {
+    // Apply schedule if period changed or an override just ended
+    bool shouldApplySchedule = overrideExpired || (newPeriod != activePeriod);
+    if (shouldApplySchedule) {
         activePeriod = newPeriod;
         if (shouldApplyDaySchedule && today.day.active) {
             applySchedule(currentDayOfWeek, true);
@@ -2104,6 +2108,14 @@ void handleButtonPress(uint16_t x, uint16_t y)
     // "+" button
     if (x > 265 && x < 315 && y > 195 && y < 245)
     {
+        // Enable and persist schedule override when manually adjusting temperature while schedule is active
+        if (scheduleEnabled && !scheduleOverride) {
+            scheduleOverride = true;
+            overrideEndTime = millis() + (scheduleOverrideDuration * 60000UL);
+            debugLog("SCHEDULE: Override enabled due to manual temperature adjustment\n");
+            saveScheduleSettings();
+        }
+        
         if (thermostatMode == "heat")
         {
             setTempHeat += 0.5;
@@ -2142,6 +2154,14 @@ void handleButtonPress(uint16_t x, uint16_t y)
     }
     else if (x > 0 && x < 45 && y > 195 && y < 245) // "-" button with slightly increased touch area
     {
+        // Enable and persist schedule override when manually adjusting temperature while schedule is active
+        if (scheduleEnabled && !scheduleOverride) {
+            scheduleOverride = true;
+            overrideEndTime = millis() + (scheduleOverrideDuration * 60000UL);
+            debugLog("SCHEDULE: Override enabled due to manual temperature adjustment\n");
+            saveScheduleSettings();
+        }
+        
         if (thermostatMode == "heat")
         {
             setTempHeat -= 0.5;
@@ -2493,6 +2513,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
     // Set flag to indicate we're handling an MQTT message to prevent publish loops
     handlingMQTTMessage = true;
     bool settingsNeedSaving = false;
+    bool scheduleNeedsSaving = false;
 
     // Declare all topic strings at the beginning
     String modeSetTopic = hostname + "/mode/set";
@@ -2526,12 +2547,14 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
     else if (String(topic) == tempSetTopic)
     {
         float newTargetTemp = message.toFloat();
+        bool tempChanged = false;
         if (thermostatMode == "heat" && newTargetTemp != setTempHeat)
         {
             setTempHeat = newTargetTemp;
             debugLog("Updated heating target temperature to: ");
             Serial.println(setTempHeat);
             settingsNeedSaving = true;
+            tempChanged = true;
         }
         else if (thermostatMode == "cool" && newTargetTemp != setTempCool)
         {
@@ -2539,6 +2562,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
             debugLog("Updated cooling target temperature to: ");
             Serial.println(setTempCool);
             settingsNeedSaving = true;
+            tempChanged = true;
         }
         else if (thermostatMode == "auto" && newTargetTemp != setTempAuto)
         {
@@ -2546,6 +2570,15 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
             debugLog("Updated auto target temperature to: ");
             Serial.println(setTempAuto);
             settingsNeedSaving = true;
+            tempChanged = true;
+        }
+        
+        // If schedule is enabled and not overridden, trigger a temporary override and persist it
+        if (tempChanged && scheduleEnabled && !scheduleOverride) {
+            scheduleOverride = true;
+            overrideEndTime = millis() + (scheduleOverrideDuration * 60000UL);
+            debugLog("SCHEDULE: MQTT temperature change triggered override\n");
+            scheduleNeedsSaving = true;
         }
         controlRelays(currentTemp); // Apply changes to relays
     }
@@ -2581,6 +2614,11 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
         
         // Set flag for immediate MQTT feedback to Home Assistant
         mqttFeedbackNeeded = true;
+    }
+
+    if (scheduleNeedsSaving) {
+        debugLog("Saving schedule settings changed via MQTT\n");
+        saveScheduleSettings();
     }
 
     // Clear the handling flag
@@ -3421,20 +3459,32 @@ void handleWebRequests()
 
     server.on("/set", HTTP_POST, [](AsyncWebServerRequest *request)
               {
+        bool tempChanged = false;
         if (request->hasParam("setTempHeat", true)) {
             setTempHeat = request->getParam("setTempHeat", true)->value().toFloat();
             if (setTempHeat < 50) setTempHeat = 50;
             if (setTempHeat > 95) setTempHeat = 95;
+            tempChanged = true;
         }
         if (request->hasParam("setTempCool", true)) {
             setTempCool = request->getParam("setTempCool", true)->value().toFloat();
             if (setTempCool < 50) setTempCool = 50;
             if (setTempCool > 95) setTempCool = 95;
+            tempChanged = true;
         }
         if (request->hasParam("setTempAuto", true)) {
             setTempAuto = request->getParam("setTempAuto", true)->value().toFloat();
             if (setTempAuto < 50) setTempAuto = 50;
             if (setTempAuto > 95) setTempAuto = 95;
+            tempChanged = true;
+        }
+        
+        // If schedule is enabled and not overridden, trigger and persist a temporary override
+        if (tempChanged && scheduleEnabled && !scheduleOverride) {
+            scheduleOverride = true;
+            overrideEndTime = millis() + (scheduleOverrideDuration * 60000UL);
+            debugLog("SCHEDULE: Web /set temperature change triggered override\n");
+            saveScheduleSettings();
         }
         if (request->hasParam("tempSwing", true)) {
             tempSwing = request->getParam("tempSwing", true)->value().toFloat();
@@ -3703,20 +3753,32 @@ void handleWebRequests()
 
     server.on("/control", HTTP_POST, [](AsyncWebServerRequest *request)
               {
+        bool tempChanged = false;
         if (request->hasParam("setTempHeat", true)) {
             setTempHeat = request->getParam("setTempHeat", true)->value().toFloat();
             if (setTempHeat < 50) setTempHeat = 50;
             if (setTempHeat > 95) setTempHeat = 95;
+            tempChanged = true;
         }
         if (request->hasParam("setTempCool", true)) {
             setTempCool = request->getParam("setTempCool", true)->value().toFloat();
             if (setTempCool < 50) setTempCool = 50;
             if (setTempCool > 95) setTempCool = 95;
+            tempChanged = true;
         }
         if (request->hasParam("setTempAuto", true)) {
             setTempAuto = request->getParam("setTempAuto", true)->value().toFloat();
             if (setTempAuto < 50) setTempAuto = 50;
             if (setTempAuto > 95) setTempAuto = 95;
+            tempChanged = true;
+        }
+        
+        // If schedule is enabled and not overridden, trigger and persist a temporary override
+        if (tempChanged && scheduleEnabled && !scheduleOverride) {
+            scheduleOverride = true;
+            overrideEndTime = millis() + (scheduleOverrideDuration * 60000UL);
+            debugLog("SCHEDULE: Web /control temperature change triggered override\n");
+            saveScheduleSettings();
         }
         if (request->hasParam("tempSwing", true)) {
             tempSwing = request->getParam("tempSwing", true)->value().toFloat();
