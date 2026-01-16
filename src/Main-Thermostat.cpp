@@ -28,6 +28,7 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <Preferences.h>
+#include <esp_netif.h>
 #include <Wire.h>
 #include <Adafruit_AHTX0.h>
 #include <DHT.h>
@@ -771,6 +772,9 @@ String getCurrentPeriod() {
 void checkSchedule() {
     if (!scheduleEnabled) return;
     
+    // Ensure timezone is applied
+    tzset();
+    
     // Get current time
     time_t now;
     struct tm timeinfo;
@@ -780,6 +784,14 @@ void checkSchedule() {
     int currentHour = timeinfo.tm_hour;
     int currentMinute = timeinfo.tm_min;
     int currentDayOfWeek = timeinfo.tm_wday;
+    
+    // Debug: Log current time and schedule status
+    static unsigned long lastDebugLog = 0;
+    if (millis() - lastDebugLog > 60000) { // Log every 60 seconds
+        debugLog("SCHEDULE DEBUG: Current time: %02d:%02d (day %d), TZ: %s, Period: %s\n", 
+                 currentHour, currentMinute, currentDayOfWeek, timeZone.c_str(), activePeriod.c_str());
+        lastDebugLog = millis();
+    }
     bool overrideExpired = false;
     
     // Check if override has expired
@@ -906,6 +918,14 @@ void loadScheduleSettings() {
     scheduleOverride = preferences.getBool("schedOverride", false);
     overrideEndTime = preferences.getULong("overrideEnd", 0);
     activePeriod = preferences.getString("activePeriod", "manual");
+    
+    // If override was active before reboot, clear it since overrideEndTime is stale
+    // (millis() resets to 0 after each reboot, making the stored endTime unreliable)
+    if (scheduleOverride && overrideEndTime > 0) {
+        debugLog("SCHEDULE: Clearing stale override from previous boot\n");
+        scheduleOverride = false;
+        overrideEndTime = 0;
+    }
     
     // Check if schedule data exists, if not initialize defaults silently
     bool scheduleExists = preferences.isKey("day0_d_heat");
@@ -1164,8 +1184,18 @@ void setup()
     // Load WiFi credentials but don't force connection
     wifiSSID = preferences.getString("wifiSSID", "");
     wifiPassword = preferences.getString("wifiPassword", "");
-    // hostname already loaded by loadSettings() - don't override it
-    WiFi.setHostname(hostname.c_str()); // Set the WiFi device name
+    
+    // Set hostname using ESP-IDF method (Arduino WiFi.setHostname has bugs)
+    esp_netif_t* sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (sta_netif != nullptr) {
+        esp_err_t err = esp_netif_set_hostname(sta_netif, hostname.c_str());
+        if (err != ESP_OK) {
+            debugLog("[WIFI] Failed to set hostname: %d\n", err);
+        } else {
+            debugLog("[WIFI] Hostname set to: %s\n", hostname.c_str());
+        }
+    }
+    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE); // Force DHCP to send hostname
     
     // Clear the "Loading Settings..." message
     tft.fillScreen(COLOR_BACKGROUND);

@@ -5,10 +5,10 @@
 
 PORT=${1:-/dev/ttyACM0}
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-LATEST_BUILD="$SCRIPT_DIR/N8/build_20260112-115155"
+LATEST_BUILD="$SCRIPT_DIR/N8/build_20260116-074107"
 
 echo "[FLASH] Using port: $PORT"
-echo "[FLASH] Flashing ESP32-S3 N8 (8MB) - Latest Build (20260112-115155)..."
+echo "[FLASH] Flashing ESP32-S3 N8 (8MB) - Latest Build (20260116-074107)..."
 
 esptool.py --chip esp32s3 --port "$PORT" --baud 460800 --before default_reset --after hard_reset write_flash -z \
     --flash_mode dio --flash_freq 80m --flash_size 8MB \
