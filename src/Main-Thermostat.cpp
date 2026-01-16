@@ -33,6 +33,7 @@
 #include <Adafruit_AHTX0.h>
 #include <DHT.h>
 #include <Adafruit_BME280.h>
+#include <Adafruit_BME680.h>
 #include <TFT_eSPI.h>
 #include <HTTPClient.h>
 #include <PubSubClient.h> // Include the MQTT library
@@ -59,18 +60,22 @@ enum SensorType {
     SENSOR_NONE = 0,
     SENSOR_AHT20 = 1,
     SENSOR_DHT11 = 2,
-    SENSOR_BME280 = 3
+    SENSOR_BME280 = 3,
+    SENSOR_BME680 = 4
 };
 
 // Sensor instances (only one will be active based on auto-detection)
 Adafruit_AHTX0 aht;
 DHT dht(I2C_SCL_PIN, DHT11); // DHT11 uses GPIO35 (SCL pin) as data line
 Adafruit_BME280 bme;
+Adafruit_BME680 bme680;
 
 // Active sensor tracking
 SensorType activeSensor = SENSOR_NONE;
 String sensorName = "None";
-float currentPressure = 0.0; // Barometric pressure (BME280 only, in hPa)
+float currentPressure = 0.0; // Barometric pressure (BME280/BME680 only, in hPa)
+float currentGasResistance = 0.0; // Gas resistance (BME680 only, in kOhms)
+float currentAirQuality = 0.0; // Approximate air quality index (BME680 only, 0-500)
 
 // Hardware pin definitions moved to HardwarePins.h
 // BOOT_BUTTON, LD2410 pins, ONE_WIRE_BUS, LIGHT_SENSOR_PIN, TFT_BACKLIGHT_PIN all defined there
@@ -477,8 +482,8 @@ void sensorTaskFunction(void *parameter) {
             currentTemp = filteredTemp;
             currentHumidity = filteredHumidity;
             
-            // Update pressure if BME280 sensor and valid reading
-            if (activeSensor == SENSOR_BME280 && !isnan(pressureReading)) {
+            // Update pressure if BME280/BME680 sensor and valid reading
+            if ((activeSensor == SENSOR_BME280 || activeSensor == SENSOR_BME680) && !isnan(pressureReading)) {
                 currentPressure = pressureReading;
             }
         }
@@ -603,6 +608,19 @@ SensorType detectSensor() {
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
     delay(100);
     
+    // Try BME680 first (has more features)
+    debugLog("[SENSOR] Checking for BME680 at I2C address 0x76...\n");
+    if (bme680.begin(0x76)) {
+        debugLog("[SENSOR] BME680 detected at address 0x76!\n");
+        return SENSOR_BME680;
+    }
+    
+    debugLog("[SENSOR] Checking for BME680 at I2C address 0x77...\n");
+    if (bme680.begin(0x77)) {
+        debugLog("[SENSOR] BME680 detected at address 0x77!\n");
+        return SENSOR_BME680;
+    }
+    
     // Try AHT20 (I2C address 0x38)
     debugLog("[SENSOR] Checking for AHT20 at I2C address 0x38...\n");
     if (aht.begin()) {
@@ -649,7 +667,8 @@ bool initializeSensor(SensorType sensor) {
     debugLog("[SENSOR] Initializing %s sensor...\n", 
                   sensor == SENSOR_AHT20 ? "AHT20" : 
                   sensor == SENSOR_DHT11 ? "DHT11" : 
-                  sensor == SENSOR_BME280 ? "BME280" : "NONE");
+                  sensor == SENSOR_BME280 ? "BME280" :
+                  sensor == SENSOR_BME680 ? "BME680" : "NONE");
     
     switch(sensor) {
         case SENSOR_AHT20:
@@ -688,8 +707,20 @@ bool initializeSensor(SensorType sensor) {
             debugLog("[SENSOR] BME280 initialization failed\n");
             return false;
             
-        default:
-            sensorName = "None";
+        case SENSOR_BME680:
+            Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+            if (bme680.begin(0x76) || bme680.begin(0x77)) {
+                // Configure BME680 for indoor monitoring
+                bme680.setTemperatureOversampling(BME680_OS_8X);
+                bme680.setHumidityOversampling(BME680_OS_2X);
+                bme680.setPressureOversampling(BME680_OS_4X);
+                bme680.setIIRFilterSize(BME680_FILTER_SIZE_3);
+                bme680.setGasHeater(320, 150); // 320°C heater temp, 150ms heating duration
+                debugLog("[SENSOR] BME680 initialized successfully\n");
+                sensorName = "BME680";
+                return true;
+            }
+            debugLog("[SENSOR] BME680 initialization failed\n");
             return false;
     }
 }
@@ -741,6 +772,35 @@ bool readTemperatureHumidity(float &temp, float &humidity, float &pressure) {
                 return false;
             }
             return true;
+        }
+        
+        case SENSOR_BME680: {
+            if (i2cMutex == NULL || xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+                return false;
+            }
+            
+            if (bme680.performReading()) {
+                temp = bme680.temperature;
+                humidity = bme680.humidity;
+                pressure = bme680.pressure / 100.0F; // Convert Pa to hPa
+                currentGasResistance = bme680.gas_resistance / 1000.0F; // Convert Ohms to kOhms
+                
+                // Simple air quality estimate based on gas resistance
+                // Lower resistance = more volatile compounds = worse air quality
+                // Baseline ~5-10 kOhm for clean air, ~0.5 kOhm for polluted air
+                if (currentGasResistance > 0) {
+                    // Scale 0.5-10 kOhm to 0-500 IAQ score
+                    currentAirQuality = (currentGasResistance - 0.5) * (500.0 / (10.0 - 0.5));
+                    currentAirQuality = constrain(currentAirQuality, 0, 500);
+                } else {
+                    currentAirQuality = 0;
+                }
+                
+                xSemaphoreGive(i2cMutex);
+                return true;
+            }
+            xSemaphoreGive(i2cMutex);
+            return false;
         }
         
         default:
@@ -2678,7 +2738,7 @@ void sendMQTTData()
         }
         
         // Publish barometric pressure if BME280 sensor is active
-        if (activeSensor == SENSOR_BME280 && !isnan(currentPressure))
+        if ((activeSensor == SENSOR_BME280 || activeSensor == SENSOR_BME680) && !isnan(currentPressure))
         {
             static float lastPressure = 0.0;
             if (currentPressure != lastPressure)
@@ -2687,6 +2747,27 @@ void sendMQTTData()
                 float pressureInHg = currentPressure / 33.8639; // Convert hPa to inHg
                 mqttClient.publish(pressureTopic.c_str(), String(pressureInHg, 2).c_str(), true);
                 lastPressure = currentPressure;
+            }
+        }
+        
+        // Publish gas resistance and air quality if BME680 is active
+        if (activeSensor == SENSOR_BME680)
+        {
+            static float lastGasResistance = 0.0;
+            static float lastAirQuality = 0.0;
+            
+            if (currentGasResistance != lastGasResistance)
+            {
+                String gasTopic = hostname + "/gas_resistance";
+                mqttClient.publish(gasTopic.c_str(), String(currentGasResistance, 1).c_str(), true);
+                lastGasResistance = currentGasResistance;
+            }
+            
+            if (currentAirQuality != lastAirQuality)
+            {
+                String aqTopic = hostname + "/air_quality_index";
+                mqttClient.publish(aqTopic.c_str(), String((int)currentAirQuality).c_str(), true);
+                lastAirQuality = currentAirQuality;
             }
         }
 
@@ -4386,8 +4467,8 @@ void updateDisplay(float currentTemp, float currentHumidity)
         tft.print(humidityStr);
         tft.print("%");
         
-        // Display pressure if BME280 sensor is active (convert hPa to inHg: divide by 33.8639)
-        if (activeSensor == SENSOR_BME280 && !isnan(currentPressure)) {
+        // Display pressure if BME280/BME680 sensor is active (convert hPa to inHg: divide by 33.8639)
+        if ((activeSensor == SENSOR_BME280 || activeSensor == SENSOR_BME680) && !isnan(currentPressure)) {
             tft.setCursor(230, 90); // Pressure at y=90, 30px spacing
             float pressureInHg = currentPressure / 33.8639; // Convert hPa to inHg
             char pressureStr[7];
@@ -4395,8 +4476,19 @@ void updateDisplay(float currentTemp, float currentHumidity)
             tft.print(pressureStr);
             tft.print("in");
         } else {
-            // Clear pressure area if not BME280 or invalid
+            // Clear pressure area if not BME280/BME680 or invalid
             tft.fillRect(230, 90, 80, 16, COLOR_BACKGROUND);
+        }
+        
+        // Display air quality if BME680 sensor is active
+        if (activeSensor == SENSOR_BME680) {
+            tft.setCursor(230, 120); // Air quality at y=120, 30px spacing
+            int aqScore = (int)currentAirQuality;
+            tft.print("AQ:");
+            tft.print(aqScore);
+        } else {
+            // Clear air quality area if not BME680
+            tft.fillRect(230, 120, 80, 16, COLOR_BACKGROUND);
         }
 
         // Update previous values
