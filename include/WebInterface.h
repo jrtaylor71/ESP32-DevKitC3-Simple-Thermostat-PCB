@@ -705,6 +705,55 @@ function handleSettingsSubmit(event) {
     return false;
 }
 
+function handleScheduleSubmit(event) {
+    event.preventDefault();
+    
+    const form = event.target;
+    const formData = new FormData(form);
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const statusDiv = document.getElementById('schedule-status');
+    
+    // Show loading state
+    const originalText = submitBtn.textContent;
+    submitBtn.textContent = 'Saving...';
+    submitBtn.disabled = true;
+    
+    fetch('/schedule_set', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            statusDiv.style.display = 'block';
+            statusDiv.style.backgroundColor = '#E8F5E9';
+            statusDiv.style.color = '#2E7D32';
+            statusDiv.textContent = '✓ ' + data.message;
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 5000);
+        } else {
+            statusDiv.style.display = 'block';
+            statusDiv.style.backgroundColor = '#FFEBEE';
+            statusDiv.style.color = '#C62828';
+            statusDiv.textContent = '✗ Error: ' + (data.message || 'Unknown error');
+        }
+    })
+    .catch(error => {
+        statusDiv.style.display = 'block';
+        statusDiv.style.backgroundColor = '#FFEBEE';
+        statusDiv.style.color = '#C62828';
+        statusDiv.textContent = '✗ Error saving schedule: ' + error.message;
+    })
+    .finally(() => {
+        // Restore button state
+        submitBtn.textContent = originalText;
+        submitBtn.disabled = false;
+    });
+    
+    return false;
+}
+
 // Initialize the interface when page loads
 document.addEventListener('DOMContentLoaded', function() {
     // Check URL parameters for tab switching

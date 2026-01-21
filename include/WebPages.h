@@ -520,7 +520,8 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     
     // Schedule tab content (embedded schedule interface)
     html += "<div id='schedule-content' class='tab-content content'>";
-    html += "<form action='/schedule_set' method='POST'>";
+    html += "<div id='schedule-status' style='display:none; padding:12px; margin-bottom:16px; border-radius:8px;'></div>";
+    html += "<form action='/schedule_set' method='POST' onsubmit='return handleScheduleSubmit(event);'>";
     
     // Master schedule control section
     html += "<div class='settings-section'>";
@@ -677,7 +678,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "<div class='settings-section'>";
     html += "<h3>Schedule Actions</h3>";
     html += "<div class='button-group'>";
-    html += "<input type='submit' value='Save Schedule Settings' class='btn btn-primary'>";
+    html += "<button type='submit' class='btn btn-primary'>Save Schedule Settings</button>";
     html += "</div>";
     html += "</div>";
     
@@ -736,9 +737,43 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "<h2 class='card-title' style='color: #FF9800;'>System Actions</h2>";
     html += "</div>";
     html += "<div class='button-group' style='padding: 16px;'>";
-    html += "<a href='/reboot' class='btn btn-secondary' onclick='return confirm(\"Are you sure you want to reboot the device?\")'>♻️ Reboot Device</a>";
+    html += "<button onclick='rebootDevice()' class='btn btn-secondary'>♻️ Reboot Device</button>";
+    html += "<div id='reboot-status' style='margin-top: 12px; padding: 12px; border-radius: 8px; display: none;'></div>";
     html += "<a href='/confirm_restore' class='btn btn-danger' onclick='return confirm(\"WARNING: This will reset all settings to defaults. Are you sure?\")'>⚠️ Factory Reset</a>";
     html += "</div>";
+    html += "<script>";
+    html += "function rebootDevice() {";
+    html += "  if (!confirm('Are you sure you want to reboot the device?')) return;";
+    html += "  var status = document.getElementById('reboot-status');";
+    html += "  status.style.display = 'block';";
+    html += "  status.style.backgroundColor = '#FFF3E0';";
+    html += "  status.style.color = '#E65100';";
+    html += "  status.innerHTML = '🔄 Rebooting device... Please wait.';";
+    html += "  fetch('/reboot', {method: 'POST'})";
+    html += "  setTimeout(function() {";
+    html += "    status.innerHTML = '⏳ Waiting for device to restart...';";
+    html += "    var startTime = Date.now();";
+    html += "    var checkInterval = setInterval(function() {";
+    html += "      fetch('/version').then(function(r) {";
+    html += "        if (r.ok) {";
+    html += "          clearInterval(checkInterval);";
+    html += "          status.style.backgroundColor = '#E8F5E9';";
+    html += "          status.style.color = '#2E7D32';";
+    html += "          status.innerHTML = '✅ Device restarted successfully!';";
+    html += "          setTimeout(function() { location.reload(); }, 2000);";
+    html += "        }";
+    html += "      }).catch(function() {";
+    html += "        if (Date.now() - startTime > 60000) {";
+    html += "          clearInterval(checkInterval);";
+    html += "          status.style.backgroundColor = '#FFEBEE';";
+    html += "          status.style.color = '#C62828';";
+    html += "          status.innerHTML = '⚠️ Timeout - please refresh page manually';";
+    html += "        }";
+    html += "      });";
+    html += "    }, 2000);";
+    html += "  }, 3000);";
+    html += "}";
+    html += "</script>";
     html += "</div>";
     html += "</div>"; // End system-content tab
     

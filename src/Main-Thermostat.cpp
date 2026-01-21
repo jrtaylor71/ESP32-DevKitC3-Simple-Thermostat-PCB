@@ -106,6 +106,8 @@ bool hydronicLockout = false; // Track hydronic safety lockout state
 int lastLightReading = 0; // Last light sensor reading
 unsigned long lastBrightnessUpdate = 0; // Last time brightness was updated
 int currentBrightness = MAX_BRIGHTNESS; // Current backlight brightness
+float filteredBrightness = 255.0; // EMA-filtered brightness for smooth transitions
+const float brightnessEMAAlpha = 0.2; // Brightness smoothing factor (0.2 = 20% new, 80% previous)
 // Display sleep mode settings
 bool displaySleepEnabled = true; // Enable/disable display sleep mode
 unsigned long displaySleepTimeout = 300000; // Sleep after 5 minutes (300000ms) of inactivity
@@ -144,6 +146,8 @@ Weather weather; // Weather object
 unsigned long stage1MinRuntime = 300; // Default minimum runtime for first stage in seconds (5 minutes)
 float stage2TempDelta = 2.0; // Default temperature delta for second stage activation
 unsigned long stage1StartTime = 0; // Time when stage 1 was activated
+unsigned long stage2StartTime = 0; // Time when stage 2 was activated (for min runtime tracking)
+const unsigned long STAGE2_MIN_RUNTIME = 60000; // Minimum 60 seconds before stage 2 can deactivate
 bool stage1Active = false; // Flag to track if stage 1 is active
 bool stage2Active = false; // Flag to track if stage 2 is active
 bool stage2HeatingEnabled = false; // Enable/disable 2nd stage heating
@@ -377,6 +381,7 @@ SemaphoreHandle_t displayUpdateMutex = NULL;
 SemaphoreHandle_t controlRelaysMutex = NULL;
 SemaphoreHandle_t radarSensorMutex = NULL;
 SemaphoreHandle_t i2cMutex = NULL; // Protect I2C bus access (AHT20 sensor)
+SemaphoreHandle_t nvsSaveMutex = NULL; // Protect NVS/preferences save operations (dual-core safety)
 
 // Diagnostics
 void logRuntimeDiagnostics();
@@ -941,6 +946,15 @@ void applySchedule(int dayOfWeek, bool isDayPeriod) {
 
 // Save schedule settings to preferences
 void saveScheduleSettings() {
+    // Acquire mutex for atomic save operation (dual-core safety)
+    if (nvsSaveMutex == NULL || xSemaphoreTake(nvsSaveMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        debugLog("ERROR: saveScheduleSettings() timed out waiting for NVS mutex\n");
+        return;
+    }
+    
+    debugLog("SCHEDULE: Starting atomic save operation...\n");
+    unsigned long saveStartTime = millis();
+    
     preferences.putBool("schedEnabled", scheduleEnabled);
     preferences.putBool("schedOverride", scheduleOverride);
     preferences.putULong("overrideEnd", overrideEndTime);
@@ -969,7 +983,23 @@ void saveScheduleSettings() {
         preferences.putBool((dayPrefix + "n_active").c_str(), weekSchedule[day].night.active);
     }
     
-    debugLog("SCHEDULE: Settings saved to preferences\n");
+    // Verify critical schedule settings were saved
+    bool verifySuccess = true;
+    bool verifySched = preferences.getBool("schedEnabled", !scheduleEnabled);
+    
+    if (verifySched != scheduleEnabled) {
+        verifySuccess = false;
+        debugLog("ERROR: Schedule verification FAILED—save may not have persisted!\n");
+    } else {
+        debugLog("SCHEDULE: Verification SUCCESS—schedule data confirmed in NVS\n");
+    }
+    
+    unsigned long saveDuration = millis() - saveStartTime;
+    debugLog("SCHEDULE: Atomic save completed in %lu ms (status=%s)\n", 
+             saveDuration, verifySuccess ? "OK" : "FAILED");
+    
+    // Release mutex
+    xSemaphoreGive(nvsSaveMutex);
 }
 
 // Load schedule settings from preferences
@@ -1111,6 +1141,13 @@ void setup()
 
     // Initialize Preferences
     preferences.begin("thermostat", false);
+    
+    // Create NVS save semaphore for dual-core safety
+    nvsSaveMutex = xSemaphoreCreateMutex();
+    if (nvsSaveMutex == NULL) {
+        debugLog("ERROR: Failed to create NVS save mutex!\n");
+    }
+    
     loadSettings();
     loadScheduleSettings();
 
@@ -1134,7 +1171,9 @@ void setup()
     // Initialize TFT backlight with PWM (GPIO 14)
     ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_RESOLUTION);
     ledcAttachPin(TFT_BACKLIGHT_PIN, PWM_CHANNEL);
-    setBrightness(MAX_BRIGHTNESS); // Start at full brightness
+    // Start at full brightness
+    setBrightness(MAX_BRIGHTNESS);
+    filteredBrightness = MAX_BRIGHTNESS; // Initialize EMA filter
     
     // Initialize light sensor pin
     pinMode(LIGHT_SENSOR_PIN, INPUT);
@@ -2203,7 +2242,6 @@ void handleButtonPress(uint16_t x, uint16_t y)
             scheduleOverride = true;
             overrideEndTime = millis() + (scheduleOverrideDuration * 60000UL);
             debugLog("SCHEDULE: Override enabled due to manual temperature adjustment\n");
-            saveScheduleSettings();
         }
         
         if (thermostatMode == "heat")
@@ -2237,6 +2275,7 @@ void handleButtonPress(uint16_t x, uint16_t y)
             if (setTempAuto < 50) setTempAuto = 50;
             if (!handlingMQTTMessage) mqttClient.publish("thermostat/setTempAuto", String(setTempAuto).c_str(), true);
         }
+        // Single atomic save of all settings (including schedule override if set above)
         saveSettings();
         sendMQTTData();
         // Update display immediately for better responsiveness
@@ -2249,7 +2288,6 @@ void handleButtonPress(uint16_t x, uint16_t y)
             scheduleOverride = true;
             overrideEndTime = millis() + (scheduleOverrideDuration * 60000UL);
             debugLog("SCHEDULE: Override enabled due to manual temperature adjustment\n");
-            saveScheduleSettings();
         }
         
         if (thermostatMode == "heat")
@@ -2283,23 +2321,11 @@ void handleButtonPress(uint16_t x, uint16_t y)
             if (setTempAuto < 50) setTempAuto = 50;
             if (!handlingMQTTMessage) mqttClient.publish("thermostat/setTempAuto", String(setTempAuto).c_str(), true);
         }
-        unsigned long beforeSave2 = millis();
-        debugLog("[DEBUG] Before saveSettings (- button)\n");
+        // Single atomic save of all settings (including schedule override if set above)
         saveSettings();
-        unsigned long afterSave2 = millis();
-        debugLog("[DEBUG] After saveSettings (took %lu ms)\n", afterSave2 - beforeSave2);
-        
         sendMQTTData();
-        unsigned long afterMQTT2 = millis();
-        debugLog("[DEBUG] After sendMQTTData (took %lu ms)\n", afterMQTT2 - afterSave2);
-        
         // Update display immediately for better responsiveness
-        unsigned long beforeDisplay2 = millis();
-        debugLog("[DEBUG] Before updateDisplay (- button)\n");
         updateDisplay(currentTemp, currentHumidity);
-        unsigned long afterDisplay2 = millis();
-        debugLog("[DEBUG] After updateDisplay (took %lu ms)\n", afterDisplay2 - beforeDisplay2);
-        debugLog("[DEBUG] Total - button time: %lu ms\n", afterDisplay2 - startTime);
     }
     else if (x > 125 && x < 195 && y > 195 && y < 245) // Mode button with slightly increased touch area
     {
@@ -2372,10 +2398,14 @@ void reconnectMQTT()
             String modeSetTopic = hostname + "/mode/set";
             String fanModeSetTopic = hostname + "/fan_mode/set";
             String showerModeSetTopic = hostname + "/shower_mode/set";
+            String scheduleEnabledSetTopic = hostname + "/schedule_enabled/set";
+            String scheduleOverrideSetTopic = hostname + "/schedule_override/set";
             mqttClient.subscribe(tempSetTopic.c_str());
             mqttClient.subscribe(modeSetTopic.c_str());
             mqttClient.subscribe(fanModeSetTopic.c_str());
             mqttClient.subscribe(showerModeSetTopic.c_str());
+            mqttClient.subscribe(scheduleEnabledSetTopic.c_str());
+            mqttClient.subscribe(scheduleOverrideSetTopic.c_str());
 
             // Publish Home Assistant discovery messages
             publishHomeAssistantDiscovery();
@@ -2562,6 +2592,34 @@ void publishHomeAssistantDiscovery()
             mqttClient.publish(showerConfigTopic.c_str(), "", true);
             debugLog("Removed Shower Mode switch discovery from Home Assistant (disabled)\n");
         }
+        
+        // Publish schedule enabled switch discovery
+        StaticJsonDocument<512> scheduleDoc;
+        String scheduleConfigTopic = "homeassistant/switch/" + hostname + "_schedule_enabled/config";
+        
+        scheduleDoc["name"] = "Schedule Enabled";
+        scheduleDoc["state_topic"] = hostname + "/schedule_enabled";
+        scheduleDoc["command_topic"] = hostname + "/schedule_enabled/set";
+        scheduleDoc["payload_on"] = "on";
+        scheduleDoc["payload_off"] = "off";
+        scheduleDoc["state_on"] = "on";
+        scheduleDoc["state_off"] = "off";
+        scheduleDoc["unique_id"] = hostname + "_schedule_enabled";
+        scheduleDoc["icon"] = "mdi:calendar-clock";
+        
+        // Link to same device as main thermostat
+        JsonObject scheduleDevice = scheduleDoc.createNestedObject("device");
+        scheduleDevice["identifiers"][0] = hostname;
+        scheduleDevice["name"] = hostname;
+        scheduleDevice["model"] = PROJECT_NAME_SHORT;
+        scheduleDevice["manufacturer"] = "TDC";
+        scheduleDevice["sw_version"] = sw_version;
+        
+        char scheduleBuffer[512];
+        serializeJson(scheduleDoc, scheduleBuffer);
+        mqttClient.publish(scheduleConfigTopic.c_str(), scheduleBuffer, true);
+        
+        debugLog("Published Schedule Enabled switch discovery to Home Assistant\n");
     }
     else
     {
@@ -2610,6 +2668,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
     String fanModeSetTopic = hostname + "/fan_mode/set";
     String tempSetTopic = hostname + "/target_temperature/set";
     String showerModeSetTopic = hostname + "/shower_mode/set";
+    String scheduleEnabledSetTopic = hostname + "/schedule_enabled/set";
+    String scheduleOverrideSetTopic = hostname + "/schedule_override/set";
 
     if (String(topic) == modeSetTopic)
     {
@@ -2690,6 +2750,52 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
                     debugLog("[SHOWER MODE] Deactivated via MQTT\n");
                     updateDisplay(currentTemp, currentHumidity);
                     sendMQTTData(); // Publish state back to HA
+                }
+            }
+        }
+    }
+    else if (String(topic) == scheduleEnabledSetTopic)
+    {
+        bool newScheduleEnabled = (message == "ON" || message == "on" || message == "1");
+        if (newScheduleEnabled != scheduleEnabled) {
+            scheduleEnabled = newScheduleEnabled;
+            debugLog("SCHEDULE: Via MQTT, enabled=%s\n", scheduleEnabled ? "true" : "false");
+            if (!scheduleEnabled) {
+                // Disable override when schedule is disabled
+                scheduleOverride = false;
+                overrideEndTime = 0;
+                activePeriod = "manual";
+            }
+            scheduleNeedsSaving = true;
+            sendMQTTData(); // Publish updated state back to HA
+        }
+    }
+    else if (String(topic) == scheduleOverrideSetTopic)
+    {
+        if (scheduleEnabled) {
+            if (message == "resume") {
+                if (scheduleOverride) {
+                    scheduleOverride = false;
+                    overrideEndTime = 0;
+                    debugLog("SCHEDULE: Via MQTT, override resumed (schedule active)\n");
+                    scheduleNeedsSaving = true;
+                    sendMQTTData();
+                }
+            } else if (message == "temporary") {
+                if (!scheduleOverride) {
+                    scheduleOverride = true;
+                    overrideEndTime = millis() + (scheduleOverrideDuration * 60000UL);
+                    debugLog("SCHEDULE: Via MQTT, override activated (temporary - 2 hours)\n");
+                    scheduleNeedsSaving = true;
+                    sendMQTTData();
+                }
+            } else if (message == "permanent") {
+                if (!scheduleOverride) {
+                    scheduleOverride = true;
+                    overrideEndTime = 0; // Permanent until manually disabled
+                    debugLog("SCHEDULE: Via MQTT, override activated (permanent)\n");
+                    scheduleNeedsSaving = true;
+                    sendMQTTData();
                 }
             }
         }
@@ -3304,12 +3410,23 @@ void activateHeating() {
     }
     // Check if it's time to activate stage 2 based on hybrid approach
     else if (!stage2Active && 
-             ((millis() - stage1StartTime) / 1000 >= stage1MinRuntime) && // Minimum run time condition
-             (currentTemp < setTempHeat - tempSwing - stage2TempDelta) && // Temperature delta condition
+             ((millis() - stage1StartTime) / 1000 >= stage1MinRuntime) && // Minimum run time before stage 2 allowed
+             (currentTemp < setTempHeat - stage2TempDelta) && // Simplified: just use delta, no swing subtraction
              stage2HeatingEnabled) { // Check if stage 2 heating is enabled
-        debugLog("[HVAC] Stage 2 HEATING activated\n");
+        debugLog("[HVAC] Stage 2 HEATING activated (temp %.1f < setpoint %.1f - delta %.1f)\n", 
+                 currentTemp, setTempHeat, stage2TempDelta);
         digitalWrite(HEAT_RELAY_2_PIN, HIGH); // Activate stage 2
         stage2Active = true;
+        stage2StartTime = millis(); // Record when stage 2 started
+    }
+    // Stage 2 DEACTIVATION: When temperature recovers sufficiently while stage 1 continues
+    else if (stage2Active && !reversingValveEnabled &&
+             ((millis() - stage2StartTime) >= STAGE2_MIN_RUNTIME) && // Must run minimum time before deactivation
+             (currentTemp >= setTempHeat - (stage2TempDelta * 0.5))) { // Deactivate at half-delta for hysteresis
+        debugLog("[HVAC] Stage 2 HEATING deactivated (temp %.1f >= setpoint %.1f - half-delta %.1f, runtime %.1fs)\n", 
+                 currentTemp, setTempHeat, (stage2TempDelta * 0.5), (millis() - stage2StartTime) / 1000.0);
+        digitalWrite(HEAT_RELAY_2_PIN, LOW); // Deactivate stage 2
+        stage2Active = false;
     }
     
     // Control fan based on fanRelayNeeded setting
@@ -3380,12 +3497,23 @@ void activateCooling()
     
     // Only activate stage 2 cooling if NOT using reversing valve
     if (!reversingValveEnabled && !stage2Active && 
-            ((millis() - stage1StartTime) / 1000 >= stage1MinRuntime) && // Minimum run time condition
-            (currentTemp > setTempCool + tempSwing + stage2TempDelta) && // Temperature delta condition
+            ((millis() - stage1StartTime) / 1000 >= stage1MinRuntime) && // Minimum run time before stage 2 allowed
+            (currentTemp > setTempCool + stage2TempDelta) && // Simplified: just use delta, no swing addition
             stage2CoolingEnabled) { // Check if stage 2 cooling is enabled
+        debugLog("[HVAC] Stage 2 COOLING activated (temp %.1f > setpoint %.1f + delta %.1f)\n", 
+                 currentTemp, setTempCool, stage2TempDelta);
         digitalWrite(COOL_RELAY_2_PIN, HIGH); // Activate stage 2
         stage2Active = true;
-        debugLog("Stage 2 cooling activated\n");
+        stage2StartTime = millis(); // Record when stage 2 started
+    }
+    // Stage 2 DEACTIVATION: When temperature recovers sufficiently while stage 1 continues
+    else if (stage2Active && !reversingValveEnabled &&
+             ((millis() - stage2StartTime) >= STAGE2_MIN_RUNTIME) && // Must run minimum time before deactivation
+             (currentTemp <= setTempCool + (stage2TempDelta * 0.5))) { // Deactivate at half-delta for hysteresis
+        debugLog("[HVAC] Stage 2 COOLING deactivated (temp %.1f <= setpoint %.1f + half-delta %.1f, runtime %.1fs)\n", 
+                 currentTemp, setTempCool, (stage2TempDelta * 0.5), (millis() - stage2StartTime) / 1000.0);
+        digitalWrite(COOL_RELAY_2_PIN, LOW); // Deactivate stage 2
+        stage2Active = false;
     }
     
     // Control fan based on fanRelayNeeded setting
@@ -3906,43 +4034,6 @@ void handleWebRequests()
         request->send(200, "application/json", "{\"status\": \"success\"}");
     });
 
-    server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest *request)
-              {
-        // Prevent multiple reboot calls
-        if (systemRebootInProgress) {
-            request->send(200, "application/json", "{\"status\": \"already_rebooting\"}");
-            return;
-        }
-        
-        systemRebootInProgress = true;
-        // Send response with immediate connection close (like OTA does)
-        AsyncWebServerResponse *response = request->beginResponse(200, "text/html", 
-            "<html><head><title>Rebooting</title></head><body>"
-            "<h1>Device Rebooting...</h1>"
-            "<p>Please wait...</p>"
-            "<script>"
-            "setTimeout(function() {"
-            "  var begin = Date.now();"
-            "  var iv = setInterval(function() {"
-            "    fetch('/version').then(r => r.json()).then(j => {"
-            "      window.location.href = '/';"
-            "      clearInterval(iv);"
-            "    }).catch(function() {"
-            "      if (Date.now() - begin > 45000) {"
-            "        window.location.href = '/';"
-            "        clearInterval(iv);"
-            "      }"
-            "    });"
-            "  }, 2000);"
-            "}, 30000);"
-            "</script>"
-            "</body></html>");
-        response->addHeader("Connection", "close");
-        request->send(response);
-        delay(1500);
-        ESP.restart();
-    });
-    
     server.on("/reboot", HTTP_POST, [](AsyncWebServerRequest *request)
               {
         // Prevent multiple reboot calls
@@ -3952,31 +4043,16 @@ void handleWebRequests()
         }
         
         systemRebootInProgress = true;
-        // Send response with immediate connection close (like OTA does)
-        AsyncWebServerResponse *response = request->beginResponse(200, "text/html", 
-            "<html><head><title>Rebooting</title></head><body>"
-            "<h1>Device Rebooting...</h1>"
-            "<p>Please wait...</p>"
-            "<script>"
-            "setTimeout(function() {"
-            "  var begin = Date.now();"
-            "  var iv = setInterval(function() {"
-            "    fetch('/version').then(r => r.json()).then(j => {"
-            "      window.location.href = '/';"
-            "      clearInterval(iv);"
-            "    }).catch(function() {"
-            "      if (Date.now() - begin > 45000) {"
-            "        window.location.href = '/';"
-            "        clearInterval(iv);"
-            "      }"
-            "    });"
-            "  }, 2000);"
-            "}, 30000);"
-            "</script>"
-            "</body></html>");
+        debugLog("[REBOOT] Reboot requested via web interface\n");
+        
+        // Send simple JSON response and close connection
+        AsyncWebServerResponse *response = request->beginResponse(200, "application/json", 
+            "{\"status\": \"rebooting\"}");
         response->addHeader("Connection", "close");
         request->send(response);
-        delay(1500);
+        
+        // Wait for response to be sent, then reboot
+        delay(500);
         ESP.restart();
     });
 
@@ -4177,12 +4253,13 @@ void handleWebRequests()
         }
         
         if (settingsChanged) {
-            scheduleUpdatedFlag = true;
+            // Call saveScheduleSettings() directly—no need for flag since new saveSettings() consolidates schedule saves
             saveScheduleSettings();
-            debugLog("SCHEDULE: Settings updated via web interface\n");
+            debugLog("SCHEDULE: Settings updated via web interface (atomic save)\n");
+            request->send(200, "application/json", "{\"status\":\"success\",\"message\":\"Schedule settings saved successfully!\"}");
+        } else {
+            request->send(200, "application/json", "{\"status\":\"success\",\"message\":\"No changes detected\"}");
         }
-        
-        request->send(200, "text/plain", "Schedule settings updated!");
     });
 
     // Weather refresh endpoint for manual force update
@@ -4671,44 +4748,16 @@ void updateDisplay(float currentTemp, float currentHumidity)
 
 void saveSettings()
 {
-    debugLog("Saving settings:\n");
-    debugLog("setTempHeat: "); Serial.println(setTempHeat);
-    debugLog("setTempCool: "); Serial.println(setTempCool);
-    debugLog("setTempAuto: "); Serial.println(setTempAuto);
-    debugLog("tempSwing: "); Serial.println(tempSwing);
-    debugLog("autoTempSwing: "); Serial.println(autoTempSwing);
-    debugLog("fanRelayNeeded: "); Serial.println(fanRelayNeeded);
-    debugLog("useFahrenheit: "); Serial.println(useFahrenheit);
-    debugLog("mqttEnabled: "); Serial.println(mqttEnabled);
-    debugLog("fanMinutesPerHour: "); Serial.println(fanMinutesPerHour);
-    debugLog("mqttServer: "); Serial.println(mqttServer);
-    debugLog("mqttPort: "); Serial.println(mqttPort);
-    debugLog("mqttUsername: "); Serial.println(mqttUsername);
-    debugLog("mqttPassword: "); Serial.println(mqttPassword);
-    debugLog("wifiSSID: "); Serial.println(wifiSSID);
-    debugLog("wifiPassword: "); Serial.println(wifiPassword);
-    debugLog("thermostatMode: "); Serial.println(thermostatMode);
-    debugLog("fanMode: "); Serial.println(fanMode);
-    debugLog("timeZone: "); Serial.println(timeZone);
-    debugLog("use24HourClock: "); Serial.println(use24HourClock);
-    debugLog("hydronicHeatingEnabled: "); Serial.println(hydronicHeatingEnabled);
-    debugLog("hydronicTempLow: "); Serial.println(hydronicTempLow);
-    debugLog("hydronicTempHigh: "); Serial.println(hydronicTempHigh);
-    debugLog("hostname: "); Serial.println(hostname);
-    debugLog("stage1MinRuntime: "); Serial.println(stage1MinRuntime);
-    debugLog("stage2TempDelta: "); Serial.println(stage2TempDelta);
-    debugLog("stage2HeatingEnabled: "); Serial.println(stage2HeatingEnabled);
-    debugLog("stage2CoolingEnabled: "); Serial.println(stage2CoolingEnabled);
-    debugLog("reversingValveEnabled: "); Serial.println(reversingValveEnabled);
-    debugLog("weatherSource: "); Serial.println(weatherSource);
-    debugLog("owmApiKey: "); Serial.println(owmApiKey.length() > 0 ? "[SET]" : "[NOT SET]");
-    debugLog("owmCity: "); Serial.println(owmCity);
-    debugLog("owmCountry: "); Serial.println(owmCountry);
-    debugLog("haUrl: "); Serial.println(haUrl);
-    debugLog("haToken: "); Serial.println(haToken.length() > 0 ? "[SET]" : "[NOT SET]");
-    debugLog("haEntityId: "); Serial.println(haEntityId);
-    debugLog("weatherUpdateInterval: "); Serial.println(weatherUpdateInterval);
-
+    // Acquire mutex for atomic save operation (dual-core safety)
+    if (nvsSaveMutex == NULL || xSemaphoreTake(nvsSaveMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        debugLog("ERROR: saveSettings() timed out waiting for NVS mutex\n");
+        return;
+    }
+    
+    debugLog("SETTINGS: Starting atomic save operation...\n");
+    unsigned long saveStartTime = millis();
+    
+    // Save all settings to NVS
     preferences.putFloat("setHeat", setTempHeat);
     preferences.putFloat("setCool", setTempCool);
     preferences.putFloat("setAuto", setTempAuto);
@@ -4756,15 +4805,62 @@ void saveSettings()
     preferences.putBool("showerEn", showerModeEnabled);
     preferences.putInt("showerDur", showerModeDuration);
     
-    // Save schedule settings if flag is set
-    if (scheduleUpdatedFlag) {
-        saveScheduleSettings();
-        scheduleUpdatedFlag = false;
+    // Consolidate schedule saves into main save (atomic)
+    preferences.putBool("schedEnabled", scheduleEnabled);
+    preferences.putBool("schedOverride", scheduleOverride);
+    preferences.putULong("overrideEnd", overrideEndTime);
+    preferences.putString("activePeriod", activePeriod);
+    
+    // Save each day's schedule
+    for (int day = 0; day < 7; day++) {
+        String dayPrefix = "day" + String(day) + "_";
+        
+        preferences.putBool((dayPrefix + "enabled").c_str(), weekSchedule[day].enabled);
+        
+        // Day period
+        preferences.putInt((dayPrefix + "d_hour").c_str(), weekSchedule[day].day.hour);
+        preferences.putInt((dayPrefix + "d_min").c_str(), weekSchedule[day].day.minute);
+        preferences.putFloat((dayPrefix + "d_heat").c_str(), weekSchedule[day].day.heatTemp);
+        preferences.putFloat((dayPrefix + "d_cool").c_str(), weekSchedule[day].day.coolTemp);
+        preferences.putFloat((dayPrefix + "d_auto").c_str(), weekSchedule[day].day.autoTemp);
+        preferences.putBool((dayPrefix + "d_active").c_str(), weekSchedule[day].day.active);
+        
+        // Night period
+        preferences.putInt((dayPrefix + "n_hour").c_str(), weekSchedule[day].night.hour);
+        preferences.putInt((dayPrefix + "n_min").c_str(), weekSchedule[day].night.minute);
+        preferences.putFloat((dayPrefix + "n_heat").c_str(), weekSchedule[day].night.heatTemp);
+        preferences.putFloat((dayPrefix + "n_cool").c_str(), weekSchedule[day].night.coolTemp);
+        preferences.putFloat((dayPrefix + "n_auto").c_str(), weekSchedule[day].night.autoTemp);
+        preferences.putBool((dayPrefix + "n_active").c_str(), weekSchedule[day].night.active);
     }
-
-    // Debug print to confirm settings are saved
-    debugLog("Settings saved.");
+    
+    // Clear flag since we're saving schedule here
+    scheduleUpdatedFlag = false;
+    
+    // Verify critical settings were saved (spot check)
+    bool verifySuccess = true;
+    float verifySetHeat = preferences.getFloat("setHeat", -999.0);
+    float verifySetCool = preferences.getFloat("setCool", -999.0);
+    bool verifySched = preferences.getBool("schedEnabled", !scheduleEnabled);
+    
+    if (verifySetHeat != setTempHeat || verifySetCool != setTempCool || verifySched != scheduleEnabled) {
+        verifySuccess = false;
+        debugLog("ERROR: Settings verification FAILED—save may not have persisted!\n");
+        debugLog("  setHeat: saved=%.1f, verify=%.1f\n", setTempHeat, verifySetHeat);
+        debugLog("  setCool: saved=%.1f, verify=%.1f\n", setTempCool, verifySetCool);
+        debugLog("  schedEnabled: saved=%d, verify=%d\n", scheduleEnabled, verifySched);
+    } else {
+        debugLog("SETTINGS: Verification SUCCESS—all critical values confirmed in NVS\n");
+    }
+    
+    unsigned long saveDuration = millis() - saveStartTime;
+    debugLog("SETTINGS: Atomic save completed in %lu ms (status=%s)\n", 
+             saveDuration, verifySuccess ? "OK" : "FAILED");
+    
+    // Release mutex
+    xSemaphoreGive(nvsSaveMutex);
 }
+
 
 void loadSettings()
 {
