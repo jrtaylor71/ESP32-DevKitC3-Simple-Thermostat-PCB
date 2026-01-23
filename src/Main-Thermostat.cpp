@@ -2400,12 +2400,14 @@ void reconnectMQTT()
             String showerModeSetTopic = hostname + "/shower_mode/set";
             String scheduleEnabledSetTopic = hostname + "/schedule_enabled/set";
             String scheduleOverrideSetTopic = hostname + "/schedule_override/set";
+            String scheduleSetTopic = hostname + "/schedule/set";
             mqttClient.subscribe(tempSetTopic.c_str());
             mqttClient.subscribe(modeSetTopic.c_str());
             mqttClient.subscribe(fanModeSetTopic.c_str());
             mqttClient.subscribe(showerModeSetTopic.c_str());
             mqttClient.subscribe(scheduleEnabledSetTopic.c_str());
             mqttClient.subscribe(scheduleOverrideSetTopic.c_str());
+            mqttClient.subscribe(scheduleSetTopic.c_str());
 
             // Publish Home Assistant discovery messages
             publishHomeAssistantDiscovery();
@@ -2620,6 +2622,37 @@ void publishHomeAssistantDiscovery()
         mqttClient.publish(scheduleConfigTopic.c_str(), scheduleBuffer, true);
         
         debugLog("Published Schedule Enabled switch discovery to Home Assistant\n");
+        
+        // Publish schedule data sensor discovery for each day of the week
+        const char* dayNames[7] = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"};
+        
+        for (int day = 0; day < 7; day++) {
+            StaticJsonDocument<512> scheduleDataDoc;
+            String dayLower = String(dayNames[day]);
+            dayLower.toLowerCase();
+            String scheduleDataConfigTopic = "homeassistant/sensor/" + hostname + "_schedule_" + dayLower + "/config";
+            
+            scheduleDataDoc["name"] = String("Schedule ") + dayNames[day];
+            scheduleDataDoc["state_topic"] = hostname + "/schedule/" + dayLower;
+            scheduleDataDoc["value_template"] = "{{ value_json.day_name }}";
+            scheduleDataDoc["json_attributes_topic"] = hostname + "/schedule/" + dayLower;
+            scheduleDataDoc["unique_id"] = hostname + "_schedule_" + dayLower;
+            scheduleDataDoc["icon"] = "mdi:calendar-clock";
+            
+            // Link to same device as main thermostat
+            JsonObject scheduleDataDevice = scheduleDataDoc.createNestedObject("device");
+            scheduleDataDevice["identifiers"][0] = hostname;
+            scheduleDataDevice["name"] = hostname;
+            scheduleDataDevice["model"] = PROJECT_NAME_SHORT;
+            scheduleDataDevice["manufacturer"] = "TDC";
+            scheduleDataDevice["sw_version"] = sw_version;
+            
+            char scheduleDataBuffer[512];
+            serializeJson(scheduleDataDoc, scheduleDataBuffer);
+            mqttClient.publish(scheduleDataConfigTopic.c_str(), scheduleDataBuffer, true);
+        }
+        
+        debugLog("Published Schedule Data sensors (7 days) discovery to Home Assistant\n");
     }
     else
     {
@@ -2670,6 +2703,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
     String showerModeSetTopic = hostname + "/shower_mode/set";
     String scheduleEnabledSetTopic = hostname + "/schedule_enabled/set";
     String scheduleOverrideSetTopic = hostname + "/schedule_override/set";
+    String scheduleSetTopic = hostname + "/schedule/set";
 
     if (String(topic) == modeSetTopic)
     {
@@ -2798,6 +2832,107 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
                     sendMQTTData();
                 }
             }
+        }
+    }
+    else if (String(topic) == scheduleSetTopic)
+    {
+        // Parse JSON schedule update
+        // Format: {"day": 0, "period": "day", "hour": 6, "minute": 30, "heat": 72.0, "cool": 78.0, "auto": 74.0, "active": true}
+        StaticJsonDocument<256> doc;
+        DeserializationError error = deserializeJson(doc, message);
+        
+        if (!error) {
+            int day = doc["day"] | -1;
+            String period = doc["period"] | "";
+            
+            if (day >= 0 && day < 7 && (period == "day" || period == "night")) {
+                SchedulePeriod* targetPeriod = (period == "day") ? &weekSchedule[day].day : &weekSchedule[day].night;
+                
+                bool changed = false;
+                
+                if (doc.containsKey("hour")) {
+                    int newHour = doc["hour"];
+                    if (newHour >= 0 && newHour <= 23 && newHour != targetPeriod->hour) {
+                        targetPeriod->hour = newHour;
+                        changed = true;
+                    }
+                }
+                
+                if (doc.containsKey("minute")) {
+                    int newMinute = doc["minute"];
+                    if (newMinute >= 0 && newMinute <= 59 && newMinute != targetPeriod->minute) {
+                        targetPeriod->minute = newMinute;
+                        changed = true;
+                    }
+                }
+                
+                if (doc.containsKey("heat")) {
+                    float newHeat = doc["heat"];
+                    if (newHeat != targetPeriod->heatTemp) {
+                        targetPeriod->heatTemp = newHeat;
+                        changed = true;
+                    }
+                }
+                
+                if (doc.containsKey("cool")) {
+                    float newCool = doc["cool"];
+                    if (newCool != targetPeriod->coolTemp) {
+                        targetPeriod->coolTemp = newCool;
+                        changed = true;
+                    }
+                }
+                
+                if (doc.containsKey("auto")) {
+                    float newAuto = doc["auto"];
+                    if (newAuto != targetPeriod->autoTemp) {
+                        targetPeriod->autoTemp = newAuto;
+                        changed = true;
+                    }
+                }
+                
+                if (doc.containsKey("active")) {
+                    bool newActive = doc["active"];
+                    if (newActive != targetPeriod->active) {
+                        targetPeriod->active = newActive;
+                        changed = true;
+                    }
+                }
+                
+                if (doc.containsKey("enabled")) {
+                    bool newEnabled = doc["enabled"];
+                    if (newEnabled != weekSchedule[day].enabled) {
+                        weekSchedule[day].enabled = newEnabled;
+                        changed = true;
+                    }
+                }
+                
+                if (changed) {
+                    scheduleNeedsSaving = true;
+                    debugLog("SCHEDULE: Via MQTT, updated day %d %s period\n", day, period.c_str());
+                    
+                    // If schedule is enabled and not overridden, reapply to take effect immediately
+                    if (scheduleEnabled && !scheduleOverride) {
+                        time_t now;
+                        struct tm timeinfo;
+                        time(&now);
+                        localtime_r(&now, &timeinfo);
+                        int currentDay = (timeinfo.tm_wday + 6) % 7; // Convert Sunday=0 to Monday=0
+                        
+                        if (currentDay == day) {
+                            // Current day was modified, reapply schedule
+                            bool isDayPeriod = (period == "day");
+                            applySchedule(day, isDayPeriod);
+                            updateDisplay(currentTemp, currentHumidity);
+                        }
+                    }
+                    
+                    sendMQTTData(); // Publish updated schedule state
+                }
+            } else {
+                debugLog("SCHEDULE: Invalid MQTT schedule update - day=%d, period=%s\n", day, period.c_str());
+            }
+        } else {
+            debugLog("SCHEDULE: Failed to parse MQTT schedule JSON\n");
         }
     }
 
@@ -3023,6 +3158,52 @@ void sendMQTTData()
         if (scheduleOverride) {
             String overrideTopic = hostname + "/schedule_override";
             mqttClient.publish(overrideTopic.c_str(), "active", false);
+        }
+        
+        // Publish detailed schedule data for all 7 days (for monitoring/debugging)
+        // Format: JSON for each day of the week
+        // Always publish so schedule data is visible even when schedule is disabled
+        time_t now;
+        struct tm timeinfo;
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        int currentDay = (timeinfo.tm_wday + 6) % 7; // Convert Sunday=0 to Monday=0
+        
+        // Publish schedule for each day of the week
+        const char* dayNames[7] = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"};
+        
+        for (int day = 0; day < 7; day++) {
+            StaticJsonDocument<512> schedDoc;
+            schedDoc["day_index"] = day;
+            schedDoc["day_name"] = dayNames[day];
+            schedDoc["is_today"] = (day == currentDay);
+            schedDoc["schedule_enabled"] = scheduleEnabled;
+            schedDoc["day_enabled"] = weekSchedule[day].enabled;
+            
+            JsonObject dayPeriod = schedDoc.createNestedObject("day_period");
+            dayPeriod["time"] = String(weekSchedule[day].day.hour) + ":" + 
+                               (weekSchedule[day].day.minute < 10 ? "0" : "") + 
+                               String(weekSchedule[day].day.minute);
+            dayPeriod["heat"] = weekSchedule[day].day.heatTemp;
+            dayPeriod["cool"] = weekSchedule[day].day.coolTemp;
+            dayPeriod["auto"] = weekSchedule[day].day.autoTemp;
+            dayPeriod["active"] = weekSchedule[day].day.active;
+            
+            JsonObject nightPeriod = schedDoc.createNestedObject("night_period");
+            nightPeriod["time"] = String(weekSchedule[day].night.hour) + ":" + 
+                                 (weekSchedule[day].night.minute < 10 ? "0" : "") + 
+                                 String(weekSchedule[day].night.minute);
+            nightPeriod["heat"] = weekSchedule[day].night.heatTemp;
+            nightPeriod["cool"] = weekSchedule[day].night.coolTemp;
+            nightPeriod["auto"] = weekSchedule[day].night.autoTemp;
+            nightPeriod["active"] = weekSchedule[day].night.active;
+            
+            char schedBuffer[512];
+            serializeJson(schedDoc, schedBuffer);
+            String dayLower = String(dayNames[day]);
+            dayLower.toLowerCase();
+            String scheduleDataTopic = hostname + "/schedule/" + dayLower;
+            mqttClient.publish(scheduleDataTopic.c_str(), schedBuffer, false);
         }
 
         // Publish availability
