@@ -749,7 +749,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "  status.style.backgroundColor = '#FFF3E0';";
     html += "  status.style.color = '#E65100';";
     html += "  status.innerHTML = '🔄 Rebooting device... Please wait.';";
-    html += "  fetch('/reboot', {method: 'POST'})";
+    html += "  fetch('/reboot', {method: 'POST'}).then(function(r) {return r.json();}).catch(function(e) {});";
     html += "  setTimeout(function() {";
     html += "    status.innerHTML = '⏳ Waiting for device to restart...';";
     html += "    var startTime = Date.now();";

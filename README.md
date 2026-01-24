@@ -119,13 +119,42 @@ For complete usage instructions, see [USER_MANUAL.md](USER_MANUAL.md)
 
 ## 🏠 Home Assistant Integration
 
+### Automatic Discovery & Control
 Automatic discovery and integration with Home Assistant:
 
 1. Enable MQTT in thermostat settings
 2. Configure MQTT broker details
-3. Thermostat appears automatically in Home Assistant
+3. Thermostat appears automatically in Home Assistant (91 entities per thermostat)
 4. Full control via Home Assistant interface
 5. Supports climate entity with heating/cooling modes
+
+### Bidirectional Schedule Sync 🔄
+Full synchronization between thermostat and Home Assistant:
+
+**Device → HA (Inbound)**: 
+- Thermostat publishes complete schedule on boot and config changes
+- HA automations automatically update 77 helper entities (per device)
+- Changes made on device instantly visible in HA
+
+**HA → Device (Outbound)**:
+- Change any schedule helper in HA (time, temperature, enabled status)
+- Automation publishes change to device via MQTT immediately
+- Device receives and applies change instantly
+- No manual sync needed - fully automatic bidirectional flow
+
+**Multi-Thermostat Support**:
+- Each device gets its own set of helpers (shop_thermostat, studio_thermostat, house_thermostat, etc.)
+- Centralized multi-device automation handles all thermostats
+- Proper hostname normalization for MQTT topics vs. helper IDs
+- Can manage 10+ thermostats from single HA instance
+
+**Setup Instructions**:
+1. Ensure MQTT is enabled on thermostat
+2. Copy `multi_thermostat_schedule_sync.yaml` to HA packages directory
+3. Generate per-device packages: `./generate_schedule_package.sh shop_thermostat`
+4. Add package to HA configuration
+5. Reload automations/scripts in HA
+6. Helpers auto-populate from device schedule state
 
 ## 🛠️ Advanced Features
 
@@ -221,9 +250,21 @@ Contributions welcome! Please:
 
 ## ⭐ Version
 
-**Current Version**: 1.3.9 (January 2026)
+**Current Version**: 1.4.001 (January 2026)
 
-### Latest Features (v1.3.9)
+### Latest Features (v1.4.001)
+- **Bidirectional MQTT Schedule Sync**: Complete synchronization between thermostat and Home Assistant
+  - 77 outbound automations per thermostat for all schedule parameters
+  - Centralized multi-thermostat inbound automation
+  - Automatic helper generation via script
+  - Full support for unlimited thermostats
+  - Proper hostname normalization (MQTT vs. helper IDs)
+  - Fixed day index mapping (MQTT 0=Monday ↔ Firmware 0=Sunday)
+- **Multi-Thermostat Support**: Manage multiple thermostats with automatic hostname handling
+- **MQTT Helper Auto-Discovery**: 77 helpers per thermostat auto-created from device state
+- **Schedule Automation Pack**: Single command generation for all outbound automations
+
+### Previous Features (v1.3.9)
 - **Shower Mode**: Pause heating for configurable duration (5-120 minutes) with countdown timer
   - Touch screen toggle on/off
   - Web interface enable/disable and duration control

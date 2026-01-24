@@ -1,0 +1,1436 @@
+# Home Assistant Schedule Configuration for ESP32 Thermostat
+# Add this to your configuration.yaml or split into packages/shop_thermostat_schedule.yaml
+# 
+
+# ===== INPUT HELPERS =====
+# Add these to Home Assistant via UI: Settings > Devices & Services > Helpers
+# Or add them here and restart Home Assistant
+
+input_datetime:
+  # Monday
+  shop_thermostat_monday_day_time:
+    name: shop_thermostat Monday Morning Time
+    has_date: false
+    has_time: true
+    icon: mdi:clock
+  shop_thermostat_monday_night_time:
+    name: shop_thermostat Monday Evening Time
+    has_date: false
+    has_time: true
+    icon: mdi:clock-outline
+  
+  # Tuesday
+  shop_thermostat_tuesday_day_time:
+    name: shop_thermostat Tuesday Morning Time
+    has_date: false
+    has_time: true
+    icon: mdi:clock
+  shop_thermostat_tuesday_night_time:
+    name: shop_thermostat Tuesday Evening Time
+    has_date: false
+    has_time: true
+    icon: mdi:clock-outline
+  
+  # Wednesday
+  shop_thermostat_wednesday_day_time:
+    name: shop_thermostat Wednesday Morning Time
+    has_date: false
+    has_time: true
+    icon: mdi:clock
+  shop_thermostat_wednesday_night_time:
+    name: shop_thermostat Wednesday Evening Time
+    has_date: false
+    has_time: true
+    icon: mdi:clock-outline
+  
+  # Thursday
+  shop_thermostat_thursday_day_time:
+    name: shop_thermostat Thursday Morning Time
+    has_date: false
+    has_time: true
+    icon: mdi:clock
+  shop_thermostat_thursday_night_time:
+    name: shop_thermostat Thursday Evening Time
+    has_date: false
+    has_time: true
+    icon: mdi:clock-outline
+  
+  # Friday
+  shop_thermostat_friday_day_time:
+    name: shop_thermostat Friday Morning Time
+    has_date: false
+    has_time: true
+    icon: mdi:clock
+  shop_thermostat_friday_night_time:
+    name: shop_thermostat Friday Evening Time
+    has_date: false
+    has_time: true
+    icon: mdi:clock-outline
+  
+  # Saturday
+  shop_thermostat_saturday_day_time:
+    name: shop_thermostat Saturday Morning Time
+    has_date: false
+    has_time: true
+    icon: mdi:clock
+  shop_thermostat_saturday_night_time:
+    name: shop_thermostat Saturday Evening Time
+    has_date: false
+    has_time: true
+    icon: mdi:clock-outline
+  
+  # Sunday
+  shop_thermostat_sunday_day_time:
+    name: shop_thermostat Sunday Morning Time
+    has_date: false
+    has_time: true
+    icon: mdi:clock
+  shop_thermostat_sunday_night_time:
+    name: shop_thermostat Sunday Evening Time
+    has_date: false
+    has_time: true
+    icon: mdi:clock-outline
+
+input_number:
+  # Monday Day
+  shop_thermostat_monday_day_heat:
+    name: shop_thermostat Monday Morning Heat
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:fire
+  shop_thermostat_monday_day_cool:
+    name: shop_thermostat Monday Morning Cool
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:snowflake
+  shop_thermostat_monday_day_auto:
+    name: shop_thermostat Monday Morning Auto
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+  
+  # Monday Night
+  shop_thermostat_monday_night_heat:
+    name: shop_thermostat Monday Evening Heat
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:fire
+  shop_thermostat_monday_night_cool:
+    name: shop_thermostat Monday Evening Cool
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:snowflake
+  shop_thermostat_monday_night_auto:
+    name: shop_thermostat Monday Evening Auto
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+  
+  # Tuesday Day
+  shop_thermostat_tuesday_day_heat:
+    name: shop_thermostat Tuesday Morning Heat
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:fire
+  shop_thermostat_tuesday_day_cool:
+    name: shop_thermostat Tuesday Morning Cool
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:snowflake
+  shop_thermostat_tuesday_day_auto:
+    name: shop_thermostat Tuesday Morning Auto
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+  
+  # Tuesday Night
+  shop_thermostat_tuesday_night_heat:
+    name: shop_thermostat Tuesday Evening Heat
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:fire
+  shop_thermostat_tuesday_night_cool:
+    name: shop_thermostat Tuesday Evening Cool
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:snowflake
+  shop_thermostat_tuesday_night_auto:
+    name: shop_thermostat Tuesday Evening Auto
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+  
+  # Wednesday Day
+  shop_thermostat_wednesday_day_heat:
+    name: shop_thermostat Wednesday Morning Heat
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:fire
+  shop_thermostat_wednesday_day_cool:
+    name: shop_thermostat Wednesday Morning Cool
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:snowflake
+  shop_thermostat_wednesday_day_auto:
+    name: shop_thermostat Wednesday Morning Auto
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+  
+  # Wednesday Night
+  shop_thermostat_wednesday_night_heat:
+    name: shop_thermostat Wednesday Evening Heat
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:fire
+  shop_thermostat_wednesday_night_cool:
+    name: shop_thermostat Wednesday Evening Cool
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:snowflake
+  shop_thermostat_wednesday_night_auto:
+    name: shop_thermostat Wednesday Evening Auto
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+  
+  # Thursday Day
+  shop_thermostat_thursday_day_heat:
+    name: shop_thermostat Thursday Morning Heat
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:fire
+  shop_thermostat_thursday_day_cool:
+    name: shop_thermostat Thursday Morning Cool
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:snowflake
+  shop_thermostat_thursday_day_auto:
+    name: shop_thermostat Thursday Morning Auto
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+  
+  # Thursday Night
+  shop_thermostat_thursday_night_heat:
+    name: shop_thermostat Thursday Evening Heat
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:fire
+  shop_thermostat_thursday_night_cool:
+    name: shop_thermostat Thursday Evening Cool
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:snowflake
+  shop_thermostat_thursday_night_auto:
+    name: shop_thermostat Thursday Evening Auto
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+  
+  # Friday Day
+  shop_thermostat_friday_day_heat:
+    name: shop_thermostat Friday Morning Heat
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:fire
+  shop_thermostat_friday_day_cool:
+    name: shop_thermostat Friday Morning Cool
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:snowflake
+  shop_thermostat_friday_day_auto:
+    name: shop_thermostat Friday Morning Auto
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+  
+  # Friday Night
+  shop_thermostat_friday_night_heat:
+    name: shop_thermostat Friday Evening Heat
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:fire
+  shop_thermostat_friday_night_cool:
+    name: shop_thermostat Friday Evening Cool
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:snowflake
+  shop_thermostat_friday_night_auto:
+    name: shop_thermostat Friday Evening Auto
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+  
+  # Saturday Day
+  shop_thermostat_saturday_day_heat:
+    name: shop_thermostat Saturday Morning Heat
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:fire
+  shop_thermostat_saturday_day_cool:
+    name: shop_thermostat Saturday Morning Cool
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:snowflake
+  shop_thermostat_saturday_day_auto:
+    name: shop_thermostat Saturday Morning Auto
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+  
+  # Saturday Night
+  shop_thermostat_saturday_night_heat:
+    name: shop_thermostat Saturday Evening Heat
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:fire
+  shop_thermostat_saturday_night_cool:
+    name: shop_thermostat Saturday Evening Cool
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:snowflake
+  shop_thermostat_saturday_night_auto:
+    name: shop_thermostat Saturday Evening Auto
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+  
+  # Sunday Day
+  shop_thermostat_sunday_day_heat:
+    name: shop_thermostat Sunday Morning Heat
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:fire
+  shop_thermostat_sunday_day_cool:
+    name: shop_thermostat Sunday Morning Cool
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:snowflake
+  shop_thermostat_sunday_day_auto:
+    name: shop_thermostat Sunday Morning Auto
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+  
+  # Sunday Night
+  shop_thermostat_sunday_night_heat:
+    name: shop_thermostat Sunday Evening Heat
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:fire
+  shop_thermostat_sunday_night_cool:
+    name: shop_thermostat Sunday Evening Cool
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:snowflake
+  shop_thermostat_sunday_night_auto:
+    name: shop_thermostat Sunday Evening Auto
+    min: 45
+    max: 90
+    step: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+
+input_boolean:
+  # Monday
+  shop_thermostat_monday_day_active:
+    name: shop_thermostat Monday Morning Active
+    icon: mdi:power
+  shop_thermostat_monday_night_active:
+    name: shop_thermostat Monday Evening Active
+    icon: mdi:power
+  shop_thermostat_monday_enabled:
+    name: shop_thermostat Monday Enabled
+    icon: mdi:toggle-switch
+  
+  # Tuesday
+  shop_thermostat_tuesday_day_active:
+    name: shop_thermostat Tuesday Morning Active
+    icon: mdi:power
+  shop_thermostat_tuesday_night_active:
+    name: shop_thermostat Tuesday Evening Active
+    icon: mdi:power
+  shop_thermostat_tuesday_enabled:
+    name: shop_thermostat Tuesday Enabled
+    icon: mdi:toggle-switch
+  
+  # Wednesday
+  shop_thermostat_wednesday_day_active:
+    name: shop_thermostat Wednesday Morning Active
+    icon: mdi:power
+  shop_thermostat_wednesday_night_active:
+    name: shop_thermostat Wednesday Evening Active
+    icon: mdi:power
+  shop_thermostat_wednesday_enabled:
+    name: shop_thermostat Wednesday Enabled
+    icon: mdi:toggle-switch
+  
+  # Thursday
+  shop_thermostat_thursday_day_active:
+    name: shop_thermostat Thursday Morning Active
+    icon: mdi:power
+  shop_thermostat_thursday_night_active:
+    name: shop_thermostat Thursday Evening Active
+    icon: mdi:power
+  shop_thermostat_thursday_enabled:
+    name: shop_thermostat Thursday Enabled
+    icon: mdi:toggle-switch
+  
+  # Friday
+  shop_thermostat_friday_day_active:
+    name: shop_thermostat Friday Morning Active
+    icon: mdi:power
+  shop_thermostat_friday_night_active:
+    name: shop_thermostat Friday Evening Active
+    icon: mdi:power
+  shop_thermostat_friday_enabled:
+    name: shop_thermostat Friday Enabled
+    icon: mdi:toggle-switch
+  
+  # Saturday
+  shop_thermostat_saturday_day_active:
+    name: shop_thermostat Saturday Morning Active
+    icon: mdi:power
+  shop_thermostat_saturday_night_active:
+    name: shop_thermostat Saturday Evening Active
+    icon: mdi:power
+  shop_thermostat_saturday_enabled:
+    name: shop_thermostat Saturday Enabled
+    icon: mdi:toggle-switch
+  
+  # Sunday
+  shop_thermostat_sunday_day_active:
+    name: shop_thermostat Sunday Morning Active
+    icon: mdi:power
+  shop_thermostat_sunday_night_active:
+    name: shop_thermostat Sunday Evening Active
+    icon: mdi:power
+  shop_thermostat_sunday_enabled:
+    name: shop_thermostat Sunday Enabled
+    icon: mdi:toggle-switch
+
+# ===== AUTOMATIONS =====
+# These automations sync HA input helpers to MQTT schedule commands
+
+automation:
+  # OUTBOUND: Sync from HA helpers to thermostat
+  # (INBOUND sync handled by multi_thermostat_schedule_sync.yaml)
+  # Monday Morning Time
+  - alias: "Thermostat - Monday Morning Time Changed"
+    trigger:
+      platform: state
+      entity_id: input_datetime.shop_thermostat_monday_day_time
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: >
+          {
+            "day": 0,
+            "period": "day",
+            "hour": {{ states('input_datetime.shop_thermostat_monday_day_time').split(':')[0] | int }},
+            "minute": {{ states('input_datetime.shop_thermostat_monday_day_time').split(':')[1] | int }}
+          }
+  
+  # Monday Morning Heat
+  - alias: "Thermostat - Monday Morning Heat Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_monday_day_heat
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 0, "period": "day", "heat": {{ states("input_number.shop_thermostat_monday_day_heat") | float }}}'
+  
+  # Monday Morning Cool
+  - alias: "Thermostat - Monday Morning Cool Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_monday_day_cool
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 0, "period": "day", "cool": {{ states("input_number.shop_thermostat_monday_day_cool") | float }}}'
+  
+  # Monday Morning Auto
+  - alias: "Thermostat - Monday Morning Auto Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_monday_day_auto
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 0, "period": "day", "auto": {{ states("input_number.shop_thermostat_monday_day_auto") | float }}}'
+  
+  # Monday Morning Active
+  - alias: "Thermostat - Monday Morning Active Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_monday_day_active
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 0, "period": "day", "active": {{ "true" if states("input_boolean.shop_thermostat_monday_day_active") == "on" else "false" }}}'
+  
+  # Monday Evening Time
+  - alias: "Thermostat - Monday Evening Time Changed"
+    trigger:
+      platform: state
+      entity_id: input_datetime.shop_thermostat_monday_night_time
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: >
+          {
+            "day": 0,
+            "period": "night",
+            "hour": {{ states('input_datetime.shop_thermostat_monday_night_time').split(':')[0] | int }},
+            "minute": {{ states('input_datetime.shop_thermostat_monday_night_time').split(':')[1] | int }}
+          }
+  
+  # Monday Evening Heat
+  - alias: "Thermostat - Monday Evening Heat Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_monday_night_heat
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 0, "period": "night", "heat": {{ states("input_number.shop_thermostat_monday_night_heat") | float }}}'
+  
+  # Monday Evening Cool
+  - alias: "Thermostat - Monday Evening Cool Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_monday_night_cool
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 0, "period": "night", "cool": {{ states("input_number.shop_thermostat_monday_night_cool") | float }}}'
+  
+  # Monday Evening Auto
+  - alias: "Thermostat - Monday Evening Auto Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_monday_night_auto
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 0, "period": "night", "auto": {{ states("input_number.shop_thermostat_monday_night_auto") | float }}}'
+  
+  # Monday Evening Active
+  - alias: "Thermostat - Monday Evening Active Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_monday_night_active
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 0, "period": "night", "active": {{ "true" if states("input_boolean.shop_thermostat_monday_night_active") == "on" else "false" }}}'
+  
+  # Monday Enabled
+  - alias: "Thermostat - Monday Enabled Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_monday_enabled
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 0, "enabled": {{ "true" if states("input_boolean.shop_thermostat_monday_enabled") == "on" else "false" }}}'
+
+  # ===== TUESDAY =====
+  # Tuesday Morning Time
+  - alias: "Thermostat - Tuesday Morning Time Changed"
+    trigger:
+      platform: state
+      entity_id: input_datetime.shop_thermostat_tuesday_day_time
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: >
+          {
+            "day": 1,
+            "period": "day",
+            "hour": {{ states('input_datetime.shop_thermostat_tuesday_day_time').split(':')[0] | int }},
+            "minute": {{ states('input_datetime.shop_thermostat_tuesday_day_time').split(':')[1] | int }}
+          }
+  
+  # Tuesday Morning Heat
+  - alias: "Thermostat - Tuesday Morning Heat Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_tuesday_day_heat
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 1, "period": "day", "heat": {{ states("input_number.shop_thermostat_tuesday_day_heat") | float }}}'
+  
+  # Tuesday Morning Cool
+  - alias: "Thermostat - Tuesday Morning Cool Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_tuesday_day_cool
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 1, "period": "day", "cool": {{ states("input_number.shop_thermostat_tuesday_day_cool") | float }}}'
+  
+  # Tuesday Morning Auto
+  - alias: "Thermostat - Tuesday Morning Auto Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_tuesday_day_auto
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 1, "period": "day", "auto": {{ states("input_number.shop_thermostat_tuesday_day_auto") | float }}}'
+  
+  # Tuesday Morning Active
+  - alias: "Thermostat - Tuesday Morning Active Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_tuesday_day_active
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 1, "period": "day", "active": {{ "true" if states("input_boolean.shop_thermostat_tuesday_day_active") == "on" else "false" }}}'
+  
+  # Tuesday Evening Time
+  - alias: "Thermostat - Tuesday Evening Time Changed"
+    trigger:
+      platform: state
+      entity_id: input_datetime.shop_thermostat_tuesday_night_time
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: >
+          {
+            "day": 1,
+            "period": "night",
+            "hour": {{ states('input_datetime.shop_thermostat_tuesday_night_time').split(':')[0] | int }},
+            "minute": {{ states('input_datetime.shop_thermostat_tuesday_night_time').split(':')[1] | int }}
+          }
+  
+  # Tuesday Evening Heat
+  - alias: "Thermostat - Tuesday Evening Heat Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_tuesday_night_heat
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 1, "period": "night", "heat": {{ states("input_number.shop_thermostat_tuesday_night_heat") | float }}}'
+  
+  # Tuesday Evening Cool
+  - alias: "Thermostat - Tuesday Evening Cool Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_tuesday_night_cool
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 1, "period": "night", "cool": {{ states("input_number.shop_thermostat_tuesday_night_cool") | float }}}'
+  
+  # Tuesday Evening Auto
+  - alias: "Thermostat - Tuesday Evening Auto Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_tuesday_night_auto
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 1, "period": "night", "auto": {{ states("input_number.shop_thermostat_tuesday_night_auto") | float }}}'
+  
+  # Tuesday Evening Active
+  - alias: "Thermostat - Tuesday Evening Active Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_tuesday_night_active
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 1, "period": "night", "active": {{ "true" if states("input_boolean.shop_thermostat_tuesday_night_active") == "on" else "false" }}}'
+  
+  # Tuesday Enabled
+  - alias: "Thermostat - Tuesday Enabled Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_tuesday_enabled
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 1, "enabled": {{ "true" if states("input_boolean.shop_thermostat_tuesday_enabled") == "on" else "false" }}}'
+
+  # ===== WEDNESDAY =====
+  # Wednesday Morning Time
+  - alias: "Thermostat - Wednesday Morning Time Changed"
+    trigger:
+      platform: state
+      entity_id: input_datetime.shop_thermostat_wednesday_day_time
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: >
+          {
+            "day": 2,
+            "period": "day",
+            "hour": {{ states('input_datetime.shop_thermostat_wednesday_day_time').split(':')[0] | int }},
+            "minute": {{ states('input_datetime.shop_thermostat_wednesday_day_time').split(':')[1] | int }}
+          }
+  
+  # Wednesday Morning Heat
+  - alias: "Thermostat - Wednesday Morning Heat Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_wednesday_day_heat
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 2, "period": "day", "heat": {{ states("input_number.shop_thermostat_wednesday_day_heat") | float }}}'
+  
+  # Wednesday Morning Cool
+  - alias: "Thermostat - Wednesday Morning Cool Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_wednesday_day_cool
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 2, "period": "day", "cool": {{ states("input_number.shop_thermostat_wednesday_day_cool") | float }}}'
+  
+  # Wednesday Morning Auto
+  - alias: "Thermostat - Wednesday Morning Auto Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_wednesday_day_auto
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 2, "period": "day", "auto": {{ states("input_number.shop_thermostat_wednesday_day_auto") | float }}}'
+  
+  # Wednesday Morning Active
+  - alias: "Thermostat - Wednesday Morning Active Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_wednesday_day_active
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 2, "period": "day", "active": {{ "true" if states("input_boolean.shop_thermostat_wednesday_day_active") == "on" else "false" }}}'
+  
+  # Wednesday Evening Time
+  - alias: "Thermostat - Wednesday Evening Time Changed"
+    trigger:
+      platform: state
+      entity_id: input_datetime.shop_thermostat_wednesday_night_time
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: >
+          {
+            "day": 2,
+            "period": "night",
+            "hour": {{ states('input_datetime.shop_thermostat_wednesday_night_time').split(':')[0] | int }},
+            "minute": {{ states('input_datetime.shop_thermostat_wednesday_night_time').split(':')[1] | int }}
+          }
+  
+  # Wednesday Evening Heat
+  - alias: "Thermostat - Wednesday Evening Heat Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_wednesday_night_heat
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 2, "period": "night", "heat": {{ states("input_number.shop_thermostat_wednesday_night_heat") | float }}}'
+  
+  # Wednesday Evening Cool
+  - alias: "Thermostat - Wednesday Evening Cool Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_wednesday_night_cool
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 2, "period": "night", "cool": {{ states("input_number.shop_thermostat_wednesday_night_cool") | float }}}'
+  
+  # Wednesday Evening Auto
+  - alias: "Thermostat - Wednesday Evening Auto Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_wednesday_night_auto
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 2, "period": "night", "auto": {{ states("input_number.shop_thermostat_wednesday_night_auto") | float }}}'
+  
+  # Wednesday Evening Active
+  - alias: "Thermostat - Wednesday Evening Active Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_wednesday_night_active
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 2, "period": "night", "active": {{ "true" if states("input_boolean.shop_thermostat_wednesday_night_active") == "on" else "false" }}}'
+  
+  # Wednesday Enabled
+  - alias: "Thermostat - Wednesday Enabled Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_wednesday_enabled
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 2, "enabled": {{ "true" if states("input_boolean.shop_thermostat_wednesday_enabled") == "on" else "false" }}}'
+
+  # ===== THURSDAY =====
+  # Thursday Morning Time
+  - alias: "Thermostat - Thursday Morning Time Changed"
+    trigger:
+      platform: state
+      entity_id: input_datetime.shop_thermostat_thursday_day_time
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: >
+          {
+            "day": 3,
+            "period": "day",
+            "hour": {{ states('input_datetime.shop_thermostat_thursday_day_time').split(':')[0] | int }},
+            "minute": {{ states('input_datetime.shop_thermostat_thursday_day_time').split(':')[1] | int }}
+          }
+  
+  # Thursday Morning Heat
+  - alias: "Thermostat - Thursday Morning Heat Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_thursday_day_heat
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 3, "period": "day", "heat": {{ states("input_number.shop_thermostat_thursday_day_heat") | float }}}'
+  
+  # Thursday Morning Cool
+  - alias: "Thermostat - Thursday Morning Cool Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_thursday_day_cool
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 3, "period": "day", "cool": {{ states("input_number.shop_thermostat_thursday_day_cool") | float }}}'
+  
+  # Thursday Morning Auto
+  - alias: "Thermostat - Thursday Morning Auto Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_thursday_day_auto
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 3, "period": "day", "auto": {{ states("input_number.shop_thermostat_thursday_day_auto") | float }}}'
+  
+  # Thursday Morning Active
+  - alias: "Thermostat - Thursday Morning Active Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_thursday_day_active
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 3, "period": "day", "active": {{ "true" if states("input_boolean.shop_thermostat_thursday_day_active") == "on" else "false" }}}'
+  
+  # Thursday Evening Time
+  - alias: "Thermostat - Thursday Evening Time Changed"
+    trigger:
+      platform: state
+      entity_id: input_datetime.shop_thermostat_thursday_night_time
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: >
+          {
+            "day": 3,
+            "period": "night",
+            "hour": {{ states('input_datetime.shop_thermostat_thursday_night_time').split(':')[0] | int }},
+            "minute": {{ states('input_datetime.shop_thermostat_thursday_night_time').split(':')[1] | int }}
+          }
+  
+  # Thursday Evening Heat
+  - alias: "Thermostat - Thursday Evening Heat Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_thursday_night_heat
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 3, "period": "night", "heat": {{ states("input_number.shop_thermostat_thursday_night_heat") | float }}}'
+  
+  # Thursday Evening Cool
+  - alias: "Thermostat - Thursday Evening Cool Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_thursday_night_cool
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 3, "period": "night", "cool": {{ states("input_number.shop_thermostat_thursday_night_cool") | float }}}'
+  
+  # Thursday Evening Auto
+  - alias: "Thermostat - Thursday Evening Auto Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_thursday_night_auto
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 3, "period": "night", "auto": {{ states("input_number.shop_thermostat_thursday_night_auto") | float }}}'
+  
+  # Thursday Evening Active
+  - alias: "Thermostat - Thursday Evening Active Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_thursday_night_active
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 3, "period": "night", "active": {{ "true" if states("input_boolean.shop_thermostat_thursday_night_active") == "on" else "false" }}}'
+  
+  # Thursday Enabled
+  - alias: "Thermostat - Thursday Enabled Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_thursday_enabled
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 3, "enabled": {{ "true" if states("input_boolean.shop_thermostat_thursday_enabled") == "on" else "false" }}}'
+
+  # ===== FRIDAY =====
+  # Friday Morning Time
+  - alias: "Thermostat - Friday Morning Time Changed"
+    trigger:
+      platform: state
+      entity_id: input_datetime.shop_thermostat_friday_day_time
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: >
+          {
+            "day": 4,
+            "period": "day",
+            "hour": {{ states('input_datetime.shop_thermostat_friday_day_time').split(':')[0] | int }},
+            "minute": {{ states('input_datetime.shop_thermostat_friday_day_time').split(':')[1] | int }}
+          }
+  
+  # Friday Morning Heat
+  - alias: "Thermostat - Friday Morning Heat Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_friday_day_heat
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 4, "period": "day", "heat": {{ states("input_number.shop_thermostat_friday_day_heat") | float }}}'
+  
+  # Friday Morning Cool
+  - alias: "Thermostat - Friday Morning Cool Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_friday_day_cool
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 4, "period": "day", "cool": {{ states("input_number.shop_thermostat_friday_day_cool") | float }}}'
+  
+  # Friday Morning Auto
+  - alias: "Thermostat - Friday Morning Auto Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_friday_day_auto
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 4, "period": "day", "auto": {{ states("input_number.shop_thermostat_friday_day_auto") | float }}}'
+  
+  # Friday Morning Active
+  - alias: "Thermostat - Friday Morning Active Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_friday_day_active
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 4, "period": "day", "active": {{ "true" if states("input_boolean.shop_thermostat_friday_day_active") == "on" else "false" }}}'
+  
+  # Friday Evening Time
+  - alias: "Thermostat - Friday Evening Time Changed"
+    trigger:
+      platform: state
+      entity_id: input_datetime.shop_thermostat_friday_night_time
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: >
+          {
+            "day": 4,
+            "period": "night",
+            "hour": {{ states('input_datetime.shop_thermostat_friday_night_time').split(':')[0] | int }},
+            "minute": {{ states('input_datetime.shop_thermostat_friday_night_time').split(':')[1] | int }}
+          }
+  
+  # Friday Evening Heat
+  - alias: "Thermostat - Friday Evening Heat Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_friday_night_heat
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 4, "period": "night", "heat": {{ states("input_number.shop_thermostat_friday_night_heat") | float }}}'
+  
+  # Friday Evening Cool
+  - alias: "Thermostat - Friday Evening Cool Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_friday_night_cool
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 4, "period": "night", "cool": {{ states("input_number.shop_thermostat_friday_night_cool") | float }}}'
+  
+  # Friday Evening Auto
+  - alias: "Thermostat - Friday Evening Auto Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_friday_night_auto
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 4, "period": "night", "auto": {{ states("input_number.shop_thermostat_friday_night_auto") | float }}}'
+  
+  # Friday Evening Active
+  - alias: "Thermostat - Friday Evening Active Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_friday_night_active
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 4, "period": "night", "active": {{ "true" if states("input_boolean.shop_thermostat_friday_night_active") == "on" else "false" }}}'
+  
+  # Friday Enabled
+  - alias: "Thermostat - Friday Enabled Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_friday_enabled
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 4, "enabled": {{ "true" if states("input_boolean.shop_thermostat_friday_enabled") == "on" else "false" }}}'
+
+  # ===== SATURDAY =====
+  # Saturday Morning Time
+  - alias: "Thermostat - Saturday Morning Time Changed"
+    trigger:
+      platform: state
+      entity_id: input_datetime.shop_thermostat_saturday_day_time
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: >
+          {
+            "day": 5,
+            "period": "day",
+            "hour": {{ states('input_datetime.shop_thermostat_saturday_day_time').split(':')[0] | int }},
+            "minute": {{ states('input_datetime.shop_thermostat_saturday_day_time').split(':')[1] | int }}
+          }
+  
+  # Saturday Morning Heat
+  - alias: "Thermostat - Saturday Morning Heat Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_saturday_day_heat
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 5, "period": "day", "heat": {{ states("input_number.shop_thermostat_saturday_day_heat") | float }}}'
+  
+  # Saturday Morning Cool
+  - alias: "Thermostat - Saturday Morning Cool Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_saturday_day_cool
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 5, "period": "day", "cool": {{ states("input_number.shop_thermostat_saturday_day_cool") | float }}}'
+  
+  # Saturday Morning Auto
+  - alias: "Thermostat - Saturday Morning Auto Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_saturday_day_auto
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 5, "period": "day", "auto": {{ states("input_number.shop_thermostat_saturday_day_auto") | float }}}'
+  
+  # Saturday Morning Active
+  - alias: "Thermostat - Saturday Morning Active Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_saturday_day_active
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 5, "period": "day", "active": {{ "true" if states("input_boolean.shop_thermostat_saturday_day_active") == "on" else "false" }}}'
+  
+  # Saturday Evening Time
+  - alias: "Thermostat - Saturday Evening Time Changed"
+    trigger:
+      platform: state
+      entity_id: input_datetime.shop_thermostat_saturday_night_time
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: >
+          {
+            "day": 5,
+            "period": "night",
+            "hour": {{ states('input_datetime.shop_thermostat_saturday_night_time').split(':')[0] | int }},
+            "minute": {{ states('input_datetime.shop_thermostat_saturday_night_time').split(':')[1] | int }}
+          }
+  
+  # Saturday Evening Heat
+  - alias: "Thermostat - Saturday Evening Heat Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_saturday_night_heat
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 5, "period": "night", "heat": {{ states("input_number.shop_thermostat_saturday_night_heat") | float }}}'
+  
+  # Saturday Evening Cool
+  - alias: "Thermostat - Saturday Evening Cool Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_saturday_night_cool
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 5, "period": "night", "cool": {{ states("input_number.shop_thermostat_saturday_night_cool") | float }}}'
+  
+  # Saturday Evening Auto
+  - alias: "Thermostat - Saturday Evening Auto Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_saturday_night_auto
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 5, "period": "night", "auto": {{ states("input_number.shop_thermostat_saturday_night_auto") | float }}}'
+  
+  # Saturday Evening Active
+  - alias: "Thermostat - Saturday Evening Active Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_saturday_night_active
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 5, "period": "night", "active": {{ "true" if states("input_boolean.shop_thermostat_saturday_night_active") == "on" else "false" }}}'
+  
+  # Saturday Enabled
+  - alias: "Thermostat - Saturday Enabled Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_saturday_enabled
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 5, "enabled": {{ "true" if states("input_boolean.shop_thermostat_saturday_enabled") == "on" else "false" }}}'
+
+  # ===== SUNDAY =====
+  # Sunday Morning Time
+  - alias: "Thermostat - Sunday Morning Time Changed"
+    trigger:
+      platform: state
+      entity_id: input_datetime.shop_thermostat_sunday_day_time
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: >
+          {
+            "day": 6,
+            "period": "day",
+            "hour": {{ states('input_datetime.shop_thermostat_sunday_day_time').split(':')[0] | int }},
+            "minute": {{ states('input_datetime.shop_thermostat_sunday_day_time').split(':')[1] | int }}
+          }
+  
+  # Sunday Morning Heat
+  - alias: "Thermostat - Sunday Morning Heat Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_sunday_day_heat
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 6, "period": "day", "heat": {{ states("input_number.shop_thermostat_sunday_day_heat") | float }}}'
+  
+  # Sunday Morning Cool
+  - alias: "Thermostat - Sunday Morning Cool Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_sunday_day_cool
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 6, "period": "day", "cool": {{ states("input_number.shop_thermostat_sunday_day_cool") | float }}}'
+  
+  # Sunday Morning Auto
+  - alias: "Thermostat - Sunday Morning Auto Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_sunday_day_auto
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 6, "period": "day", "auto": {{ states("input_number.shop_thermostat_sunday_day_auto") | float }}}'
+  
+  # Sunday Morning Active
+  - alias: "Thermostat - Sunday Morning Active Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_sunday_day_active
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 6, "period": "day", "active": {{ "true" if states("input_boolean.shop_thermostat_sunday_day_active") == "on" else "false" }}}'
+  
+  # Sunday Evening Time
+  - alias: "Thermostat - Sunday Evening Time Changed"
+    trigger:
+      platform: state
+      entity_id: input_datetime.shop_thermostat_sunday_night_time
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: >
+          {
+            "day": 6,
+            "period": "night",
+            "hour": {{ states('input_datetime.shop_thermostat_sunday_night_time').split(':')[0] | int }},
+            "minute": {{ states('input_datetime.shop_thermostat_sunday_night_time').split(':')[1] | int }}
+          }
+  
+  # Sunday Evening Heat
+  - alias: "Thermostat - Sunday Evening Heat Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_sunday_night_heat
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 6, "period": "night", "heat": {{ states("input_number.shop_thermostat_sunday_night_heat") | float }}}'
+  
+  # Sunday Evening Cool
+  - alias: "Thermostat - Sunday Evening Cool Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_sunday_night_cool
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 6, "period": "night", "cool": {{ states("input_number.shop_thermostat_sunday_night_cool") | float }}}'
+  
+  # Sunday Evening Auto
+  - alias: "Thermostat - Sunday Evening Auto Changed"
+    trigger:
+      platform: state
+      entity_id: input_number.shop_thermostat_sunday_night_auto
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 6, "period": "night", "auto": {{ states("input_number.shop_thermostat_sunday_night_auto") | float }}}'
+  
+  # Sunday Evening Active
+  - alias: "Thermostat - Sunday Evening Active Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_sunday_night_active
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 6, "period": "night", "active": {{ "true" if states("input_boolean.shop_thermostat_sunday_night_active") == "on" else "false" }}}'
+  
+  # Sunday Enabled
+  - alias: "Thermostat - Sunday Enabled Changed"
+    trigger:
+      platform: state
+      entity_id: input_boolean.shop_thermostat_sunday_enabled
+    action:
+      service: mqtt.publish
+      data:
+        topic: "HOSTNAME_PLACEHOLDER/schedule/set"
+        payload: '{"day": 6, "enabled": {{ "true" if states("input_boolean.shop_thermostat_sunday_enabled") == "on" else "false" }}}'

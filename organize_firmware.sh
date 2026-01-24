@@ -12,13 +12,37 @@ VARIANTS=(
     "esp32-s3-wroom-1-n32r16v:32MB:N32"
 )
 
+# Default number of builds to keep (per variant)
+KEEP_BUILDS=1
+
+# Parse optional arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -k|--keep)
+            if [[ -n "$2" && "$2" =~ ^[0-9]+$ && "$2" -ge 1 ]]; then
+                KEEP_BUILDS="$2"
+                shift 2
+            else
+                echo "[POST-BUILD] Invalid keep value: '$2' (must be integer >= 1)"
+                exit 1
+            fi
+            ;;
+        *)
+            echo "[POST-BUILD] Unknown argument: $1"
+            echo "Usage: ./organize_firmware.sh [--keep N]"
+            echo "  --keep, -k   Number of builds to retain per variant (default: 1)"
+            exit 1
+            ;;
+    esac
+done
+
 # Create firmware directory if it doesn't exist
 mkdir -p "$FIRMWARE_DIR"
 
 # Create version directory with build date and time
 BUILD_TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
 
-echo "[POST-BUILD] Organizing firmware builds from $BUILD_TIMESTAMP"
+echo "[POST-BUILD] Organizing firmware builds from $BUILD_TIMESTAMP (keeping $KEEP_BUILDS per variant)"
 
 # Process each variant
 for VARIANT_INFO in "${VARIANTS[@]}"; do
@@ -86,15 +110,16 @@ FLASHEOF
     chmod +x "$FLASH_SCRIPT"
     echo "[POST-BUILD] ✓ $VARIANT ($FLASH_SIZE) organized in $CHIP_NAME/build_$BUILD_TIMESTAMP/"
     
-    # Clean up old builds - keep only 3 most recent ones
+    # Clean up old builds - keep only N most recent ones
     BUILDS=$(ls -1d "$CHIP_DIR"/build_* 2>/dev/null | sort -r)
     BUILD_COUNT=$(echo "$BUILDS" | wc -l)
-    if [ "$BUILD_COUNT" -gt 3 ]; then
-        BUILDS_TO_DELETE=$(echo "$BUILDS" | tail -n +4)
-        echo "[POST-BUILD] Cleaning old builds for $CHIP_NAME (keeping 3, removing $((BUILD_COUNT - 3)))..."
+    if [ "$BUILD_COUNT" -gt "$KEEP_BUILDS" ]; then
+        START_INDEX=$((KEEP_BUILDS + 1))
+        BUILDS_TO_DELETE=$(echo "$BUILDS" | tail -n +"$START_INDEX")
+        echo "[POST-BUILD] Cleaning old builds for $CHIP_NAME (keeping $KEEP_BUILDS, removing $((BUILD_COUNT - KEEP_BUILDS)))..."
         while IFS= read -r old_build; do
             if [ -d "$old_build" ]; then
-                echo "[POST-BUILD]   Removing: $(basename $old_build)"
+                echo "[POST-BUILD]   Removing: $(basename "$old_build")"
                 rm -rf "$old_build"
             fi
         done <<< "$BUILDS_TO_DELETE"

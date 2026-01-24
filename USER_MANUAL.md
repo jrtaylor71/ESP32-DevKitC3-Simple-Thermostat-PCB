@@ -358,6 +358,103 @@ When MQTT is enabled, the thermostat automatically registers with Home Assistant
 - Switch entity to toggle shower mode on/off
 - Shows countdown status
 - Auto-discovery when feature enabled
+
+### Schedule Synchronization 🔄
+
+The thermostat supports **bidirectional schedule synchronization** with Home Assistant - changes sync automatically in both directions.
+
+#### How It Works
+
+**Device → Home Assistant (Inbound)**:
+1. Thermostat publishes complete 7-day schedule to MQTT on startup and config changes
+2. HA automation receives schedule updates automatically
+3. Creates/updates 77 helper entities per thermostat (times, temperatures, enabled status)
+4. Changes made on device instantly appear in HA helpers
+
+**Home Assistant → Device (Outbound)**:
+1. Change any schedule helper in HA (day/night time or temperature)
+2. Automation detects change and publishes to MQTT
+3. Thermostat receives update immediately
+4. Schedule applies to device without manual sync
+
+#### Setup Instructions
+
+**Step 1: Prepare Home Assistant Files**
+
+1. Locate HA packages directory (usually `/config/packages/`)
+2. Copy `multi_thermostat_schedule_sync.yaml` from repository to packages directory
+3. Generate per-device schedule package:
+   ```bash
+   ./generate_schedule_package.sh shop_thermostat
+   ./generate_schedule_package.sh studio_thermostat
+   # Repeat for each thermostat
+   ```
+
+**Step 2: Add to HA Configuration**
+
+In `configuration.yaml`:
+```yaml
+homeassistant:
+  packages:
+    shop_thermostat: !include packages/shop_thermostat_schedule.yaml
+    studio_thermostat: !include packages/studio_thermostat_schedule.yaml
+```
+
+Or use UI: Settings > Devices & Services > Packages
+
+**Step 3: Reload in Home Assistant**
+
+1. Go to Developer Tools > YAML
+2. Click "Reload Automations"
+3. Wait for reload to complete
+4. Helpers should appear in Settings > Devices & Services > Helpers
+
+#### What Gets Created
+
+**Per Thermostat** (77 helpers each):
+- 14 input_datetime helpers (times for day/night periods)
+- 42 input_number helpers (heat/cool/auto temps for each period)
+- 21 input_boolean helpers (enabled status for each period and day)
+
+**Automations**:
+- 1 centralized inbound automation (handles all devices)
+- 77 outbound automations per thermostat (one per parameter)
+
+**Total for 3 thermostats**:
+- 231 helpers
+- 1 + (77 × 3) = 232 automations
+- Zero manual configuration per device
+
+#### Multi-Thermostat Support
+
+Add as many thermostats as you need:
+
+```bash
+# Generate packages for each device
+./generate_schedule_package.sh shop_thermostat
+./generate_schedule_package.sh studio_thermostat
+./generate_schedule_package.sh house_thermostat
+```
+
+The centralized automation automatically handles all of them based on MQTT topic.
+
+#### Editing Schedules in Home Assistant
+
+1. Go to Settings > Devices & Services > Helpers
+2. Search for your thermostat name (e.g., "shop_thermostat")
+3. Adjust times:
+   - Tap the time helper to modify
+   - Change to new time
+   - Change automatically syncs to device within seconds
+
+4. Adjust temperatures:
+   - Tap the number helper
+   - Set new heat/cool/auto temperature
+   - Publishes to device immediately
+
+5. Enable/disable periods:
+   - Toggle boolean helper on/off
+   - Takes effect immediately on device
 - Automatically removed when feature disabled
 
 ### MQTT Topics

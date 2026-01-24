@@ -51,6 +51,12 @@
 #include "HardwarePins.h" // Hardware pin definitions
 #include "SettingsUI.h"
 
+// Version control information
+const String sw_version = "1.4.001"; // Software version
+const String build_date = __DATE__;  // Compile date
+const String build_time = __TIME__;  // Compile time
+String version_info = sw_version + " (" + build_date + " " + build_time + ")";
+
 // Constants
 const int SECONDS_PER_HOUR = 3600;
 const int WDT_TIMEOUT = 10; // Watchdog timer timeout in seconds
@@ -234,12 +240,6 @@ bool showerModeEnabled = false; // Master enable/disable for shower mode feature
 int showerModeDuration = 30; // Duration in minutes (default 30)
 bool showerModeActive = false;
 unsigned long showerModeStartTime = 0;
-
-// Version control information
-const String sw_version = "1.4.0"; // Software version
-const String build_date = __DATE__;  // Compile date
-const String build_time = __TIME__;  // Compile time
-String version_info = sw_version + " (" + build_date + " " + build_time + ")";
 
 // Modern Material Design Color Scheme
 #define COLOR_BACKGROUND   0x1082    // Dark Gray #121212
@@ -2623,36 +2623,162 @@ void publishHomeAssistantDiscovery()
         
         debugLog("Published Schedule Enabled switch discovery to Home Assistant\n");
         
-        // Publish schedule data sensor discovery for each day of the week
-        const char* dayNames[7] = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"};
+        // Publish schedule data sensors and controls for each day/period
+        // dayNames order matches weekSchedule array: 0=Sunday, 1=Monday, ..., 6=Saturday
+        const char* dayNames[7] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+        const char* periodIds[2] = {"day", "night"};
+        const char* periodNames[2] = {"Day", "Night"};
+        const char* periodKeys[2] = {"day_period", "night_period"};
         
         for (int day = 0; day < 7; day++) {
-            StaticJsonDocument<512> scheduleDataDoc;
             String dayLower = String(dayNames[day]);
             dayLower.toLowerCase();
-            String scheduleDataConfigTopic = "homeassistant/sensor/" + hostname + "_schedule_" + dayLower + "/config";
-            
-            scheduleDataDoc["name"] = String("Schedule ") + dayNames[day];
-            scheduleDataDoc["state_topic"] = hostname + "/schedule/" + dayLower;
-            scheduleDataDoc["value_template"] = "{{ value_json.day_name }}";
-            scheduleDataDoc["json_attributes_topic"] = hostname + "/schedule/" + dayLower;
-            scheduleDataDoc["unique_id"] = hostname + "_schedule_" + dayLower;
-            scheduleDataDoc["icon"] = "mdi:calendar-clock";
-            
-            // Link to same device as main thermostat
-            JsonObject scheduleDataDevice = scheduleDataDoc.createNestedObject("device");
-            scheduleDataDevice["identifiers"][0] = hostname;
-            scheduleDataDevice["name"] = hostname;
-            scheduleDataDevice["model"] = PROJECT_NAME_SHORT;
-            scheduleDataDevice["manufacturer"] = "TDC";
-            scheduleDataDevice["sw_version"] = sw_version;
-            
-            char scheduleDataBuffer[512];
-            serializeJson(scheduleDataDoc, scheduleDataBuffer);
-            mqttClient.publish(scheduleDataConfigTopic.c_str(), scheduleDataBuffer, true);
+            String scheduleStateTopic = hostname + "/schedule/" + dayLower;
+
+            // Sensor with full JSON attributes
+            {
+                StaticJsonDocument<512> scheduleDataDoc;
+                String scheduleDataConfigTopic = "homeassistant/sensor/" + hostname + "_schedule_" + dayLower + "/config";
+                
+                scheduleDataDoc["name"] = String("Schedule ") + dayNames[day];
+                scheduleDataDoc["state_topic"] = scheduleStateTopic;
+                scheduleDataDoc["value_template"] = "{{ value_json.day_name }}";
+                scheduleDataDoc["json_attributes_topic"] = scheduleStateTopic;
+                scheduleDataDoc["unique_id"] = hostname + "_schedule_" + dayLower;
+                scheduleDataDoc["icon"] = "mdi:calendar-clock";
+                
+                JsonObject scheduleDataDevice = scheduleDataDoc.createNestedObject("device");
+                scheduleDataDevice["identifiers"][0] = hostname;
+                scheduleDataDevice["name"] = hostname;
+                scheduleDataDevice["model"] = PROJECT_NAME_SHORT;
+                scheduleDataDevice["manufacturer"] = "TDC";
+                scheduleDataDevice["sw_version"] = sw_version;
+                
+                char scheduleDataBuffer[512];
+                serializeJson(scheduleDataDoc, scheduleDataBuffer);
+                mqttClient.publish(scheduleDataConfigTopic.c_str(), scheduleDataBuffer, true);
+            }
+
+            // Day enabled switch
+            {
+                StaticJsonDocument<512> dayEnableDoc;
+                String configTopic = "homeassistant/switch/" + hostname + "_schedule_" + dayLower + "_enabled/config";
+                
+                dayEnableDoc["name"] = String("Schedule ") + dayNames[day] + " Enabled";
+                dayEnableDoc["state_topic"] = scheduleStateTopic;
+                dayEnableDoc["value_template"] = "{{ 'ON' if value_json.day_enabled else 'OFF' }}";
+                dayEnableDoc["command_topic"] = hostname + "/schedule/set";
+                dayEnableDoc["command_template"] = String("{\"day\":") + day + ",\"enabled\": {{ 'true' if value == 'ON' else 'false' }} }";
+                dayEnableDoc["payload_on"] = "ON";
+                dayEnableDoc["payload_off"] = "OFF";
+                dayEnableDoc["unique_id"] = hostname + "_schedule_" + dayLower + "_enabled";
+                dayEnableDoc["icon"] = "mdi:toggle-switch";
+                
+                JsonObject dev = dayEnableDoc.createNestedObject("device");
+                dev["identifiers"][0] = hostname;
+                dev["name"] = hostname;
+                dev["model"] = PROJECT_NAME_SHORT;
+                dev["manufacturer"] = "TDC";
+                dev["sw_version"] = sw_version;
+                
+                char buf[512];
+                serializeJson(dayEnableDoc, buf);
+                mqttClient.publish(configTopic.c_str(), buf, true);
+            }
+
+            // Per-period controls
+            for (int p = 0; p < 2; p++) {
+                const char* periodId = periodIds[p];
+                const char* periodName = periodNames[p];
+                const char* periodKey = periodKeys[p];
+
+                // Temperature numbers (heat/cool/auto)
+                const char* tempKeys[3] = {"heat", "cool", "auto"};
+                for (int t = 0; t < 3; t++) {
+                    StaticJsonDocument<512> numDoc;
+                    String configTopic = "homeassistant/number/" + hostname + "_schedule_" + dayLower + "_" + periodId + "_" + tempKeys[t] + "/config";
+                    
+                    char tempFirst = toupper(tempKeys[t][0]);
+                    numDoc["name"] = String("Schedule ") + dayNames[day] + " " + periodName + " " + String(tempFirst) + String(tempKeys[t] + 1);
+                    numDoc["state_topic"] = scheduleStateTopic;
+                    numDoc["value_template"] = String("{{ value_json.") + periodKey + "." + tempKeys[t] + " }}";
+                    numDoc["command_topic"] = hostname + "/schedule/set";
+                    numDoc["command_template"] = String("{\"day\":") + day + ",\"period\":\"" + periodId + "\",\"" + tempKeys[t] + "\":{{ value }}}";
+                    numDoc["min"] = 45; // reasonable bounds
+                    numDoc["max"] = 90;
+                    numDoc["step"] = 0.5;
+                    numDoc["unit_of_measurement"] = "°F";
+                    numDoc["unique_id"] = hostname + "_schedule_" + dayLower + "_" + periodId + "_" + tempKeys[t];
+                    numDoc["mode"] = "box";
+                    
+                    JsonObject dev = numDoc.createNestedObject("device");
+                    dev["identifiers"][0] = hostname;
+                    dev["name"] = hostname;
+                    dev["model"] = PROJECT_NAME_SHORT;
+                    dev["manufacturer"] = "TDC";
+                    dev["sw_version"] = sw_version;
+                    
+                    char buf[512];
+                    serializeJson(numDoc, buf);
+                    mqttClient.publish(configTopic.c_str(), buf, true);
+                }
+
+                // Time text entity (HH:MM)
+                {
+                    StaticJsonDocument<512> timeDoc;
+                    String configTopic = "homeassistant/text/" + hostname + "_schedule_" + dayLower + "_" + periodId + "_time/config";
+                    
+                    timeDoc["name"] = String("Schedule ") + dayNames[day] + " " + periodName + " Time";
+                    timeDoc["state_topic"] = scheduleStateTopic;
+                    timeDoc["value_template"] = String("{{ value_json.") + periodKey + ".time }}";
+                    timeDoc["command_topic"] = hostname + "/schedule/set";
+                    timeDoc["command_template"] = String("{\"day\":") + day + ",\"period\":\"" + periodId + "\",\"hour\": {{ value.split(':')[0] | int }},\"minute\": {{ value.split(':')[1] | int }} }";
+                    timeDoc["pattern"] = "^([01]\\d|2[0-3]):[0-5]\\d$";
+                    timeDoc["unique_id"] = hostname + "_schedule_" + dayLower + "_" + periodId + "_time";
+                    timeDoc["icon"] = "mdi:clock-time-four-outline";
+                    
+                    JsonObject dev = timeDoc.createNestedObject("device");
+                    dev["identifiers"][0] = hostname;
+                    dev["name"] = hostname;
+                    dev["model"] = PROJECT_NAME_SHORT;
+                    dev["manufacturer"] = "TDC";
+                    dev["sw_version"] = sw_version;
+                    
+                    char buf[512];
+                    serializeJson(timeDoc, buf);
+                    mqttClient.publish(configTopic.c_str(), buf, true);
+                }
+
+                // Active switch
+                {
+                    StaticJsonDocument<512> activeDoc;
+                    String configTopic = "homeassistant/switch/" + hostname + "_schedule_" + dayLower + "_" + periodId + "_active/config";
+                    
+                    activeDoc["name"] = String("Schedule ") + dayNames[day] + " " + periodName + " Active";
+                    activeDoc["state_topic"] = scheduleStateTopic;
+                    activeDoc["value_template"] = String("{{ 'ON' if value_json.") + periodKey + ".active else 'OFF' }}";
+                    activeDoc["command_topic"] = hostname + "/schedule/set";
+                    activeDoc["command_template"] = String("{\"day\":") + day + ",\"period\":\"" + periodId + "\",\"active\": {{ 'true' if value == 'ON' else 'false' }} }";
+                    activeDoc["payload_on"] = "ON";
+                    activeDoc["payload_off"] = "OFF";
+                    activeDoc["unique_id"] = hostname + "_schedule_" + dayLower + "_" + periodId + "_active";
+                    activeDoc["icon"] = "mdi:power";
+                    
+                    JsonObject dev = activeDoc.createNestedObject("device");
+                    dev["identifiers"][0] = hostname;
+                    dev["name"] = hostname;
+                    dev["model"] = PROJECT_NAME_SHORT;
+                    dev["manufacturer"] = "TDC";
+                    dev["sw_version"] = sw_version;
+                    
+                    char buf[512];
+                    serializeJson(activeDoc, buf);
+                    mqttClient.publish(configTopic.c_str(), buf, true);
+                }
+            }
         }
         
-        debugLog("Published Schedule Data sensors (7 days) discovery to Home Assistant\n");
+        debugLog("Published Schedule Data sensors and controls (7 days) discovery to Home Assistant\n");
     }
     else
     {
@@ -2838,14 +2964,19 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
     {
         // Parse JSON schedule update
         // Format: {"day": 0, "period": "day", "hour": 6, "minute": 30, "heat": 72.0, "cool": 78.0, "auto": 74.0, "active": true}
+        // Note: MQTT day format is 0=Monday through 6=Sunday
+        // Array format is 0=Sunday through 6=Saturday
+        // Convert MQTT day (Monday=0) to array index (Sunday=0): add 1 and mod 7
         StaticJsonDocument<256> doc;
         DeserializationError error = deserializeJson(doc, message);
         
         if (!error) {
-            int day = doc["day"] | -1;
+            int mqttDay = doc["day"] | -1;
             String period = doc["period"] | "";
             
-            if (day >= 0 && day < 7 && (period == "day" || period == "night")) {
+            if (mqttDay >= 0 && mqttDay < 7 && (period == "day" || period == "night")) {
+                // Convert MQTT day (0=Monday) to array index (0=Sunday)
+                int day = (mqttDay + 1) % 7;
                 SchedulePeriod* targetPeriod = (period == "day") ? &weekSchedule[day].day : &weekSchedule[day].night;
                 
                 bool changed = false;
@@ -2908,7 +3039,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
                 
                 if (changed) {
                     scheduleNeedsSaving = true;
-                    debugLog("SCHEDULE: Via MQTT, updated day %d %s period\n", day, period.c_str());
+                    debugLog("SCHEDULE: Via MQTT, updated day %d (array index %d) %s period\n", mqttDay, day, period.c_str());
                     
                     // If schedule is enabled and not overridden, reapply to take effect immediately
                     if (scheduleEnabled && !scheduleOverride) {
@@ -2929,7 +3060,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
                     sendMQTTData(); // Publish updated schedule state
                 }
             } else {
-                debugLog("SCHEDULE: Invalid MQTT schedule update - day=%d, period=%s\n", day, period.c_str());
+                debugLog("SCHEDULE: Invalid MQTT schedule update - day=%d, period=%s\n", mqttDay, period.c_str());
             }
         } else {
             debugLog("SCHEDULE: Failed to parse MQTT schedule JSON\n");
@@ -3170,11 +3301,17 @@ void sendMQTTData()
         int currentDay = (timeinfo.tm_wday + 6) % 7; // Convert Sunday=0 to Monday=0
         
         // Publish schedule for each day of the week
-        const char* dayNames[7] = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"};
+        // dayNames order matches weekSchedule array: 0=Sunday, 1=Monday, ..., 6=Saturday
+        // But we also publish to topics with lowercase day names (monday, tuesday, etc.)
+        const char* dayNames[7] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+        const char* topicDayNames[7] = {"sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"};
         
         for (int day = 0; day < 7; day++) {
             StaticJsonDocument<512> schedDoc;
-            schedDoc["day_index"] = day;
+            // day_index follows MQTT protocol: 0=Monday through 6=Sunday
+            // Convert array index to MQTT index for compatibility
+            int mqttDayIndex = (day - 1 + 7) % 7;  // Convert 0=Sunday to 0=Monday format
+            schedDoc["day_index"] = mqttDayIndex;
             schedDoc["day_name"] = dayNames[day];
             schedDoc["is_today"] = (day == currentDay);
             schedDoc["schedule_enabled"] = scheduleEnabled;
@@ -3200,9 +3337,7 @@ void sendMQTTData()
             
             char schedBuffer[512];
             serializeJson(schedDoc, schedBuffer);
-            String dayLower = String(dayNames[day]);
-            dayLower.toLowerCase();
-            String scheduleDataTopic = hostname + "/schedule/" + dayLower;
+            String scheduleDataTopic = hostname + "/schedule/" + String(topicDayNames[day]);
             mqttClient.publish(scheduleDataTopic.c_str(), schedBuffer, false);
         }
 
@@ -4232,9 +4367,11 @@ void handleWebRequests()
         response->addHeader("Connection", "close");
         request->send(response);
         
-        // Wait for response to be sent, then reboot
-        delay(500);
-        ESP.restart();
+        // Defer reboot to a short FreeRTOS task to let the response flush
+        xTaskCreate([](void*) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+            ESP.restart();
+        }, "web_reboot", 2048, nullptr, 1, nullptr);
     });
 
     // OTA status JSON for client-side fallback progress polling

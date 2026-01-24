@@ -5,14 +5,14 @@ This guide helps developers understand, modify, and extend the Smart Thermostat 
 ## 🎯 Project Architecture Overview
 
 ### Current Implementation Status
-- **Version**: 1.3.5 (December 2025)
+- **Version**: 1.4.001 (January 2026)
 - **Platform**: ESP32-S3-WROOM-1-N16 (16MB Flash, No PSRAM)
 - **Display**: ILI9341 320x240 TFT with XPT2046 touch controller
 - **Sensors**: AHT20 (I2C temp/humidity), DS18B20 (OneWire hydronic temp), LD2410 (24GHz mmWave motion)
 - **Weather**: Dual-source (OpenWeatherMap/Home Assistant) with color-coded standard icons
 - **Architecture**: Dual-core FreeRTOS with Option C centralized display management
 - **Memory Usage**: ~3.2MB flash (18.5% utilization = 1,210,272 bytes with default_16mb.csv partition)
-- **Key Features**: Weather integration, motion wake on presence, I2C mutex protection, anti-flicker display, sustained motion tracking with filtering
+- **Key Features**: Bidirectional MQTT schedule sync, weather integration, motion wake on presence, I2C mutex protection, anti-flicker display, multi-thermostat support
 
 ## 🎯 Development Environment Setup
 
@@ -279,6 +279,172 @@ void publishHomeAssistantDiscovery() {
     mqttClient.publish(configTopic.c_str(), buffer, true);
 }
 ```
+
+### MQTT 7-Day Schedule Architecture 🔄
+
+The thermostat implements a complete bidirectional MQTT schedule sync system with Home Assistant.
+
+#### Firmware-Side Implementation
+
+**Schedule Data Structure** (in Main-Thermostat.cpp):
+```cpp
+struct SchedulePeriod {
+    int hour;        // 0-23
+    int minute;      // 0-59
+    float heatTemp;  // Target heating temperature
+    float coolTemp;  // Target cooling temperature
+    float autoTemp;  // Target auto mode temperature
+    bool active;     // Whether this period is enabled
+};
+
+struct DaySchedule {
+    SchedulePeriod day;    // Day period (default 6:00 AM)
+    SchedulePeriod night;  // Night period (default 10:00 PM)
+    bool enabled;          // Whether scheduling is enabled for this day
+};
+
+// Array indexed: 0=Sunday, 1=Monday, ..., 6=Saturday
+DaySchedule weekSchedule[7];
+```
+
+**Inbound MQTT Handler** (schedule set topic):
+```cpp
+// Topic: {hostname}/schedule/set
+// Format: {"day": 0-6, "period": "day"|"night", "hour": 0-23, "minute": 0-59, 
+//          "heat": ##, "cool": ##, "auto": ##, "active": true|false}
+// Note: MQTT uses 0=Monday through 6=Sunday, converted to array index (0=Sunday)
+
+void handleScheduleSetMessage() {
+    int mqttDay = doc["day"];  // 0=Monday in MQTT protocol
+    int day = (mqttDay + 1) % 7;  // Convert to array index (0=Sunday)
+    String period = doc["period"];  // "day" or "night"
+    
+    SchedulePeriod* target = (period == "day") ? 
+        &weekSchedule[day].day : &weekSchedule[day].night;
+    
+    // Update fields that are present in payload
+    if (doc.containsKey("hour")) target->hour = doc["hour"];
+    if (doc.containsKey("minute")) target->minute = doc["minute"];
+    if (doc.containsKey("heat")) target->heatTemp = doc["heat"];
+    if (doc.containsKey("cool")) target->coolTemp = doc["cool"];
+    if (doc.containsKey("auto")) target->autoTemp = doc["auto"];
+    if (doc.containsKey("active")) target->active = doc["active"];
+    if (doc.containsKey("enabled")) weekSchedule[day].enabled = doc["enabled"];
+    
+    scheduleNeedsSaving = true;
+    if (changed) sendMQTTData();  // Republish updated state
+}
+```
+
+**Outbound MQTT Publisher** (schedule state topics):
+```cpp
+// Topics: {hostname}/schedule/sunday through /schedule/saturday
+// Publishes complete schedule for each day
+
+void publishScheduleState() {
+    const char* dayNames[7] = {"Sunday", "Monday", "Tuesday", ...};
+    
+    for (int day = 0; day < 7; day++) {
+        StaticJsonDocument<512> schedDoc;
+        schedDoc["day_index"] = (day - 1 + 7) % 7;  // Convert to MQTT format (0=Monday)
+        schedDoc["day_name"] = dayNames[day];
+        schedDoc["day_enabled"] = weekSchedule[day].enabled;
+        
+        JsonObject dayPeriod = schedDoc.createNestedObject("day_period");
+        dayPeriod["time"] = formatTime(weekSchedule[day].day);
+        dayPeriod["heat"] = weekSchedule[day].day.heatTemp;
+        dayPeriod["cool"] = weekSchedule[day].day.coolTemp;
+        dayPeriod["auto"] = weekSchedule[day].day.autoTemp;
+        dayPeriod["active"] = weekSchedule[day].day.active;
+        
+        JsonObject nightPeriod = schedDoc.createNestedObject("night_period");
+        // ... similar for night period ...
+        
+        mqttClient.publish(topic.c_str(), buffer, false);
+    }
+}
+```
+
+**Key Implementation Details**:
+- Day index conversion: MQTT (0=Monday) ↔ Array (0=Sunday)
+- Inbound: Convert `(mqttDay + 1) % 7` when receiving
+- Outbound: Convert `(arrayDay - 1 + 7) % 7` when publishing
+- All temps sent as floats (72.0, 74.5, etc.)
+- Boolean values rendered as lowercase JSON: `"active": true` (not `True`)
+- Time format: "HH:MM" string (e.g., "6:00", "22:30")
+
+#### Home Assistant Side
+
+**Multi-Thermostat Centralized Automation** (`multi_thermostat_schedule_sync.yaml`):
+```yaml
+# Handles inbound schedule updates from ALL thermostats
+trigger:
+  platform: mqtt
+  topic: "+/schedule/+"  # Wildcard captures all devices and days
+
+variables:
+  host_key: "{{ trigger.topic.split('/')[0] | lower | replace('-', '_') }}"
+  day_slug: "{{ trigger.topic.split('/')[2] }}"
+  payload: "{{ trigger.payload_json }}"
+
+condition:
+  - condition: template
+    value_template: |
+      {%- set valid_days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'] -%}
+      {%- set valid_hosts = ['shop_thermostat', 'studio_thermostat', 'house_thermostat'] -%}
+      {{ day_slug | lower in valid_days and host_key in valid_hosts }}
+
+action:
+  # Updates 11 helpers per day (2 times, 6 temps, 3 enabled flags)
+  - service: input_datetime.set_datetime
+    target:
+      entity_id: "input_datetime.{{ host_key }}_{{ day_slug }}_day_time"
+    data:
+      time: "{{ '%02d:%02d:00' | format(payload.day_period.time.split(':')[0] | int, ...) }}"
+  # ... 10 more services for temps and enabled status ...
+```
+
+**Per-Thermostat Outbound Automations** (generated via script):
+```yaml
+# Triggered when any schedule helper changes
+# Total: 77 automations per thermostat (14 times × 5 params + 7 enabled flags)
+
+- alias: "Thermostat - Friday Morning Time Changed"
+  trigger:
+    platform: state
+    entity_id: input_datetime.shop_thermostat_friday_day_time
+  action:
+    service: mqtt.publish
+    data:
+      topic: "Shop-Thermostat/schedule/set"
+      payload: |
+        {
+          "day": 4,
+          "period": "day",
+          "hour": {{ states('input_datetime.shop_thermostat_friday_day_time').split(':')[0] | int }},
+          "minute": {{ states('input_datetime.shop_thermostat_friday_day_time').split(':')[1] | int }}
+        }
+```
+
+**Generation Script** (`generate_schedule_package.sh`):
+```bash
+# Generates all 77 outbound automations and 77 helpers for a device
+./generate_schedule_package.sh shop_thermostat
+
+# Creates:
+# - shop_thermostat_schedule.yaml (77 automations + 77 helpers)
+# - shop_thermostat_schedule_card.yaml (dashboard card UI)
+
+# Hostname conversion: shop_thermostat → Shop-Thermostat for MQTT topics
+# Helper IDs: lowercase_with_underscores
+# MQTT Topics: CamelCase-With-Hyphens
+```
+
+**Total System Overhead**:
+- 2 thermostats: 154 helpers, 155 automations
+- 3 thermostats: 231 helpers, 232 automations (1 central + 77×3)
+- Scales linearly with device count
+- All generated automatically - zero manual configuration
 
 ### Adding Display Elements
 

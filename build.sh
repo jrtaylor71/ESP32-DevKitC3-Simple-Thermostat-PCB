@@ -16,25 +16,39 @@ CLEAN_BUILD=false
 VARIANT_CHOICE=""
 QUIET_BUILD=false
 CLEAN_LIBS=false
+KEEP_BUILDS=1
 
 # Parse arguments
-for arg in "$@"; do
-    case $arg in
+while [[ $# -gt 0 ]]; do
+    case "$1" in
         clean)
             CLEAN_BUILD=true
+            shift
             ;;
         cleanlibs)
             CLEAN_LIBS=true
+            shift
             ;;
         quiet|-q)
             QUIET_BUILD=true
+            shift
             ;;
         1|2|3|all)
-            VARIANT_CHOICE="$arg"
+            VARIANT_CHOICE="$1"
+            shift
+            ;;
+        -k|--keep)
+            if [[ -n "$2" && "$2" =~ ^[0-9]+$ && "$2" -ge 1 ]]; then
+                KEEP_BUILDS="$2"
+                shift 2
+            else
+                echo "[BUILD] Invalid keep value: '$2' (must be integer >= 1)"
+                exit 1
+            fi
             ;;
         *)
-            echo "[BUILD] Unknown argument: $arg"
-            echo "Usage: ./build.sh [1-3|all] [clean] [quiet] [cleanlibs]"
+            echo "[BUILD] Unknown argument: $1"
+            echo "Usage: ./build.sh [1-3|all] [clean] [quiet] [cleanlibs] [--keep N]"
             echo "  1        = 8MB variant"
             echo "  2        = 16MB variant (default)"
             echo "  3        = 32MB variant"
@@ -42,6 +56,7 @@ for arg in "$@"; do
             echo "  clean    = Clean before building"
             echo "  quiet    = Suppress output"
             echo "  cleanlibs = Remove all downloaded libraries and packages"
+            echo "  --keep N = Retain N builds per variant (default: 1)"
             exit 1
             ;;
     esac
@@ -155,7 +170,7 @@ fi
 
 if [ $? -eq 0 ]; then
     echo "[BUILD] Build successful, organizing firmware..."
-    ./organize_firmware.sh
+    ./organize_firmware.sh --keep "$KEEP_BUILDS"
 else
     echo "[BUILD] Build failed!"
     exit 1
