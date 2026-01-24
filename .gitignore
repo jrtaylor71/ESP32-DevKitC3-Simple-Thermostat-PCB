@@ -16,9 +16,6 @@ firmware.bin
 *.elf
 *.map
 
-# Firmware builds (keep directory structure but not builds)
-firmware/*/build_*/
-
 # KiCad lock files
 *.lck
 *~*.lck
@@ -41,5 +38,5 @@ Thumbs.db
 *.bak
 *.backup
 
-HA Configs
+HA Configs/
 
