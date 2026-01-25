@@ -62,6 +62,8 @@ support_thickness = 0.6  # thin sacrificial rib thickness
 wall_mount_hole_dia = 4.0
 wall_mount_spacing_x = 83.0
 wall_mount_spacing_y = 60.0
+# Standard single gang electric box spacing (3.5 inches = 88.9mm)
+single_gang_spacing_y = 88.9
 
 # Rounded corners
 corner_r = 4.0
@@ -95,7 +97,7 @@ vent_slot_count = 15
 vent_slot_count_side = 10
 vent_slot_length = 8.0
 vent_slot_width = 2.0   # Keep slot width; widen fins via spacing
-vent_slot_height = 20.0
+vent_slot_height = 35.0  # Increased to cut through lip (was 20.0)
 vent_spacing = 10.5  # Wider spacing to enlarge fins between vents
 vent_corner_margin = 15.0  # Increase corner clearance to keep vents further from corners
 
@@ -154,15 +156,29 @@ for x_offset in [-wall_mount_spacing_x / 2.0, wall_mount_spacing_x / 2.0]:
 App.Console.PrintMessage("Cut 4 wall mounting holes\n")
 
 # 2 additional mounting holes between corner holes, towards center
-# Top and bottom center holes
-for y_offset in [-wall_mount_spacing_y / 2.0, wall_mount_spacing_y / 2.0]:
+# Top and bottom center holes - positioned for standard single gang electric box (88.9mm spacing)
+screw_head_diameter = 8.0  # Diameter of screw head clearance
+screw_head_height = 10.0  # Height of clearance cylinder above bottom (tall enough to go through lip)
+
+for y_offset in [-single_gang_spacing_y / 2.0, single_gang_spacing_y / 2.0]:
+    # Main mounting hole through bottom panel
     mount_hole = Part.makeCylinder(wall_mount_hole_dia / 2.0, bottom_thickness + 1.0,
                                     App.Vector(case_length / 2.0,
                                               case_width / 2.0 + y_offset,
                                               -0.5),
                                     App.Vector(0, 0, 1))
     shell = shell.cut(mount_hole)
-App.Console.PrintMessage("Cut 2 additional center mounting holes\n")
+    
+    # Vertical clearance cutout above the mounting hole for screw head
+    # This extends upward from the bottom, cutting through the inner lip
+    screw_clearance = Part.makeCylinder(screw_head_diameter / 2.0, screw_head_height,
+                                         App.Vector(case_length / 2.0,
+                                                   case_width / 2.0 + y_offset,
+                                                   bottom_thickness),
+                                         App.Vector(0, 0, 1))
+    shell = shell.cut(screw_clearance)
+
+App.Console.PrintMessage("Cut 2 center mounting holes for single gang box (88.9mm spacing) with vertical screw head clearance\n")
 
 # Ventilation slots - front style (horizontal through walls, 3mm wide)
 # Top edge vent slots
@@ -348,191 +364,180 @@ if include_back_lip:
         except Exception as ex:
             App.Console.PrintWarning("Snap slot %s cut failed: %s\n" % (side, ex))
 
-else:
-    # ---------- Add back-case snap hooks (cantilever) ----------
-    # Hooks protrude through front-case latch windows; beams stay in wall region
-    window_width = snap_tab_width + 2 * snap_slot_clearance
-    for snap in snap_positions:
-        side = snap['side']
-        pos = snap['pos']
-        # Hooks extend down the inside wall and rise above wall top
-        z_hook_base = case_height - snap_hook_base_extension
-        
-        if side == 'top':
-            # Inside of top wall: vertical hook beam extending down wall + upward + outward barb
-            hook_beam = Part.makeBox(window_width, snap_hook_thickness, snap_hook_base_extension + snap_hook_height)
-            hook_beam.translate(App.Vector(pos - window_width / 2.0,
-                                           case_width - wall_thickness - snap_hook_thickness,
-                                           z_hook_base))
-            barb = Part.makeBox(window_width, snap_hook_overhang, snap_hook_barb_height)
-            barb.translate(App.Vector(pos - window_width / 2.0,
-                                      case_width - wall_thickness,
-                                      case_height + snap_hook_height - snap_hook_barb_height))
-            hook = hook_beam.fuse(barb)
-            
-        elif side == 'bottom':
-            # Inside of bottom wall
-            hook_beam = Part.makeBox(window_width, snap_hook_thickness, snap_hook_base_extension + snap_hook_height)
-            hook_beam.translate(App.Vector(pos - window_width / 2.0,
-                                           wall_thickness,
-                                           z_hook_base))
-            barb = Part.makeBox(window_width, snap_hook_overhang, snap_hook_barb_height)
-            barb.translate(App.Vector(pos - window_width / 2.0,
-                                      wall_thickness - snap_hook_overhang,
-                                      case_height + snap_hook_height - snap_hook_barb_height))
-            hook = hook_beam.fuse(barb)
-            
-        elif side == 'left':
-            # Inside of left wall
-            hook_beam = Part.makeBox(snap_hook_thickness, window_width, snap_hook_base_extension + snap_hook_height)
-            hook_beam.translate(App.Vector(wall_thickness,
-                                           pos - window_width / 2.0,
-                                           z_hook_base))
-            barb = Part.makeBox(snap_hook_overhang, window_width, snap_hook_barb_height)
-            barb.translate(App.Vector(wall_thickness - snap_hook_overhang,
-                                      pos - window_width / 2.0,
-                                      case_height + snap_hook_height - snap_hook_barb_height))
-            hook = hook_beam.fuse(barb)
-            
-        elif side == 'right':
-            # Inside of right wall
-            hook_beam = Part.makeBox(snap_hook_thickness, window_width, snap_hook_base_extension + snap_hook_height)
-            hook_beam.translate(App.Vector(case_length - wall_thickness - snap_hook_thickness,
-                                           pos - window_width / 2.0,
-                                           z_hook_base))
-            barb = Part.makeBox(snap_hook_overhang, window_width, snap_hook_barb_height)
-            barb.translate(App.Vector(case_length - wall_thickness,
-                                      pos - window_width / 2.0,
-                                      case_height + snap_hook_height - snap_hook_barb_height))
-            hook = hook_beam.fuse(barb)
-            
+# ---------- Add continuous inner perimeter lip for front case alignment ----------
+# Continuous lip on the INSIDE of the walls that extends all the way around
+# This creates a raised inner ledge that the front case sits against
+lip_width = 2.0  # Width of the lip projecting inward from wall
+lip_protrusion_above = 6.0  # Height extending above wall top
+lip_total_height = (case_height - bottom_thickness) + lip_protrusion_above  # Full height from bottom
+
+try:
+    # Inner dimensions where the lip sits (just inside the walls)
+    inner_start_x = wall_thickness
+    inner_start_y = wall_thickness
+    inner_end_x = case_length - wall_thickness
+    inner_end_y = case_width - wall_thickness
+    
+    # Create four rectangular pieces that form the continuous inner lip
+    
+    # Top wall lip (runs full length)
+    top_lip = Part.makeBox(
+        case_length - 2 * wall_thickness,
+        lip_width,
+        lip_total_height
+    )
+    top_lip.translate(App.Vector(
+        wall_thickness,
+        inner_end_y - lip_width,
+        bottom_thickness
+    ))
+    shell = shell.fuse(top_lip)
+    
+    # Bottom wall lip (runs full length)
+    bottom_lip = Part.makeBox(
+        case_length - 2 * wall_thickness,
+        lip_width,
+        lip_total_height
+    )
+    bottom_lip.translate(App.Vector(
+        wall_thickness,
+        wall_thickness,
+        bottom_thickness
+    ))
+    shell = shell.fuse(bottom_lip)
+    
+    # Left wall lip (runs full width, filling corners)
+    left_lip = Part.makeBox(
+        lip_width,
+        case_width - 2 * wall_thickness,
+        lip_total_height
+    )
+    left_lip.translate(App.Vector(
+        wall_thickness,
+        wall_thickness,
+        bottom_thickness
+    ))
+    shell = shell.fuse(left_lip)
+    
+    # Right wall lip (runs full width, filling corners)
+    right_lip = Part.makeBox(
+        lip_width,
+        case_width - 2 * wall_thickness,
+        lip_total_height
+    )
+    right_lip.translate(App.Vector(
+        inner_end_x - lip_width,
+        wall_thickness,
+        bottom_thickness
+    ))
+    shell = shell.fuse(right_lip)
+    
+    App.Console.PrintMessage("Added continuous inner perimeter lip (4 walls, corners filled)\n")
+    
+    # Add screw head clearance cutouts for the two center mounting holes
+    # These must be cut AFTER the lip is added, otherwise the lip covers them
+    screw_head_diameter = 8.0
+    screw_head_height = lip_total_height + 1.0  # Cut through entire lip height
+    
+    for y_offset in [-single_gang_spacing_y / 2.0, single_gang_spacing_y / 2.0]:
+        screw_clearance = Part.makeCylinder(
+            screw_head_diameter / 2.0,
+            screw_head_height,
+            App.Vector(case_length / 2.0, case_width / 2.0 + y_offset, bottom_thickness),
+            App.Vector(0, 0, 1)
+        )
+        shell = shell.cut(screw_clearance)
+    
+    App.Console.PrintMessage("Cut screw head clearance in lip for center mounting holes\n")
+    
+    # Add 1mm holes in center of left and right lip protrusions
+    hole_diameter = 1.0
+    hole_length = lip_width + 3.0  # Increased length to ensure full penetration through lip
+    hole_height = case_height + 3.0  # 3mm above wall top (center of 6mm protrusion)
+    
+    # Left side hole - center of left lip in Y direction, 3mm above wall top in Z
+    left_hole = Part.makeCylinder(
+        hole_diameter / 2.0,
+        hole_length,
+        App.Vector(wall_thickness - 0.5, case_width / 2.0, hole_height),
+        App.Vector(1, 0, 0)  # Hole runs along X axis (through the lip width)
+    )
+    shell = shell.cut(left_hole)
+    
+    # Right side hole - center of right lip in Y direction, 3mm above wall top in Z
+    right_hole = Part.makeCylinder(
+        hole_diameter / 2.0,
+        hole_length,
+        App.Vector(inner_end_x - lip_width - 1.5, case_width / 2.0, hole_height),
+        App.Vector(1, 0, 0)  # Hole runs along X axis (through the lip width)
+    )
+    shell = shell.cut(right_hole)
+    
+    App.Console.PrintMessage("Added 1mm holes in left and right lip protrusions (3mm above wall top)\n")
+    
+    # Re-cut ventilation slots AFTER lip is added to ensure they penetrate the lip
+    # Top edge vent slots
+    for i in range(vent_slot_count):
+        x = case_length / 2.0 + (i - (vent_slot_count - 1) / 2.0) * vent_spacing
+        if x < vent_corner_margin or x > case_length - vent_corner_margin:
+            continue
+        slot = Part.makeBox(vent_slot_length, vent_slot_width, vent_slot_height)
+        slot.translate(App.Vector(-vent_slot_length / 2.0, -vent_slot_width / 2.0, -vent_slot_height / 2.0))
+        slot = slot.rotate(App.Vector(0, 0, 0), App.Vector(1, 0, 0), 90)
+        slot.translate(App.Vector(x, wall_thickness / 2.0, case_height / 2.0))
         try:
-            shell = shell.fuse(hook)
-            App.Console.PrintMessage("Added snap hook on %s wall\n" % side)
+            shell = shell.cut(slot)
         except Exception as ex:
-            App.Console.PrintWarning("Snap hook %s fuse failed: %s\n" % (side, ex))
-
-# ---------- Add triangular supports at hook bases ----------
-# Create triangular support: wide base against wall, tapers up to inner hook edge
-try:
-    z_hook_base = case_height - snap_hook_base_extension
-    support_height = 1.5  # Height of triangle support (extends upward from wall)
+            pass
     
-    for snap in snap_positions:
-        side = snap['side']
-        pos = snap['pos']
-        window_width = snap_tab_width + 2 * snap_slot_clearance
-        half_width = window_width / 2.0
-        
-        if side == 'top':
-            # Triangle in Y-Z plane: extrude along X across tab width
-            # Wide base at wall surface, taper point at inner hook edge
-            tri_pts = [
-                App.Vector(0, case_width - wall_thickness, z_hook_base - support_height),  # left at wall, lower
-                App.Vector(0, case_width - wall_thickness, z_hook_base),  # right at wall, at tab
-                App.Vector(0, case_width - wall_thickness - snap_hook_thickness, z_hook_base)  # apex at inner edge
-            ]
-            wire = Part.makePolygon(tri_pts + [tri_pts[0]])
-            tri_face = Part.Face(wire)
-            tri = tri_face.extrude(App.Vector(window_width, 0, 0))
-            tri = tri.translate(App.Vector(pos - half_width, 0, 0))
-            shell = shell.fuse(tri)
-            
-        elif side == 'bottom':
-            # Triangle in Y-Z plane: extrude along X across tab width
-            tri_pts = [
-                App.Vector(0, wall_thickness, z_hook_base - support_height),  # left at wall, lower
-                App.Vector(0, wall_thickness, z_hook_base),  # right at wall, at tab
-                App.Vector(0, wall_thickness + snap_hook_thickness, z_hook_base)  # apex at inner edge
-            ]
-            wire = Part.makePolygon(tri_pts + [tri_pts[0]])
-            tri_face = Part.Face(wire)
-            tri = tri_face.extrude(App.Vector(window_width, 0, 0))
-            tri = tri.translate(App.Vector(pos - half_width, 0, 0))
-            shell = shell.fuse(tri)
-            
-        elif side == 'left':
-            # Triangle in X-Z plane: extrude along Y across tab width
-            tri_pts = [
-                App.Vector(wall_thickness, 0, z_hook_base - support_height),  # bottom at wall, lower
-                App.Vector(wall_thickness, 0, z_hook_base),  # top at wall, at tab
-                App.Vector(wall_thickness + snap_hook_thickness, 0, z_hook_base)  # apex at inner edge
-            ]
-            wire = Part.makePolygon(tri_pts + [tri_pts[0]])
-            tri_face = Part.Face(wire)
-            tri = tri_face.extrude(App.Vector(0, window_width, 0))
-            tri = tri.translate(App.Vector(0, pos - half_width, 0))
-            shell = shell.fuse(tri)
-            
-        elif side == 'right':
-            # Triangle in X-Z plane: extrude along Y across tab width
-            tri_pts = [
-                App.Vector(case_length - wall_thickness, 0, z_hook_base - support_height),  # bottom at wall, lower
-                App.Vector(case_length - wall_thickness, 0, z_hook_base),  # top at wall, at tab
-                App.Vector(case_length - wall_thickness - snap_hook_thickness, 0, z_hook_base)  # apex at inner edge
-            ]
-            wire = Part.makePolygon(tri_pts + [tri_pts[0]])
-            tri_face = Part.Face(wire)
-            tri = tri_face.extrude(App.Vector(0, window_width, 0))
-            tri = tri.translate(App.Vector(0, pos - half_width, 0))
-            shell = shell.fuse(tri)
+    # Bottom edge vent slots
+    for i in range(vent_slot_count):
+        x = case_length / 2.0 + (i - (vent_slot_count - 1) / 2.0) * vent_spacing
+        if x < vent_corner_margin or x > case_length - vent_corner_margin:
+            continue
+        slot = Part.makeBox(vent_slot_length, vent_slot_width, vent_slot_height)
+        slot.translate(App.Vector(-vent_slot_length / 2.0, -vent_slot_width / 2.0, -vent_slot_height / 2.0))
+        slot = slot.rotate(App.Vector(0, 0, 0), App.Vector(1, 0, 0), 90)
+        slot.translate(App.Vector(x, case_width - wall_thickness / 2.0, case_height / 2.0))
+        try:
+            shell = shell.cut(slot)
+        except Exception as ex:
+            pass
     
-    App.Console.PrintMessage("Added triangular supports to all snap hooks\n")
+    # Left edge vent slots
+    for i in range(vent_slot_count_side):
+        y = case_width / 2.0 + (i - (vent_slot_count_side - 1) / 2.0) * vent_spacing
+        if y < vent_corner_margin or y > case_width - vent_corner_margin:
+            continue
+        slot = Part.makeBox(vent_slot_length, vent_slot_width, vent_slot_height)
+        slot.translate(App.Vector(-vent_slot_length / 2.0, -vent_slot_width / 2.0, -vent_slot_height / 2.0))
+        slot = slot.rotate(App.Vector(0, 0, 0), App.Vector(1, 0, 0), 90)
+        slot = slot.rotate(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 90)
+        slot.translate(App.Vector(wall_thickness / 2.0, y, case_height / 2.0))
+        try:
+            shell = shell.cut(slot)
+        except Exception as ex:
+            pass
+    
+    # Right edge vent slots
+    for i in range(vent_slot_count_side):
+        y = case_width / 2.0 + (i - (vent_slot_count_side - 1) / 2.0) * vent_spacing
+        if y < vent_corner_margin or y > case_width - vent_corner_margin:
+            continue
+        slot = Part.makeBox(vent_slot_length, vent_slot_width, vent_slot_height)
+        slot.translate(App.Vector(-vent_slot_length / 2.0, -vent_slot_width / 2.0, -vent_slot_height / 2.0))
+        slot = slot.rotate(App.Vector(0, 0, 0), App.Vector(1, 0, 0), 90)
+        slot = slot.rotate(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 90)
+        slot.translate(App.Vector(case_length - wall_thickness / 2.0, y, case_height / 2.0))
+        try:
+            shell = shell.cut(slot)
+        except Exception as ex:
+            pass
+    
+    App.Console.PrintMessage("Re-cut ventilation slots through lip\n")
+    
 except Exception as ex:
-    App.Console.PrintWarning("Adding triangular supports failed: %s\n" % ex)
-
-# ---------- Add L-shaped corner alignment tabs ----------
-# L-shaped tabs in each corner that extend from bottom to 3mm above wall top for easy printing
-tab_arm_width = 2.0  # Width of each arm of the L
-tab_arm_length = 6.0  # Length of each arm of the L
-tab_protrusion_above = 3.0  # Height extending above wall top
-tab_total_height = (case_height - bottom_thickness) + tab_protrusion_above  # Full height from bottom
-
-# Bottom-left corner - arms extend right and up
-try:
-    arm_right = Part.makeBox(tab_arm_length, tab_arm_width, tab_total_height)
-    arm_up = Part.makeBox(tab_arm_width, tab_arm_length, tab_total_height)
-    arm_right.translate(App.Vector(wall_thickness, wall_thickness, bottom_thickness))
-    arm_up.translate(App.Vector(wall_thickness, wall_thickness, bottom_thickness))
-    shell = shell.fuse(arm_right)
-    shell = shell.fuse(arm_up)
-except Exception as ex:
-    App.Console.PrintWarning("Bottom-left corner tab failed: %s\n" % ex)
-
-# Bottom-right corner - arms extend left and up
-try:
-    arm_left = Part.makeBox(tab_arm_length, tab_arm_width, tab_total_height)
-    arm_up = Part.makeBox(tab_arm_width, tab_arm_length, tab_total_height)
-    arm_left.translate(App.Vector(case_length - wall_thickness - tab_arm_length, wall_thickness, bottom_thickness))
-    arm_up.translate(App.Vector(case_length - wall_thickness - tab_arm_width, wall_thickness, bottom_thickness))
-    shell = shell.fuse(arm_left)
-    shell = shell.fuse(arm_up)
-except Exception as ex:
-    App.Console.PrintWarning("Bottom-right corner tab failed: %s\n" % ex)
-
-# Top-right corner - arms extend left and down
-try:
-    arm_left = Part.makeBox(tab_arm_length, tab_arm_width, tab_total_height)
-    arm_down = Part.makeBox(tab_arm_width, tab_arm_length, tab_total_height)
-    arm_left.translate(App.Vector(case_length - wall_thickness - tab_arm_length, case_width - wall_thickness - tab_arm_width, bottom_thickness))
-    arm_down.translate(App.Vector(case_length - wall_thickness - tab_arm_width, case_width - wall_thickness - tab_arm_length, bottom_thickness))
-    shell = shell.fuse(arm_left)
-    shell = shell.fuse(arm_down)
-except Exception as ex:
-    App.Console.PrintWarning("Top-right corner tab failed: %s\n" % ex)
-
-# Top-left corner - arms extend right and down
-try:
-    arm_right = Part.makeBox(tab_arm_length, tab_arm_width, tab_total_height)
-    arm_down = Part.makeBox(tab_arm_width, tab_arm_length, tab_total_height)
-    arm_right.translate(App.Vector(wall_thickness, case_width - wall_thickness - tab_arm_width, bottom_thickness))
-    arm_down.translate(App.Vector(wall_thickness, case_width - wall_thickness - tab_arm_length, bottom_thickness))
-    shell = shell.fuse(arm_right)
-    shell = shell.fuse(arm_down)
-except Exception as ex:
-    App.Console.PrintWarning("Top-left corner tab failed: %s\n" % ex)
-
-App.Console.PrintMessage("Added 4 L-shaped corner alignment tabs (full height)\n")
+    App.Console.PrintWarning("Continuous inner perimeter lip failed: %s\n" % ex)
 
 # ---------- Mirror on Y-axis ----------
 # Mirror to match front case orientation

@@ -357,88 +357,36 @@ for hole in pcb_mount_holes:
     except Exception as ex:
         App.Console.PrintWarning("Standoff fuse failed: %s\n" % ex)
 
-# ---------- Cut latch windows in front walls (BEFORE MIRROR) ----------
-window_clearance = 0.2
-latch_window_width = snap_tab_width + 2 * window_clearance
-latch_window_height = snap_tab_height + window_clearance
-latch_window_depth = 3.0  # Shallow recess into wall from inside
+# ---------- Cut latch holes in front walls (BEFORE MIRROR) ----------
+# Removed latch windows, keeping only the holes on left and right walls
 latch_hole_diameter = 2.0  # Small hole for hook/tab push-through
-latch_hole_z_offset = 3.0  # Move hole center downward without moving window
-# Move windows down the sidewall by 4 mm
-z_window = case_height - latch_window_height - (0.6 + 4.0)
+hole_z_position = case_height - 3.0  # 3mm from top of wall
+
 for snap in snap_positions:
     side = snap['side']
     pos = snap['pos']
-    if side == 'top':
-        # Top wall: interior surface at y=case_width-wall_thickness, recess outward into wall
-        # Window goes from (case_width-wall_thickness) to (case_width-wall_thickness+latch_window_depth)
-        window = Part.makeBox(latch_window_width, latch_window_depth, latch_window_height)
-        window.translate(App.Vector(pos - latch_window_width / 2.0,
-                                    case_width - wall_thickness,
-                                    z_window))
-        # Hole through full wall thickness pointing inward
-        hole = Part.makeCylinder(latch_hole_diameter / 2.0, wall_thickness + 4,
-                                 App.Vector(pos, case_width + 2, z_window + latch_window_height / 2.0 + latch_hole_z_offset),
-                                 App.Vector(0, -1, 0))
-        try:
-            shell = shell.cut(window)
-            shell = shell.cut(hole)
-            App.Console.PrintMessage("Cut latch window and hole on top wall\n")
-        except Exception as ex:
-            App.Console.PrintWarning("Top latch window cut failed: %s\n" % ex)
-            
-    elif side == 'bottom':
-        # Bottom wall: interior surface at y=wall_thickness, recess backward into wall
-        # Window goes from (wall_thickness-latch_window_depth) to (wall_thickness)
-        window = Part.makeBox(latch_window_width, latch_window_depth, latch_window_height)
-        window.translate(App.Vector(pos - latch_window_width / 2.0,
-                                    wall_thickness - latch_window_depth,
-                                    z_window))
-        # Hole through full wall thickness pointing inward
-        hole = Part.makeCylinder(latch_hole_diameter / 2.0, wall_thickness + 4,
-                                 App.Vector(pos, -2, z_window + latch_window_height / 2.0 + latch_hole_z_offset),
-                                 App.Vector(0, 1, 0))
-        try:
-            shell = shell.cut(window)
-            shell = shell.cut(hole)
-            App.Console.PrintMessage("Cut latch window and hole on bottom wall\n")
-        except Exception as ex:
-            App.Console.PrintWarning("Bottom latch window cut failed: %s\n" % ex)
-            
-    elif side == 'left':
-        # Left wall: interior surface at x=wall_thickness, recess inward (toward cavity)
-        # Window goes from (wall_thickness-latch_window_depth) to (wall_thickness)
-        window = Part.makeBox(latch_window_depth, latch_window_width, latch_window_height)
-        window.translate(App.Vector(wall_thickness - latch_window_depth,
-                                    pos - latch_window_width / 2.0,
-                                    z_window))
-        # Hole pointing inward toward cavity (+X direction)
+    
+    if side == 'left':
+        # Hole pointing inward toward cavity (+X direction), 3mm from top of wall
         hole = Part.makeCylinder(latch_hole_diameter / 2.0, wall_thickness + 2,
-                                 App.Vector(-2, pos, z_window + latch_window_height / 2.0 + latch_hole_z_offset),
+                                 App.Vector(-2, pos, hole_z_position),
                                  App.Vector(1, 0, 0))
         try:
-            shell = shell.cut(window)
             shell = shell.cut(hole)
-            App.Console.PrintMessage("Cut latch window and hole on left wall\n")
+            App.Console.PrintMessage("Cut latch hole on left wall (3mm from top)\n")
         except Exception as ex:
-            App.Console.PrintWarning("Left latch window cut failed: %s\n" % ex)
+            App.Console.PrintWarning("Left latch hole cut failed: %s\n" % ex)
             
     elif side == 'right':
-        # Right wall: interior surface at x=case_length-wall_thickness, recess outward into wall
-        # Window goes from (case_length-wall_thickness) to (case_length-wall_thickness+latch_window_depth)
-        window = Part.makeBox(latch_window_depth, latch_window_width, latch_window_height)
-        window.translate(App.Vector(case_length - wall_thickness,
-                                    pos - latch_window_width / 2.0,
-                                    z_window))
+        # Hole pointing inward toward cavity (-X direction), 3mm from top of wall
         hole = Part.makeCylinder(latch_hole_diameter / 2.0, wall_thickness + 2,
-                                 App.Vector(case_length + 2, pos, z_window + latch_window_height / 2.0 + latch_hole_z_offset),
+                                 App.Vector(case_length + 2, pos, hole_z_position),
                                  App.Vector(-1, 0, 0))
         try:
-            shell = shell.cut(window)
             shell = shell.cut(hole)
-            App.Console.PrintMessage("Cut latch window and hole on right wall\n")
+            App.Console.PrintMessage("Cut latch hole on right wall (3mm from top)\n")
         except Exception as ex:
-            App.Console.PrintWarning("Right latch window cut failed: %s\n" % ex)
+            App.Console.PrintWarning("Right latch hole cut failed: %s\n" % ex)
 
 
 # ---------- Mirror entire shell on Y-axis ----------
