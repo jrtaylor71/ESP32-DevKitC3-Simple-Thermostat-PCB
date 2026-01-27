@@ -8766,6 +8766,26 @@
 	)
 	(wire
 		(pts
+			(xy 259.08 36.83) (xy 251.46 36.83)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "6ba2561b-3669-42ee-8295-7430d975e5e4")
+	)
+	(wire
+		(pts
+			(xy 251.46 34.29) (xy 256.54 34.29)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "6e5625cb-1d30-49e6-b780-6de2c2f9d8cb")
+	)
+	(wire
+		(pts
 			(xy 99.06 66.04) (xy 99.06 60.96)
 		)
 		(stroke
@@ -9076,6 +9096,16 @@
 	)
 	(wire
 		(pts
+			(xy 256.54 34.29) (xy 256.54 25.4)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "bb8ba180-e317-4694-99cd-849d5f659eff")
+	)
+	(wire
+		(pts
 			(xy 228.6 234.95) (xy 189.23 234.95)
 		)
 		(stroke
@@ -9106,6 +9136,16 @@
 	)
 	(wire
 		(pts
+			(xy 252.73 31.75) (xy 252.73 26.67)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c038d37e-2d09-4eb4-aa76-b8df435b9807")
+	)
+	(wire
+		(pts
 			(xy 153.67 133.35) (xy 154.94 133.35)
 		)
 		(stroke
@@ -9113,6 +9153,16 @@
 			(type default)
 		)
 		(uuid "c06027e8-810a-4c51-af8a-1c08e706e5e2")
+	)
+	(wire
+		(pts
+			(xy 252.73 31.75) (xy 251.46 31.75)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c226a9fb-d906-455c-b20f-9e619d5c597d")
 	)
 	(wire
 		(pts
@@ -9193,6 +9243,16 @@
 			(type default)
 		)
 		(uuid "da55eee5-4c62-46ba-98d8-f938f6497203")
+	)
+	(wire
+		(pts
+			(xy 259.08 38.1) (xy 259.08 36.83)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "db1127cc-fd76-405c-8ceb-1d043fafa746")
 	)
 	(wire
 		(pts
@@ -10514,7 +10574,7 @@
 	)
 	(global_label "+5V"
 		(shape input)
-		(at 256.54 25.4 270)
+		(at 259.08 38.1 270)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -10524,7 +10584,7 @@
 		)
 		(uuid "6271cbe3-c91f-4629-83ff-c9329e384ceb")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 256.54 32.2557 90)
+			(at 259.08 44.9557 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -12194,6 +12254,28 @@
 					(size 1.27 1.27)
 				)
 				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "3.3V"
+		(shape output)
+		(at 252.73 26.67 90)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "e1d3b3da-5254-4516-b369-71366a6f4bfe")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 252.73 19.5724 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
 				(hide yes)
 			)
 		)
@@ -14446,7 +14528,7 @@
 				)
 			)
 		)
-		(property "Value" "AHT20 Board"
+		(property "Value" "I2C Sensor"
 			(at 260.35 17.78 90)
 			(effects
 				(font
@@ -15421,6 +15503,78 @@
 			(project "ESP32-Simple-Thermostat-PCB"
 				(path "/03f971b2-48ed-4915-b0f1-49bc6f8499e8"
 					(reference "K6")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "PCM_SL_Pin_Headers:PINHD_1x3_Male")
+		(at 247.65 34.29 180)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "95dda8b5-dbb3-4892-9016-384a3939a6b2")
+		(property "Reference" "J7"
+			(at 247.775 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PINHD_1x3_Male"
+			(at 247.775 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical"
+			(at 246.38 29.21 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 247.65 43.18 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Pin Header male with pin space 2.54mm. Pin Count -3"
+			(at 247.65 34.29 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "279d80aa-35dd-4515-aa39-893bd8d810f6")
+		)
+		(pin "2"
+			(uuid "97a12390-649e-4332-9fe9-65e371c87389")
+		)
+		(pin "3"
+			(uuid "84a4c7c9-5312-4dfc-b1e5-70f6e097d35f")
+		)
+		(instances
+			(project ""
+				(path "/03f971b2-48ed-4915-b0f1-49bc6f8499e8"
+					(reference "J7")
 					(unit 1)
 				)
 			)

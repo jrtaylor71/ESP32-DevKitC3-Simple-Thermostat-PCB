@@ -23,7 +23,7 @@ pcb_mount_holes = [
 
 # Case parameters
 face_thickness = 1.8
-wall_thickness = 9.0
+wall_thickness = 5.0
 standoff_height = 17.3
 standoff_diameter = 7.0
 hole_diameter = 2.7

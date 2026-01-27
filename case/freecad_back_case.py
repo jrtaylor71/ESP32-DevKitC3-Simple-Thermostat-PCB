@@ -30,7 +30,7 @@ pcb_mount_holes = [
 ]
 
 # Case parameters
-side_wall_thickness = 9.0
+side_wall_thickness = 5.0
 bottom_thickness = 4.0
 wall_thickness = side_wall_thickness  # legacy name used throughout
 pcb_clearance = 3.0

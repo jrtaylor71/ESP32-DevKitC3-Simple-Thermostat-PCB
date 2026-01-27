@@ -23,8 +23,9 @@ J1,PINHD_1x18_Male,PinHeader_1x18_P2.54mm_Vertical,128.5,-64.11,0.0,top
 J2,Screw_Terminal_9_P3.50mm,"TerminalBlock_Phoenix_PT-1,5-9-3.5-H_1x09_P3.50mm_Horizontal",35.5,-74.5,-90.0,top
 J3,DS18B20,PinHeader_1x03_P2.54mm_Vertical,129.46,-96.0,90.0,top
 J4,3.2 lcd tft,PinSocket_1x14_P2.54mm_Vertical,66.0,-68.53,180.0,bottom
-J5,AHT20 Board,PinSocket_1x04_P2.54mm_Vertical,33.0,-98.23,0.0,bottom
+J5,I2C Sensor,PinSocket_1x04_P2.54mm_Vertical,33.0,-98.23,0.0,bottom
 J6,LD2410C,PinHeader_1x05_P2.54mm_Vertical,75.96,-31.5,90.0,bottom
+J7,PINHD_1x3_Male,PinHeader_1x03_P2.54mm_Vertical,40.29,-108.09,90.0,top
 K1,G5Q-1A,Relay_SPST_Omron-G5Q-1A,51.485,-37.51,180.0,top
 K2,G5Q-1A,Relay_SPST_Omron-G5Q-1A,51.39,-49.81,180.0,top
 K3,G5Q-1A,Relay_SPST_Omron-G5Q-1A,51.39,-62.31,180.0,top

@@ -41,7 +41,7 @@ DS18B20,J3,PinHeader_1x03_P2.54mm_Vertical,,1
 1N4007,D6,D_DO-41_SOD81_P7.62mm_Horizontal,,1
 1k,R14,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,,1
 4.7k,R2,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,,1
-AHT20 Board,J5,PinSocket_1x04_P2.54mm_Vertical,,1
+I2C Sensor,J5,PinSocket_1x04_P2.54mm_Vertical,,1
 G5Q-1A,K4,Relay_SPST_Omron-G5Q-1A,,1
 G5Q-1A,K3,Relay_SPST_Omron-G5Q-1A,,1
 100nF_Ceramic,C9,C_Disc_D5.0mm_W2.5mm_P2.50mm,,1
@@ -53,3 +53,4 @@ MountingHole_M3_3.2mm_Pad,H4,MountingHole_3.2mm_Pad,,1
 1000uF_50V,C5,CP_Radial_D16.0mm_P7.50mm,,1
 FAN,D9,LED_D3.0mm,,1
 3.2 lcd tft,J4,PinSocket_1x14_P2.54mm_Vertical,,1
+PINHD_1x3_Male,J7,PinHeader_1x03_P2.54mm_Vertical,,1
