@@ -25,7 +25,7 @@ pcb_mount_holes = [
 face_thickness = 1.8
 wall_thickness = 5.0
 standoff_height = 17.3
-standoff_diameter = 7.0
+standoff_diameter = 15.0
 hole_diameter = 2.7
 
 display_clearance = 18.9
@@ -57,11 +57,16 @@ ldr_x = wall_thickness + pcb_clearance + 104.8 - 0.5
 ldr_y = wall_thickness + pcb_clearance + 6.5
 
 sensor_box_width = 20.0
-sensor_box_height = 15.0
-sensor_box_depth = 16.0
+sensor_box_height = 32.2
+sensor_box_depth = 17.5
 sensor_box_wall = 1.5
-sensor_x = wall_thickness + pcb_clearance + 11.5
-sensor_y = wall_thickness + pcb_clearance + 68.42 + 2.0
+# Sensor opening position (post-mirror offsets, measured from INSIDE perimeter walls)
+# Right offset from inside right wall to right edge of cutout: 11.0 mm
+# Top offset from inside top wall to top edge of cutout: 15.83 mm
+# Opening is 12.5 x 6.0 then rotated 90°, so final size is 6.0 (X) by 12.5 (Y).
+# Mirror on X: right edge in final corresponds to left edge pre-mirror.
+sensor_x = (wall_thickness + 11.5) + (6.0 / 2.0)
+sensor_y = (case_width - wall_thickness - 15.83) - (12.5 / 2.0)
 
 corner_r = 4.0
 face_edge_radius = 4.0  # Outer fillet radius at face/wall junction
@@ -185,48 +190,44 @@ try:
 except Exception as ex:
     App.Console.PrintWarning("Sensor mesh fuse failed: %s\n" % ex)
 
-# Sensor protection box: 4-wall frame protruding from face, with vents (rotated 90° to match opening)
-# Match SCAD: build centered at origin, rotate, then translate to sensor position
-# Outer frame dimensions - centered at origin
-sensor_box_outer = Part.makeBox(sensor_box_width, sensor_box_height, sensor_box_depth)
-sensor_box_outer.translate(App.Vector(-sensor_box_width/2, -sensor_box_height/2, 0))
+# Sensor protection box: recreate with ONLY bottom + left walls
+# Placement is defined by offsets from INSIDE right/top walls (final mirrored part).
+# NOTE: The shell is mirrored on the YZ plane later, so X offsets are mirror-aware.
+left_wall_offset_from_inside_right = 19.0  # mm from inside right wall to LEFT wall (final)
+bottom_wall_inside_offset_from_top = 30.58  # mm from inside top wall to INSIDE of bottom wall
 
-# Inner cavity (hollow interior through full depth)
-sensor_box_inner = Part.makeBox(sensor_box_width - 2 * sensor_box_wall,
-                                 sensor_box_height - 2 * sensor_box_wall,
-                                 sensor_box_depth + 0.2)
-sensor_box_inner.translate(App.Vector(-(sensor_box_width - 2*sensor_box_wall)/2,
-                                      -(sensor_box_height - 2*sensor_box_wall)/2,
-                                      -0.1))
+# Final-part reference edges (after mirror)
+inside_right_final_x = -wall_thickness
+inside_top_final_y = case_width - wall_thickness
 
-sensor_box = sensor_box_outer.cut(sensor_box_inner)
+# Left wall placement (final coords)
+left_wall_inside_final_x = inside_right_final_x - left_wall_offset_from_inside_right
+left_wall_outer_final_x = left_wall_inside_final_x - sensor_box_wall
 
-# Vent holes in the box walls (small rectangles through walls) - all centered coords
-# Top wall vents removed - faces inward toward case interior after rotation
+# Bottom wall placement (final coords)
+bottom_wall_inside_final_y = inside_top_final_y - bottom_wall_inside_offset_from_top
+bottom_wall_outer_final_y = bottom_wall_inside_final_y - sensor_box_wall
 
-# Bottom wall vents (before rotation: bottom = -Y direction)
-for i in range(4):
-    vent = Part.makeBox(sensor_box_width - 2, 4.0, 1.5)
-    vent.translate(App.Vector(-(sensor_box_width - 2)/2, (sensor_box_height/2 - 4.0), 2 + i * 2.5))
-    try:
-        sensor_box = sensor_box.cut(vent)
-    except:
-        pass
+# Bottom wall runs left from inside right wall by sensor_box_width
+bottom_wall_left_final_x = inside_right_final_x - sensor_box_width
+bottom_wall_right_final_x = inside_right_final_x
 
-# Left wall vents removed - faces inward toward case interior after rotation
+# Convert final coords to pre-mirror coords (x_pre = -x_final)
+left_wall_x = -left_wall_outer_final_x
+left_wall_y = bottom_wall_outer_final_y
 
-# Right wall vents (before rotation: right = +X direction)
-for i in range(3):
-    vent = Part.makeBox(4.0, sensor_box_height - 2, 1.5)
-    vent.translate(App.Vector((sensor_box_width/2 - 4.0), -(sensor_box_height - 2)/2, 2 + i * 3))
-    try:
-        sensor_box = sensor_box.cut(vent)
-    except:
-        pass
+bottom_wall_x = -bottom_wall_right_final_x
+bottom_wall_y = bottom_wall_outer_final_y
 
-# Match SCAD: already centered at origin from construction, rotate then translate
-sensor_box = sensor_box.rotate(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 90)
-sensor_box.translate(App.Vector(sensor_x, sensor_y, 0))
+# Left wall (vertical)
+left_wall = Part.makeBox(sensor_box_wall, sensor_box_height, sensor_box_depth)
+left_wall.Placement.Base = App.Vector(left_wall_x, left_wall_y, 0)
+
+# Bottom wall (horizontal)
+bottom_wall = Part.makeBox(sensor_box_width + 2.0, sensor_box_wall, sensor_box_depth)
+bottom_wall.Placement.Base = App.Vector(bottom_wall_x, bottom_wall_y, 0)
+
+sensor_box = left_wall.fuse(bottom_wall)
 
 # Add sensor box to shell
 try:
@@ -274,7 +275,7 @@ if display_edges:
 vent_slot_count = 15
 vent_slot_length = 8.0
 vent_slot_width = 2.0
-vent_slot_height = 20.0
+vent_slot_height = wall_thickness
 vent_spacing = 10.5  # Match back case spacing for alignment
 vent_corner_margin = 15.0  # Skip vents near corners for strength
 for i in range(vent_slot_count):
@@ -387,6 +388,38 @@ for snap in snap_positions:
             App.Console.PrintMessage("Cut latch hole on right wall (3mm from top)\n")
         except Exception as ex:
             App.Console.PrintWarning("Right latch hole cut failed: %s\n" % ex)
+
+# Perimeter seating lip at top of walls (BEFORE MIRROR)
+# Lip dimensions: 2.1mm inward depth, 6mm downward extent, 6mm height
+lip_depth = 2.2
+lip_height = 6.2
+
+# Top lip (extends inward from top edge)
+top_lip = Part.makeBox(case_length - 2 * wall_thickness, lip_depth, lip_height)
+top_lip.translate(App.Vector(wall_thickness, case_width - wall_thickness - lip_depth, case_height - lip_height))
+
+# Bottom lip (extends inward from bottom edge)
+bottom_lip = Part.makeBox(case_length - 2 * wall_thickness, lip_depth, lip_height)
+bottom_lip.translate(App.Vector(wall_thickness, wall_thickness, case_height - lip_height))
+
+# Left lip (extends inward from left edge)
+left_lip = Part.makeBox(lip_depth, case_width - 2 * wall_thickness, lip_height)
+left_lip.translate(App.Vector(wall_thickness, wall_thickness, case_height - lip_height))
+
+# Right lip (extends inward from right edge)
+right_lip = Part.makeBox(lip_depth, case_width - 2 * wall_thickness, lip_height)
+right_lip.translate(App.Vector(case_length - wall_thickness - lip_depth, wall_thickness, case_height - lip_height))
+
+# Combine all lips
+lip = top_lip.fuse(bottom_lip)
+lip = lip.fuse(left_lip)
+lip = lip.fuse(right_lip)
+
+try:
+    shell = shell.cut(lip)
+    App.Console.PrintMessage("Cut perimeter seating lip\n")
+except Exception as ex:
+    App.Console.PrintWarning("Lip cut failed: %s\n" % ex)
 
 
 # ---------- Mirror entire shell on Y-axis ----------
