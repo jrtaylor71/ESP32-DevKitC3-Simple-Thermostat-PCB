@@ -11,8 +11,6 @@
 
 # Build artifacts
 build_output.log
-*.bin.gz
-*.elf
 *.map
 
 # KiCad lock files
