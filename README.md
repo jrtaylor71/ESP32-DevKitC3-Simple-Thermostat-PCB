@@ -39,9 +39,15 @@ A comprehensive, feature-rich simple thermostat system built on the ESP32 platfo
 
 #### Option 1: Use Prebuilt Firmware (Recommended)
 1. Clone this repository
-2. Navigate to `firmware/N8/`, `firmware/N16/`, or `firmware/N32/` directory
+2. Navigate to `firmware/` directory
 3. Find the latest build folder (e.g., `build_YYYYMMDD-HHMMSS/`)
-4. Flash using the variant-specific script: `./firmware/latest_flash_N8.sh`, `latest_flash_N16.sh`, or `latest_flash_N32.sh`
+4. Flash using the variant-specific script:
+   - **Linux/Mac**: 
+     - Default: `./latest_flash_N16.sh` (uses /dev/ttyACM0)
+     - Custom port: `./latest_flash_N16.sh /dev/ttyUSB0`
+   - **Windows**: 
+     - Default: `latest_flash_N16.bat` (uses COM3)
+     - Custom port: `latest_flash_N16.bat COM4`
 5. Use touch interface to configure WiFi and settings
 
 #### Option 2: Build from Source
@@ -60,7 +66,13 @@ A comprehensive, feature-rich simple thermostat system built on the ESP32 platfo
      - `./build.sh cleanlibs` - Remove all libraries and packages
 5. Memory usage: RAM 25.2% (82728/327680 bytes); Flash 19.0% (1246KB/6553KB for N16)
 6. Firmware organized in `firmware/N8/`, `firmware/N16/`, `firmware/N32/` directories
-7. Flash using variant-specific scripts: `./firmware/latest_flash_N8.sh`, `latest_flash_N16.sh`, or `latest_flash_N32.sh`
+7. Flash using variant-specific scripts:
+   - **Linux/Mac**: 
+     - Default: `./firmware/latest_flash_N16.sh` (uses /dev/ttyACM0)
+     - Custom port: `./firmware/latest_flash_N16.sh /dev/ttyUSB0`
+   - **Windows**: 
+     - Default: `firmware\latest_flash_N16.bat` (uses COM3)
+     - Custom port: `firmware\latest_flash_N16.bat COM5`
 8. Use touch interface to configure WiFi and settings
 
 #### Flashing Requirements
@@ -68,6 +80,37 @@ A comprehensive, feature-rich simple thermostat system built on the ESP32 platfo
 - **USB connection** to ESP32-S3
 - **Boot mode**: Hold BOOT button while connecting USB (if needed)
 - **Default serial port**: `/dev/ttyACM0` (Linux/Mac) or `COM3` (Windows)
+
+#### Manual Flashing with esptool
+
+If you need to flash manually using esptool, use the following command:
+
+**Linux/Mac:**
+```bash
+esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 460800 --before default_reset --after hard_reset write_flash -z \
+    --flash_mode dio --flash_freq 80m --flash_size 16MB \
+    0x0 bootloader.bin \
+    0x8000 partitions.bin \
+    0x10000 firmware.bin
+```
+
+**Windows:**
+```bash
+esptool.py --chip esp32s3 --port COM3 --baud 460800 --before default_reset --after hard_reset write_flash -z \
+    --flash_mode dio --flash_freq 80m --flash_size 16MB \
+    0x0 bootloader.bin \
+    0x8000 partitions.bin \
+    0x10000 firmware.bin
+```
+
+**Flash addresses for the 3 required files:**
+- `bootloader.bin` at address `0x0`
+- `partitions.bin` at address `0x8000`
+- `firmware.bin` at address `0x10000`
+
+**Adjust for your hardware:**
+- Change `--port` to your serial port (Linux: `/dev/ttyACM0` or `/dev/ttyUSB0`, Windows: `COM3`, `COM4`, etc.)
+- Change `--flash_size` to `8MB`, `16MB`, or `32MB` to match your ESP32-S3 variant (N8, N16, or N32)
 
 For detailed build and flash instructions, see [USER_MANUAL.md](USER_MANUAL.md)
 
@@ -191,13 +234,16 @@ A professional two-part case design is included for clean wall-mount installatio
 - **Professional finish**: Smooth surfaces and rounded edges
 
 ### Files Included
-- `case/front_case_display.scad` - Front case (display side) OpenSCAD source
-- `case/back_case_wall.scad` - Back case (wall-mount side) OpenSCAD source
-- `case/thermostat_case_front.stl` - Front half for 3D printing
-- `case/thermostat_case_back.stl` - Back half for 3D printing
-- `case/README.md` - Design details and printing instructions
-- `case/ASSEMBLY.md` - Complete assembly and installation guide
-- `case/generate_stl.sh` - Script to regenerate STL files
+- `case/freecad_front_case.py` - Front case (display side) FreeCAD Python script
+- `case/freecad_back_case.py` - Back case (wall-mount side) FreeCAD Python script
+- `case/freecad_outputs/front_case_display_freecad.stl` - Front half for 3D printing
+- `case/freecad_outputs/back_case_wall_freecad.stl` - Back half for 3D printing
+- `case/freecad_outputs/front_case_display_freecad.FCStd` - Front case FreeCAD project
+- `case/freecad_outputs/back_case_wall_freecad.FCStd` - Back case FreeCAD project
+- `case/freecad_outputs/front_case_display_freecad.step` - Front case STEP format
+- `case/freecad_outputs/back_case_wall_freecad.step` - Back case STEP format
+- `case/freecad_outputs/CE5_front_case_display_freecad.gcode` - Creality Ender 5 gcode (front)
+- `case/freecad_outputs/CE5_back_case_wall_freecad.gcode` - Creality Ender 5 gcode (back)
 
 ### Print Specifications
 - **Material**: PLA or PETG recommended
@@ -209,7 +255,7 @@ A professional two-part case design is included for clean wall-mount installatio
   - Front: ~17.1mm (2.5mm wall; 13mm standoffs; front walls 1.6mm above standoffs)
   - Back: ~30.1mm (2.5mm wall; 20mm component clearance; bosses/keyholes)
 
-See `case/README.md` for detailed printing instructions and `case/ASSEMBLY.md` for installation guide.
+**STL Files Location**: All printable STL files are in the `case/freecad_outputs/` directory.
 
 ### Motion Detection
 - **LD2410 24GHz mmWave Sensor**: Automatic display wake on motion detection
