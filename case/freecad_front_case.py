@@ -48,7 +48,7 @@ display_center_x = (display_holes[0][0] + display_holes[3][0]) / 2.0 + 5.6
 display_center_y = (display_holes[0][1] + display_holes[3][1]) / 2.0
 display_width = 68.0
 display_height = 50.0
-display_x = wall_thickness + pcb_clearance + display_center_x - display_width / 2.0
+display_x = wall_thickness + pcb_clearance + display_center_x - display_width / 2.0 - 2.5
 display_y = wall_thickness + pcb_clearance + display_center_y - display_height / 2.0
 
 # Sensor holes
@@ -390,7 +390,7 @@ for snap in snap_positions:
             App.Console.PrintWarning("Right latch hole cut failed: %s\n" % ex)
 
 # Perimeter seating lip at top of walls (BEFORE MIRROR)
-# Lip dimensions: 2.1mm inward depth, 6mm downward extent, 6mm height
+# Lip dimensions: 2.2mm inward depth, 6.2mm downward extent, 6.2mm height
 lip_depth = 2.2
 lip_height = 6.2
 
