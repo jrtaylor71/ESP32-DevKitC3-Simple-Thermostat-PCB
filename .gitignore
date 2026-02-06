@@ -39,3 +39,6 @@ HA Configs/
 
 # Matter integration (optional, disabled by default)
 MATTER/
+
+# Local-only mobile app work
+mobile_app_private/

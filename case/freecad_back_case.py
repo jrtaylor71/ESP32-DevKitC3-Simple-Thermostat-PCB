@@ -35,7 +35,7 @@ bottom_thickness = 4.0
 wall_thickness = side_wall_thickness  # legacy name used throughout
 pcb_clearance = 3.0
 standoff_height = 4.0
-component_height = 20.0
+component_height = 12.0
 
 # Calculated dimensions
 # Inner cavity dimensions (what PCB needs)
