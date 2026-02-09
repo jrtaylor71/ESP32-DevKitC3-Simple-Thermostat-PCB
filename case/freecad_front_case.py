@@ -131,7 +131,7 @@ ldr_hole = Part.makeCylinder(ldr_diameter / 2.0, face_thickness + 2,
 shell = shell.cut(ldr_hole)
 
 # LDR tube/collar - 10mm tall, 6mm inner diameter
-ldr_tube_height = 17.0
+ldr_tube_height = 10.0
 ldr_tube_inner_dia = 6.0
 ldr_tube_outer_dia = 8.0  # 1mm wall thickness
 ldr_tube_outer = Part.makeCylinder(ldr_tube_outer_dia / 2.0, ldr_tube_height,
@@ -391,7 +391,7 @@ for snap in snap_positions:
 
 # Perimeter seating lip at top of walls (BEFORE MIRROR)
 # Lip dimensions: 2.2mm inward depth, 6.2mm downward extent, 6.2mm height
-lip_depth = 2.2
+lip_depth = 2.5
 lip_height = 6.2
 
 # Top lip (extends inward from top edge)
