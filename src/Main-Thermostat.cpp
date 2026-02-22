@@ -52,7 +52,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.4.001"; // Software version
+const String sw_version = "1.4.002"; // Software version
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -5109,6 +5109,7 @@ void saveSettings()
     preferences.putFloat("humOffset", humidityOffset);
     preferences.putBool("dispSleepEn", displaySleepEnabled);
     preferences.putULong("dispTimeout", displaySleepTimeout);
+    preferences.putInt("brightness", currentBrightness);
     
     // Save weather settings
     preferences.putInt("weatherSrc", weatherSource);
@@ -5220,6 +5221,7 @@ void loadSettings()
     humidityOffset = preferences.getFloat("humOffset", 0.0);
     displaySleepEnabled = preferences.getBool("dispSleepEn", true);
     displaySleepTimeout = preferences.getULong("dispTimeout", 300000); // Default 5 minutes
+    currentBrightness = preferences.getInt("brightness", 130);
     
     // Load weather settings
     weatherSource = preferences.getInt("weatherSrc", 0);
@@ -5441,6 +5443,7 @@ void restoreDefaultSettings()
     humidityOffset = 0.0; // Reset humidity calibration offset to default
     displaySleepEnabled = true; // Reset display sleep enabled to default
     displaySleepTimeout = 300000; // Reset display sleep timeout to default (5 minutes)
+    currentBrightness = 130; // Reset display brightness to default
     
     // Reset weather settings to defaults
     weatherSource = 0; // Disabled
