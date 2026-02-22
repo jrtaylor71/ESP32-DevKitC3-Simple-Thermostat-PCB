@@ -296,9 +296,30 @@ Contributions welcome! Please:
 
 ## ⭐ Version
 
-**Current Version**: 1.4.001 (January 2026)
+**Current Version**: 1.4.009 (February 2026)
 
-### Latest Features (v1.4.001)
+### Latest Features (v1.4.009)
+- **Touch Screen Calibration System**: On-device calibration management via System Info page
+  - Calibrate button: Interactive touch calibration with corner-tap routine
+  - Clear Cal button: Reset calibration data and reboot to defaults
+  - Non-blocking startup: Uses hardware-tested default values when no calibration saved
+  - Debug logging: Calibration values displayed in boot log for troubleshooting
+  - Improved default values: Updated from real hardware calibration (426, 3526, 248, 3417, 7)
+- **Enhanced Fan Control**: Fan forced off during hydronic lockout (prevents cold air circulation)
+- **Dual Hydronic Sensor Support**: Display supply and return temperatures simultaneously
+  - S: (supply) and R: (return) temperature indicators on main screen
+  - Graceful handling of missing sensors with "--" display
+- **Display Optimizations**: 
+  - Tightened sensor spacing for better information density
+  - Relocated status indicators (Heating/Cooling left, Fan center)
+  - Improved settings page layouts for better fit
+- **LDR Dimming Control**: Optional light-sensor-based dimming (default: disabled)
+  - User brightness setting used as maximum ceiling when enabled
+  - Prevents unexpected brightness changes on fresh installs
+- **Debug Buffer Expansion**: Increased from 32KB to 64KB for better boot log retention
+- **Display Sleep Default Changed**: Now defaults to OFF for immediate touch response
+
+### Previous Features (v1.4.001)
 - **Bidirectional MQTT Schedule Sync**: Complete synchronization between thermostat and Home Assistant
   - 77 outbound automations per thermostat for all schedule parameters
   - Centralized multi-thermostat inbound automation

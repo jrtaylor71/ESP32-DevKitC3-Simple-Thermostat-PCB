@@ -55,6 +55,9 @@ extern void drawButtons();
 extern void drawKeyboard(bool isUpperCase);
 extern void setDisplayUpdateFlag();
 extern void buzzerBeep(int duration);
+extern void calibrateTouchScreen();
+extern void runInteractiveCalibration();
+extern void clearTouchCalibration();
 
 // Color scheme (defined in main, redeclare for clarity)
 #define COLOR_BACKGROUND   0x1082
@@ -232,15 +235,15 @@ void drawComfortSettings() {
     tft.setCursor(10, 10);
     tft.print("Comfort Settings");
     
-    int yPos = 40;
+    int yPos = 30;
     
     // Temperature Swing
     drawNumericControl(20, yPos, "Temp Swing:", editTempSwing, 1);
-    yPos += 65;
+    yPos += 60;
     
     // Auto Temp Swing
     drawNumericControl(20, yPos, "Auto Swing:", editAutoTempSwing, 2);
-    yPos += 65;
+    yPos += 60;
     
     // Fan Relay Required toggle (compact layout)
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
@@ -248,7 +251,7 @@ void drawComfortSettings() {
     tft.setCursor(20, yPos);
     tft.print("Fan Relay Required:");
     drawToggle(220, yPos + 5, editFanRelayNeeded);
-    yPos += 20;
+    yPos += 18;
     
     // Use Fahrenheit toggle
     tft.setCursor(20, yPos);
@@ -268,15 +271,15 @@ void drawHVACAdvancedSettings() {
     tft.setCursor(10, 10);
     tft.print("HVAC Advanced");
     
-    int yPos = 40;
+    int yPos = 30;
     
     // Stage1 Min Runtime (seconds)
     drawNumericControl(20, yPos, "Stage1 Min (s):", (float)editStage1MinRuntime, 3);
-    yPos += 65;
+    yPos += 60;
     
     // Stage2 Temp Delta
     drawNumericControl(20, yPos, "Stage2 Delta:", editStage2TempDelta, 4);
-    yPos += 65;
+    yPos += 60;
     
     // Stage2 Heat Enable toggle
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
@@ -284,7 +287,7 @@ void drawHVACAdvancedSettings() {
     tft.setCursor(20, yPos);
     tft.print("Stage2 Heat Enable:");
     drawToggle(220, yPos + 5, editStage2HeatingEnabled);
-    yPos += 20;
+    yPos += 18;
     
     // Stage2 Cool Enable toggle
     tft.setCursor(20, yPos);
@@ -389,8 +392,10 @@ void drawSystemInfo() {
     tft.print(ESP.getFlashChipSize() / (1024 * 1024));
     tft.print(" MB");
     
-    // Back button
-    drawSettingsButton(90, 200, 140, 35, "Back", COLOR_WARNING);
+    // Calibrate, Clear Cal, and Back buttons (right side)
+    drawSettingsButton(213, 80, 95, 35, "Calibrate", COLOR_PRIMARY);
+    drawSettingsButton(213, 125, 95, 35, "Clear Cal", TFT_RED);
+    drawSettingsButton(213, 170, 95, 35, "Back", COLOR_WARNING);
 }
 
 // Launch WiFi setup (reuse existing keyboard flow)
@@ -632,8 +637,21 @@ bool settingsHandleTouch(uint16_t x, uint16_t y) {
     
     // System Info page
     else if (currentPage == PAGE_SYSINFO) {
-        // Back button (centered)
-        if (x >= 90 && x <= 230 && y >= 200 && y <= 235) {
+        // Calibrate button (top right)
+        if (x >= 213 && x <= 308 && y >= 80 && y <= 115) {
+            runInteractiveCalibration();
+            // After calibration completes, redraw the system info page
+            drawSystemInfo();
+            return true;
+        }
+        // Clear Cal button (middle right)
+        else if (x >= 213 && x <= 308 && y >= 125 && y <= 160) {
+            clearTouchCalibration();
+            // Note: clearTouchCalibration() will reboot the device
+            return true;
+        }
+        // Back button (bottom right)
+        else if (x >= 213 && x <= 308 && y >= 170 && y <= 205) {
             currentPage = PAGE_MENU;
             drawSettingsMenu();
             return true;

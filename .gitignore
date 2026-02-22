@@ -35,6 +35,9 @@ Thumbs.db
 *.bak
 *.backup
 
+# Local copy script
+copy_main_code.sh
+
 HA Configs/
 
 # Matter integration (optional, disabled by default)

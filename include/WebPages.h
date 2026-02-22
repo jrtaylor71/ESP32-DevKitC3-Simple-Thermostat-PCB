@@ -48,7 +48,7 @@ String formatUptime(unsigned long milliseconds) {
 }
 
 // Generate modern status page HTML
-String generateStatusPage(float currentTemp, float currentHumidity, float hydronicTemp, 
+String generateStatusPage(float currentTemp, float currentHumidity, float hydronicTemp, float hydronicReturnTemp,
                          String thermostatMode, String fanMode, String version_info, 
                          String hostname, bool useFahrenheit, bool hydronicHeatingEnabled,
                          int heatRelay1Pin, int heatRelay2Pin, int coolRelay1Pin, 
@@ -65,7 +65,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
                          String wifiSSID, String wifiPassword, String timeZone,
                          bool use24HourClock, bool mqttEnabled, String mqttServer,
                          int mqttPort, String mqttUsername, String mqttPassword,
-                         float tempOffset, float humidityOffset, int currentBrightness,
+                         float tempOffset, float humidityOffset, int currentBrightness, bool ldrDimmingEnabled,
                          bool displaySleepEnabled, unsigned long displaySleepTimeout,
                          // Schedule variables for embedded schedule tab
                          DaySchedule weekSchedule[7], bool scheduleEnabled, String activePeriod,
@@ -158,8 +158,9 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
         html += ICON_TEMPERATURE;
         html += "<h3 class='card-title'>Hydronic Temperature</h3>";
         html += "</div>";
-        html += "<div style='text-align: center; font-size: 2rem; color: var(--warning);'>";
-        html += String(hydronicTemp, 1) + "<span style='font-size: 1rem; opacity: 0.7;'>&deg;F</span></div>";
+        html += "<div style='text-align: center; font-size: 1.4rem; color: var(--warning);'>";
+        html += "Supply: " + String(hydronicTemp, 1) + "<span style='font-size: 0.9rem; opacity: 0.7;'>&deg;" + String(useFahrenheit ? "F" : "C") + "</span><br>";
+        html += "Return: " + String(hydronicReturnTemp, 1) + "<span style='font-size: 0.9rem; opacity: 0.7;'>&deg;" + String(useFahrenheit ? "F" : "C") + "</span></div>";
         html += "</div>";
     }
     
@@ -474,6 +475,11 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "<div class='form-group'>";
     html += "<label class='form-label'>Display Brightness (0-255)</label>";
     html += "<input type='number' name='currentBrightness' value='" + String(currentBrightness) + "' min='30' max='255' class='form-input'>";
+    html += "</div>";
+
+    html += "<div class='form-checkbox'>";
+    html += "<input type='checkbox' name='ldrDimmingEnabled' " + String(ldrDimmingEnabled ? "checked" : "") + ">";
+    html += "<label class='form-label'>Enable LDR Dimming</label>";
     html += "</div>";
     
     html += "</div>"; // End grid

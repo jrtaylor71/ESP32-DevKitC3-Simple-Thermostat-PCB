@@ -192,7 +192,7 @@ const unsigned long FACTORY_RESET_PRESS_TIME = 10000;   // 10 seconds for factor
 // ============================================================================
 #define PROJECT_NAME_SHORT "ESP32-S3 Simple Thermostat"
 #define UI_PRODUCT_LINE "ESP32-S3 Simple Thermostat"
-#define DEFAULT_HOSTNAME "ESP32-S3-Simple-Thermostat"
+#define DEFAULT_HOSTNAME "Simple-Thermostat"
 #define MQTT_MANUFACTURER "TDC"
 #define MQTT_MODEL "ESP32-S3 Simple Thermostat"
 

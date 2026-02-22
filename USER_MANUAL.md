@@ -1,6 +1,6 @@
 # ESP32-S3 Simple Thermostat - User Manual
 
-**Version 1.3.9 | January 2026**
+**Version 1.4.009 | February 2026**
 
 ---
 
@@ -40,7 +40,9 @@ The ESP32-S3 Simple Thermostat is a fully-featured smart thermostat designed for
 
 1. **Power Connection**: Connect 5V power to the thermostat
 2. **Display Activation**: The TFT display will initialize and show the boot screen
-3. **WiFi Configuration**: 
+3. **Touch Screen**: Pre-calibrated for immediate use - no calibration required at startup
+   - If touch accuracy is poor, you can calibrate later via Settings → System Info
+4. **WiFi Configuration**: 
    - Tap anywhere on the boot screen
    - Enter your WiFi SSID and password using the on-screen keyboard
    - Tap "Connect" to join the network
@@ -308,6 +310,22 @@ Choose between OpenWeatherMap or Home Assistant.
 5. Progress bar shows upload and flash write progress
 6. Device automatically reboots when complete
 7. Page shows success message with new version number
+
+**Touch Screen Calibration** (On-Device):
+Access through Settings menu on the touch screen:
+1. Tap Settings button on main screen
+2. Navigate to "System Info" page
+3. Tap **Calibrate** button (top right)
+4. Follow on-screen instructions to touch corners as indicated
+5. Calibration is automatically saved to permanent storage
+6. Tap **Clear Cal** button (middle right) to reset calibration and reboot
+7. After clearing, device uses hardware-tested default values until recalibrated
+
+**Calibration Notes**:
+- Default calibration values are pre-loaded for immediate use
+- Startup is never blocked - system always boots with working touch
+- Recommended to calibrate if touch accuracy is poor
+- Clear Cal useful for testing or recovering from bad calibration
 
 **System Actions**:
 - **Reboot Device**: Restart the thermostat (requires confirmation)
@@ -848,11 +866,12 @@ For radiant floor or baseboard hydronic systems:
 ### Display Issues
 
 **Touch Not Responding**:
-- Calibrate touch screen through web interface
-- Clean display surface - dirt affects capacitive touch
+- Calibrate touch screen through on-device Settings → System Info → Calibrate button
+- If touch is completely unresponsive, access web interface and reboot to restore defaults
+- Clean display surface - dirt affects resistive touch
 - Check for physical damage to touch layer
 - Verify display cable connections
-- Try factory reset if calibration fails
+- Try Clear Cal button to reset calibration, or factory reset if calibration fails
 
 **Display Flickering**:
 - Normal during updates (weather, time changes)

@@ -52,7 +52,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.4.003"; // Software version
+const String sw_version = "1.4.009"; // Software version
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -94,6 +94,7 @@ bool bootButtonPressed = false; // Track if boot button is being pressed
 OneWire oneWire(ONEWIRE_PIN);
 DallasTemperature ds18b20(&oneWire);
 float hydronicTemp = 0.0;
+float hydronicReturnTemp = 0.0;
 bool hydronicHeatingEnabled = false;
 
 // Hydronic system settings
@@ -114,8 +115,9 @@ unsigned long lastBrightnessUpdate = 0; // Last time brightness was updated
 int currentBrightness = MAX_BRIGHTNESS; // Current backlight brightness
 float filteredBrightness = 255.0; // EMA-filtered brightness for smooth transitions
 const float brightnessEMAAlpha = 0.2; // Brightness smoothing factor (0.2 = 20% new, 80% previous)
+bool ldrDimmingEnabled = false; // Enable/disable LDR-based dimming
 // Display sleep mode settings
-bool displaySleepEnabled = true; // Enable/disable display sleep mode
+bool displaySleepEnabled = false; // Enable/disable display sleep mode
 unsigned long displaySleepTimeout = 300000; // Sleep after 5 minutes (300000ms) of inactivity
 bool displayIsAsleep = false; // Current display sleep state
 unsigned long lastInteractionTime = 0; // Last time user interacted with display
@@ -306,7 +308,9 @@ bool forceFullDisplayRefresh = false;
 
 // Add declarations to support hydronic temperature display and sensor error checking
 float previousHydronicTemp = 0.0;
+float previousHydronicReturnTemp = 0.0;
 bool ds18b20SensorPresent = false;
+bool ds18b20ReturnSensorPresent = false;
 
 // Function prototypes
 void setupWiFi();
@@ -328,6 +332,8 @@ void handleKeyboardTouch(uint16_t x, uint16_t y, bool isUpperCaseKeyboard);
 void connectToWiFi();
 void enterWiFiCredentials();
 void calibrateTouchScreen();
+void runInteractiveCalibration();
+void clearTouchCalibration();
 void startWiFiSetupUI(bool returnToSettings);
 void exitKeyboardToPreviousScreen();
 void restoreDefaultSettings();
@@ -493,16 +499,28 @@ void sensorTaskFunction(void *parameter) {
             }
         }
         
-        // Read DS18B20 hydronic temperature sensor if present
-        if (ds18b20SensorPresent) {
+        // Read DS18B20 hydronic temperature sensors if present
+        if (ds18b20SensorPresent || ds18b20ReturnSensorPresent) {
             ds18b20.requestTemperatures();
-            float hydTempC = ds18b20.getTempCByIndex(0);
-            if (hydTempC != DEVICE_DISCONNECTED_C && hydTempC != -127.0 && !isnan(hydTempC)) {
-                // Valid reading - convert to Fahrenheit if needed
-                hydronicTemp = useFahrenheit ? (hydTempC * 9.0 / 5.0 + 32.0) : hydTempC;
-            } else {
-                // Invalid reading - keep last valid reading, don't update
-                debugLog("[WARNING] DS18B20 sensor reading failed or disconnected\n");
+
+            if (ds18b20SensorPresent) {
+                float hydTempC = ds18b20.getTempCByIndex(0);
+                if (hydTempC != DEVICE_DISCONNECTED_C && hydTempC != -127.0 && !isnan(hydTempC)) {
+                    // Valid reading - convert to Fahrenheit if needed
+                    hydronicTemp = useFahrenheit ? (hydTempC * 9.0 / 5.0 + 32.0) : hydTempC;
+                } else {
+                    // Invalid reading - keep last valid reading, don't update
+                    debugLog("[WARNING] DS18B20 supply sensor reading failed or disconnected\n");
+                }
+            }
+
+            if (ds18b20ReturnSensorPresent) {
+                float returnTempC = ds18b20.getTempCByIndex(1);
+                if (returnTempC != DEVICE_DISCONNECTED_C && returnTempC != -127.0 && !isnan(returnTempC)) {
+                    hydronicReturnTemp = useFahrenheit ? (returnTempC * 9.0 / 5.0 + 32.0) : returnTempC;
+                } else {
+                    debugLog("[WARNING] DS18B20 return sensor reading failed or disconnected\n");
+                }
             }
         }
         
@@ -1057,7 +1075,7 @@ void loadScheduleSettings() {
 // =============================================================================
 // DEBUG LOG BUFFER - For web-based serial output viewing
 // =============================================================================
-const int DEBUG_BUFFER_SIZE = 32768;  // 32KB circular buffer for more history
+const int DEBUG_BUFFER_SIZE = 65536;  // 64KB circular buffer for more history
 char debugBuffer[DEBUG_BUFFER_SIZE];
 int debugBufferIndex = 0;
 bool debugBufferWrapped = false;  // Track if buffer has wrapped around
@@ -1422,15 +1440,23 @@ void setup()
     // Initialize the DS18B20 sensor
     ds18b20.begin();
     
-    // Check if DS18B20 sensor is present
+    // Check if DS18B20 sensors are present
     ds18b20.requestTemperatures();
+    int ds18b20Count = ds18b20.getDeviceCount();
     float tempC = ds18b20.getTempCByIndex(0);
-    ds18b20SensorPresent = (tempC != DEVICE_DISCONNECTED_C && tempC != -127.0);
+    float returnTempC = ds18b20.getTempCByIndex(1);
+    ds18b20SensorPresent = (ds18b20Count >= 1) && (tempC != DEVICE_DISCONNECTED_C && tempC != -127.0);
+    ds18b20ReturnSensorPresent = (ds18b20Count >= 2) && (returnTempC != DEVICE_DISCONNECTED_C && returnTempC != -127.0);
     
     if (ds18b20SensorPresent) {
-        debugLog("DS18B20 sensor detected\n");
+        debugLog("DS18B20 supply sensor detected\n");
     } else {
-        debugLog("DS18B20 sensor NOT detected\n");
+        debugLog("DS18B20 supply sensor NOT detected\n");
+    }
+    if (ds18b20ReturnSensorPresent) {
+        debugLog("DS18B20 return sensor detected\n");
+    } else {
+        debugLog("DS18B20 return sensor NOT detected\n");
     }
     
     // Create sensor task on core 1
@@ -3254,29 +3280,27 @@ void sendMQTTData()
             }
         }
         
-        // Publish shower mode status (only if feature enabled)
-        if (showerModeEnabled) {
-            static bool lastShowerModeActive = false;
-            static int lastMinutesRemaining = -1;
-            if (showerModeActive != lastShowerModeActive) {
-                String showerModeTopic = hostname + "/shower_mode";
-                mqttClient.publish(showerModeTopic.c_str(), showerModeActive ? "ON" : "OFF", true);
-                lastShowerModeActive = showerModeActive;
+        // Publish shower mode status (always publish state to clear retained values)
+        static bool lastShowerModeActive = false;
+        static int lastMinutesRemaining = -1;
+        if (showerModeActive != lastShowerModeActive) {
+            String showerModeTopic = hostname + "/shower_mode";
+            mqttClient.publish(showerModeTopic.c_str(), showerModeActive ? "ON" : "OFF", true);
+            lastShowerModeActive = showerModeActive;
+        }
+        // Publish remaining time if active
+        if (showerModeActive) {
+            unsigned long elapsed = millis() - showerModeStartTime;
+            int minutesRemaining = showerModeDuration - (elapsed / 60000UL);
+            if (minutesRemaining < 0) minutesRemaining = 0;
+            if (minutesRemaining != lastMinutesRemaining) {
+                String showerTimeRemainingTopic = hostname + "/shower_time_remaining";
+                mqttClient.publish(showerTimeRemainingTopic.c_str(), String(minutesRemaining).c_str(), false);
+                lastMinutesRemaining = minutesRemaining;
             }
-            // Publish remaining time if active
-            if (showerModeActive) {
-                unsigned long elapsed = millis() - showerModeStartTime;
-                int minutesRemaining = showerModeDuration - (elapsed / 60000UL);
-                if (minutesRemaining < 0) minutesRemaining = 0;
-                if (minutesRemaining != lastMinutesRemaining) {
-                    String showerTimeRemainingTopic = hostname + "/shower_time_remaining";
-                    mqttClient.publish(showerTimeRemainingTopic.c_str(), String(minutesRemaining).c_str(), false);
-                    lastMinutesRemaining = minutesRemaining;
-                }
-            } else if (lastMinutesRemaining >= 0) {
-                // Reset when deactivated
-                lastMinutesRemaining = -1;
-            }
+        } else if (lastMinutesRemaining >= 0) {
+            // Reset when deactivated
+            lastMinutesRemaining = -1;
         }
 
         // Publish schedule status
@@ -3675,13 +3699,11 @@ void activateHeating() {
             stage1Active = false;
             stage2Active = false;
             
-            // Keep fan running if needed (to circulate existing warm air)
-            if (fanMode == "on" || fanMode == "cycle") {
-                if (!fanOn) {
-                    debugLog("[LOCKOUT] Keeping fan on for air circulation\n");
-                    digitalWrite(FAN_RELAY_PIN, HIGH);
-                    fanOn = true;
-                }
+            // Force fan off during hydronic lockout
+            if (fanOn) {
+                digitalWrite(FAN_RELAY_PIN, LOW);
+                fanOn = false;
+                debugLog("[LOCKOUT] Fan forced OFF during hydronic lockout\n");
             }
             
             updateStatusLEDs();
@@ -3861,6 +3883,18 @@ void activateCooling()
 
 void handleFanControl()
 {
+    // Block fan when hydronic heating is enabled and sensor is missing/invalid or below cutoff
+    if (hydronicHeatingEnabled &&
+        (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout)) {
+        if (fanOn) {
+            digitalWrite(FAN_RELAY_PIN, LOW);
+            fanOn = false;
+            debugLog("[FAN] Forced OFF (hydronic lockout or sensor missing)\n");
+        }
+        setDisplayUpdateFlag(); // Option C: Request display update
+        return;
+    }
+
     bool newFanState = fanOn;  // Default: keep current state
     
     if (fanMode == "on")
@@ -3899,6 +3933,16 @@ void controlFanSchedule()
 
     if (fanMode == "cycle")
     {
+        if (hydronicHeatingEnabled &&
+            (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout)) {
+            if (fanOn) {
+                digitalWrite(FAN_RELAY_PIN, LOW);
+                fanOn = false;
+                debugLog("[FAN SCHEDULE] Forced OFF (hydronic lockout or sensor missing)\n");
+            }
+            return;
+        }
+
         // Don't run cycle schedule if heating or cooling is active
         if (heatingOn || coolingOn) {
             if (!fanRelayNeeded && fanOn) {
@@ -3961,7 +4005,7 @@ void handleWebRequests()
 {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-        String html = generateStatusPage(currentTemp, currentHumidity, hydronicTemp, 
+        String html = generateStatusPage(currentTemp, currentHumidity, hydronicTemp, hydronicReturnTemp,
                                        thermostatMode, fanMode, version_info, hostname, 
                                        useFahrenheit, hydronicHeatingEnabled,
                                        HEAT_RELAY_1_PIN, HEAT_RELAY_2_PIN, COOL_RELAY_1_PIN, 
@@ -3977,7 +4021,7 @@ void handleWebRequests()
                                        wifiSSID, wifiPassword, timeZone,
                                        use24HourClock, mqttEnabled, mqttServer,
                                        mqttPort, mqttUsername, mqttPassword,
-                                       tempOffset, humidityOffset, currentBrightness,
+                                       tempOffset, humidityOffset, currentBrightness, ldrDimmingEnabled,
                                        displaySleepEnabled, displaySleepTimeout,
                                        weekSchedule, scheduleEnabled, activePeriod,
                                        scheduleOverride,
@@ -4158,10 +4202,18 @@ void handleWebRequests()
             // Constrain to reasonable range (-50% to +50%)
             humidityOffset = constrain(humidityOffset, -50.0, 50.0);
         }
-        if (request->hasParam("displaySleepEnabled", true)) {
-            displaySleepEnabled = request->getParam("displaySleepEnabled", true)->value() == "on";
-        } else {
-            displaySleepEnabled = false; // Unchecked checkbox won't send parameter
+        bool hasDisplaySettings = request->hasParam("displaySleepEnabled", true) ||
+                      request->hasParam("displaySleepTimeout", true) ||
+                      request->hasParam("currentBrightness", true) ||
+                      request->hasParam("ldrDimmingEnabled", true) ||
+                      request->hasParam("tempOffset", true) ||
+                      request->hasParam("humidityOffset", true);
+        if (hasDisplaySettings) {
+            if (request->hasParam("displaySleepEnabled", true)) {
+                displaySleepEnabled = request->getParam("displaySleepEnabled", true)->value() == "on";
+            } else {
+                displaySleepEnabled = false; // Unchecked checkbox won't send parameter
+            }
         }
         if (request->hasParam("displaySleepTimeout", true)) {
             unsigned long timeoutMinutes = request->getParam("displaySleepTimeout", true)->value().toInt();
@@ -4174,6 +4226,13 @@ void handleWebRequests()
             // Constrain to reasonable range (30 to 255)
             currentBrightness = constrain(currentBrightness, 30, 255);
             setBrightness(currentBrightness); // Apply brightness immediately
+        }
+        if (hasDisplaySettings) {
+            if (request->hasParam("ldrDimmingEnabled", true)) {
+                ldrDimmingEnabled = request->getParam("ldrDimmingEnabled", true)->value() == "on";
+            } else {
+                ldrDimmingEnabled = false; // Unchecked checkbox won't send parameter
+            }
         }
         if (request->hasParam("use24HourClock", true)) {
             use24HourClock = request->getParam("use24HourClock", true)->value() == "on";
@@ -4856,8 +4915,8 @@ void updateDisplay(float currentTemp, float currentHumidity)
         tft.print(tempStr);
         tft.print(useFahrenheit ? "F" : "C");
 
-        // Humidity at y=60 (25px spacing)
-        tft.setCursor(230, 60);
+        // Humidity at y=55 (tighter spacing)
+        tft.setCursor(230, 55);
         char humidityStr[6];
         dtostrf(currentHumidity, 4, 1, humidityStr); // Convert humidity to string with 1 decimal place
         tft.print(humidityStr);
@@ -4865,7 +4924,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
         
         // Display pressure if BME280/BME680 sensor is active (convert hPa to inHg: divide by 33.8639)
         if ((activeSensor == SENSOR_BME280 || activeSensor == SENSOR_BME680) && !isnan(currentPressure)) {
-            tft.setCursor(230, 90); // Pressure at y=90, 30px spacing
+            tft.setCursor(230, 75); // Pressure at y=75, tighter spacing
             float pressureInHg = currentPressure / 33.8639; // Convert hPa to inHg
             char pressureStr[7];
             dtostrf(pressureInHg, 4, 2, pressureStr); // Format as "XX.XX"
@@ -4873,18 +4932,18 @@ void updateDisplay(float currentTemp, float currentHumidity)
             tft.print("in");
         } else {
             // Clear pressure area if not BME280/BME680 or invalid
-            tft.fillRect(230, 90, 80, 16, COLOR_BACKGROUND);
+            tft.fillRect(230, 75, 80, 16, COLOR_BACKGROUND);
         }
         
         // Display air quality if BME680 sensor is active
         if (activeSensor == SENSOR_BME680) {
-            tft.setCursor(230, 120); // Air quality at y=120, 30px spacing
+            tft.setCursor(230, 95); // Air quality at y=95, tighter spacing
             int aqScore = (int)currentAirQuality;
             tft.print("AQ:");
             tft.print(aqScore);
         } else {
             // Clear air quality area if not BME680
-            tft.fillRect(230, 120, 80, 16, COLOR_BACKGROUND);
+            tft.fillRect(230, 95, 80, 16, COLOR_BACKGROUND);
         }
 
         // Update previous values
@@ -4892,7 +4951,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
         previousHumidity = currentHumidity;
     }
 
-    // Display hydronic temperature if enabled and sensor is present
+    // Display hydronic temperatures if enabled and sensor(s) are present
     static bool prevHydronicDisplayState = false;
     if (fullRefreshTriggered) { // force refresh on cache reset
         prevHydronicDisplayState = false;
@@ -4901,23 +4960,41 @@ void updateDisplay(float currentTemp, float currentHumidity)
     // Only update hydronic temp display if it's changed or display state has changed
         // if (hydronicHeatingEnabled && ds18b20SensorPresent) {
         if (hydronicHeatingEnabled) {
-            if (hydronicTemp != previousHydronicTemp || !prevHydronicDisplayState) {
-                // Display hydronic temperature at y=120 (fixed position below sensors)
+            if (hydronicTemp != previousHydronicTemp || hydronicReturnTemp != previousHydronicReturnTemp || !prevHydronicDisplayState) {
+                // Clear hydronic area (two lines)
+                tft.fillRect(230, 110, 90, 32, COLOR_BACKGROUND);
                 tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
                 tft.setTextSize(2);
-                tft.setCursor(230, 120);
-                char hydronicTempStr[6];
-                dtostrf(hydronicTemp, 4, 1, hydronicTempStr);
-                tft.print(hydronicTempStr);
-                tft.print(useFahrenheit ? "F" : "C");
+
+                // Always show SUP slot when enabled, even if sensor missing
+                tft.setCursor(230, 110);
+                if (ds18b20SensorPresent) {
+                    char hydronicTempStr[6];
+                    dtostrf(hydronicTemp, 4, 1, hydronicTempStr);
+                    tft.print("S:");
+                    tft.print(hydronicTempStr);
+                    tft.print(useFahrenheit ? "F" : "C");
+                } else {
+                    tft.print("S: --");
+                }
+
+                if (ds18b20ReturnSensorPresent) {
+                    tft.setCursor(230, 126);
+                    char hydronicReturnStr[6];
+                    dtostrf(hydronicReturnTemp, 4, 1, hydronicReturnStr);
+                    tft.print("R:");
+                    tft.print(hydronicReturnStr);
+                    tft.print(useFahrenheit ? "F" : "C");
+                }
                 
                 previousHydronicTemp = hydronicTemp;
+                previousHydronicReturnTemp = hydronicReturnTemp;
                 prevHydronicDisplayState = true;
             }
         } 
         else if (prevHydronicDisplayState) {
             // If hydronic heating is disabled, clear the DS18B20 display area
-            tft.fillRect(230, 120, 80, 16, COLOR_BACKGROUND);
+            tft.fillRect(230, 110, 90, 32, COLOR_BACKGROUND);
             prevHydronicDisplayState = false;
         }    // Display hydronic lockout warning if active
     static bool prevHydronicLockoutDisplay = false;
@@ -5035,23 +5112,23 @@ void updateDisplay(float currentTemp, float currentHumidity)
             tft.print("HEATING");
         }
         
-        // Draw cool indicator if cooling is on
+        // Draw cool indicator if cooling is on (same position as heating)
         if (coolActive)
         {
-            tft.fillRoundRect(115, 145, 90, 30, 5, COLOR_PRIMARY);
+            tft.fillRoundRect(10, 145, 90, 30, 5, COLOR_PRIMARY);
             tft.setTextColor(TFT_BLACK);
             tft.setTextSize(2);
-            tft.setCursor(125, 152);
+            tft.setCursor(15, 152);
             tft.print("COOLING");
         }
         
-        // Draw fan indicator if fan is on
+        // Draw fan indicator if fan is on (moved to old cooling position)
         if (fanActive)
         {
-            tft.fillRoundRect(220, 145, 90, 30, 5, COLOR_ACCENT);
+            tft.fillRoundRect(115, 145, 90, 30, 5, COLOR_ACCENT);
             tft.setTextColor(TFT_BLACK);
             tft.setTextSize(2);
-            tft.setCursor(240, 152);
+            tft.setCursor(140, 152);
             tft.print("FAN");
         }
         
@@ -5111,6 +5188,7 @@ void saveSettings()
     preferences.putBool("dispSleepEn", displaySleepEnabled);
     preferences.putULong("dispTimeout", displaySleepTimeout);
     preferences.putInt("brightness", currentBrightness);
+    preferences.putBool("ldrDimEn", ldrDimmingEnabled);
     
     // Save weather settings
     preferences.putInt("weatherSrc", weatherSource);
@@ -5220,10 +5298,11 @@ void loadSettings()
     reversingValveEnabled = preferences.getBool("revValve", false);
     tempOffset = preferences.getFloat("tempOffset", -4.0);
     humidityOffset = preferences.getFloat("humOffset", 0.0);
-    displaySleepEnabled = preferences.getBool("dispSleepEn", true);
+    displaySleepEnabled = preferences.getBool("dispSleepEn", false);
     displaySleepTimeout = preferences.getULong("dispTimeout", 300000); // Default 5 minutes
     currentBrightness = preferences.getInt("brightness", 130);
     currentBrightness = constrain(currentBrightness, MIN_BRIGHTNESS, MAX_BRIGHTNESS);
+    ldrDimmingEnabled = preferences.getBool("ldrDimEn", false);
     
     // Load weather settings
     weatherSource = preferences.getInt("weatherSrc", 0);
@@ -5300,38 +5379,87 @@ void saveWiFiSettings()
 void calibrateTouchScreen()
 {
     uint16_t calData[5];
-    uint8_t calDataOK = 0;
 
     // Check if calibration data is stored in Preferences
     if (preferences.getBytesLength("calData") == sizeof(calData))
     {
         preferences.getBytes("calData", calData, sizeof(calData));
         tft.setTouch(calData);
-        calDataOK = 1;
-    }
-
-    if (calDataOK && tft.getTouchRaw(&calData[0], &calData[1]))
-    {
         debugLog("Touch screen calibration data loaded from Preferences\n");
+        debugLog("  calData[0] (TL X): %d\n", calData[0]);
+        debugLog("  calData[1] (BR X): %d\n", calData[1]);
+        debugLog("  calData[2] (TL Y): %d\n", calData[2]);
+        debugLog("  calData[3] (BR Y): %d\n", calData[3]);
+        debugLog("  calData[4] (Rotation): %d\n", calData[4]);
     }
     else
     {
-        debugLog("Calibrating touch screen...\n");
-        tft.fillScreen(COLOR_BACKGROUND);
-        tft.setCursor(20, 0);
-        tft.setTextFont(2);
-        tft.setTextSize(1);
-        tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
-
-        tft.println("Touch corners as indicated");
-        tft.setTextFont(1);
-        tft.println();
-
-        tft.calibrateTouch(calData, TFT_WHITE, TFT_RED, 15);
-
-        // Store calibration data in Preferences
-        preferences.putBytes("calData", calData, sizeof(calData));
+        // No calibration data found - use default values to avoid blocking startup
+        // These are tested values from actual hardware calibration
+        calData[0] = 426;   // Top-left X
+        calData[1] = 3526;  // Bottom-right X  
+        calData[2] = 248;   // Top-left Y
+        calData[3] = 3417;  // Bottom-right Y
+        calData[4] = 7;     // Rotation
+        tft.setTouch(calData);
+        debugLog("Touch screen using default calibration (no stored data found)\n");
+        debugLog("  calData[0] (TL X): %d\n", calData[0]);
+        debugLog("  calData[1] (BR X): %d\n", calData[1]);
+        debugLog("  calData[2] (TL Y): %d\n", calData[2]);
+        debugLog("  calData[3] (BR Y): %d\n", calData[3]);
+        debugLog("  calData[4] (Rotation): %d\n", calData[4]);
     }
+}
+
+void runInteractiveCalibration()
+{
+    uint16_t calData[5];
+    
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextSize(2);
+    tft.setCursor(20, 100);
+    tft.println("Touch corners as");
+    tft.setCursor(20, 130);
+    tft.println("indicated");
+    delay(1000);
+    
+    tft.fillScreen(TFT_BLACK);
+    tft.calibrateTouch(calData, TFT_WHITE, TFT_BLACK, 15);
+    
+    // Save calibration data to NVP
+    preferences.putBytes("calData", calData, sizeof(calData));
+    tft.setTouch(calData);
+    
+    debugLog("Touch calibration completed and saved\n");
+    debugLog("  calData[0] (TL X): %d\n", calData[0]);
+    debugLog("  calData[1] (BR X): %d\n", calData[1]);
+    debugLog("  calData[2] (TL Y): %d\n", calData[2]);
+    debugLog("  calData[3] (BR Y): %d\n", calData[3]);
+    debugLog("  calData[4] (Rotation): %d\n", calData[4]);
+    
+    tft.fillScreen(TFT_BLACK);
+    tft.setCursor(20, 100);
+    tft.println("Calibration");
+    tft.setCursor(20, 130);
+    tft.println("Complete!");
+    delay(1500);
+}
+
+void clearTouchCalibration()
+{
+    debugLog("Clearing touch calibration data...\n");
+    preferences.remove("calData");
+    // Show message before reboot
+    tft.fillScreen(COLOR_BACKGROUND);
+    tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
+    tft.setTextSize(2);
+    tft.setCursor(20, 100);
+    tft.println("Calibration Cleared");
+    tft.setCursor(20, 130);
+    tft.println("Rebooting...");
+    delay(2000);
+    ESP.restart();
 }
 
 void handleKeyboardTouch(uint16_t x, uint16_t y, bool isUpperCaseKeyboard)
@@ -5350,8 +5478,12 @@ void handleKeyboardTouch(uint16_t x, uint16_t y, bool isUpperCaseKeyboard)
         return;
     }
 
+    // Use raw X and Y coordinates without any correction
+    int correctedX = x;
+    int correctedY = y;
+
     // Check for back button tap (top-right)
-    if (y < 35 && x > 250 && x < 310) {
+    if (y < 35 && correctedX > 250 && correctedX < 310) {
         exitKeyboardToPreviousScreen();
         lastTouchTime = currentTime;
         return;
@@ -5378,11 +5510,11 @@ void handleKeyboardTouch(uint16_t x, uint16_t y, bool isUpperCaseKeyboard)
             int expandedWidth = KEY_WIDTH + (touchMargin * 2);
             int expandedHeight = KEY_HEIGHT + (touchMargin * 2);
 
-            if (x >= expandedX && x <= expandedX + expandedWidth &&
+            if (correctedX >= expandedX && correctedX <= expandedX + expandedWidth &&
                 y >= expandedY && y <= expandedY + expandedHeight)
             {
                 debugLog("Touch at (");
-                Serial.print(x);
+                Serial.print(correctedX);
                 debugLog(",");
                 Serial.print(y);
                 debugLog(") -> Key[");
@@ -5443,9 +5575,10 @@ void restoreDefaultSettings()
     stage2CoolingEnabled = false; // Reset stage 2 cooling enabled to default
     tempOffset = -4.0; // Reset temperature calibration offset to default
     humidityOffset = 0.0; // Reset humidity calibration offset to default
-    displaySleepEnabled = true; // Reset display sleep enabled to default
+    displaySleepEnabled = false; // Reset display sleep enabled to default
     displaySleepTimeout = 300000; // Reset display sleep timeout to default (5 minutes)
     currentBrightness = 130; // Reset display brightness to default
+    ldrDimmingEnabled = false; // Reset LDR dimming to default
     
     // Reset weather settings to defaults
     weatherSource = 0; // Disabled
@@ -5483,6 +5616,10 @@ void updateDisplayBrightness() {
     if (displayIsAsleep) {
         return;
     }
+
+    if (!ldrDimmingEnabled) {
+        return;
+    }
     
     unsigned long currentTime = millis();
     
@@ -5498,14 +5635,17 @@ void updateDisplayBrightness() {
     
     // Map light sensor reading to brightness level
     // Lower light readings = dimmer display, higher readings = brighter display
-    int targetBrightness = map(lastLightReading, LIGHT_SENSOR_MIN, LIGHT_SENSOR_MAX, MIN_BRIGHTNESS, MAX_BRIGHTNESS);
+    // Use user-set brightness as the max ceiling
+    int targetBrightness = map(lastLightReading, LIGHT_SENSOR_MIN, LIGHT_SENSOR_MAX, MIN_BRIGHTNESS, currentBrightness);
     
     // Constrain to valid range
     targetBrightness = constrain(targetBrightness, MIN_BRIGHTNESS, MAX_BRIGHTNESS);
     
     // Only update if brightness changed significantly (reduce flickering)
-    if (abs(targetBrightness - currentBrightness) > 5) {
-        setBrightness(targetBrightness);
+    static int lastAppliedBrightness = -1;
+    if (lastAppliedBrightness < 0 || abs(targetBrightness - lastAppliedBrightness) > 5) {
+        ledcWrite(PWM_CHANNEL, targetBrightness);
+        lastAppliedBrightness = targetBrightness;
     }
 }
 
