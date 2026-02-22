@@ -52,7 +52,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.4.002"; // Software version
+const String sw_version = "1.4.003"; // Software version
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -1171,9 +1171,9 @@ void setup()
     // Initialize TFT backlight with PWM (GPIO 14)
     ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_RESOLUTION);
     ledcAttachPin(TFT_BACKLIGHT_PIN, PWM_CHANNEL);
-    // Start at full brightness
-    setBrightness(MAX_BRIGHTNESS);
-    filteredBrightness = MAX_BRIGHTNESS; // Initialize EMA filter
+    // Start at saved brightness
+    setBrightness(currentBrightness);
+    filteredBrightness = currentBrightness; // Initialize EMA filter
     
     // Initialize light sensor pin
     pinMode(LIGHT_SENSOR_PIN, INPUT);
@@ -4160,8 +4160,9 @@ void handleWebRequests()
         }
         if (request->hasParam("displaySleepEnabled", true)) {
             displaySleepEnabled = request->getParam("displaySleepEnabled", true)->value() == "on";
+        } else {
+            displaySleepEnabled = false; // Unchecked checkbox won't send parameter
         }
-        // Note: unchecked checkbox won't send parameter, so don't disable it in that case
         if (request->hasParam("displaySleepTimeout", true)) {
             unsigned long timeoutMinutes = request->getParam("displaySleepTimeout", true)->value().toInt();
             // Constrain to reasonable range (1 minute to 60 minutes)
@@ -5222,6 +5223,7 @@ void loadSettings()
     displaySleepEnabled = preferences.getBool("dispSleepEn", true);
     displaySleepTimeout = preferences.getULong("dispTimeout", 300000); // Default 5 minutes
     currentBrightness = preferences.getInt("brightness", 130);
+    currentBrightness = constrain(currentBrightness, MIN_BRIGHTNESS, MAX_BRIGHTNESS);
     
     // Load weather settings
     weatherSource = preferences.getInt("weatherSrc", 0);
@@ -5633,8 +5635,10 @@ void wakeDisplay() {
         lastWakeTime = millis();
         lastInteractionTime = millis();
         debugLog("[DISPLAY] Woke from sleep\n");
-        
-        // Just restore the backlight
+
+        // Restore the backlight immediately to last saved value
+        setBrightness(currentBrightness);
+        filteredBrightness = currentBrightness;
         updateDisplayBrightness();
     }
 }
@@ -5645,7 +5649,6 @@ void sleepDisplay() {
         lastSleepTime = millis(); // Record sleep time for motion wake cooldown
         debugLog("[DISPLAY] Going to sleep (inactive for %lu ms)\n", millis() - lastInteractionTime);
         // Turn off backlight completely (bypass MIN_BRIGHTNESS constraint)
-        currentBrightness = 0;
         ledcWrite(PWM_CHANNEL, 0);
     }
 }
