@@ -958,7 +958,10 @@ void applySchedule(int dayOfWeek, bool isDayPeriod) {
         mqttClient.publish("thermostat/activePeriod", activePeriod.c_str(), false);
     }
     
-    // Request display update
+    // Update TFT display to show new scheduled temperature
+    updateDisplay(currentTemp, currentHumidity);
+    
+    // Request display update for LED indicators
     setDisplayUpdateFlag();
 }
 
