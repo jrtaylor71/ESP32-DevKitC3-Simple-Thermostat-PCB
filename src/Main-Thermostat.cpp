@@ -58,7 +58,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.4.013"; // Software version - Add DS18B20 sensors to HA MQTT
+const String sw_version = "1.4.014"; // Software version - Display cleanup + lockout/fan stability fixes
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -3674,6 +3674,10 @@ void controlRelays(float currentTemp)
         return;
     }
     
+    // Fan safety interlock: block fan when hydronic lockout conditions are active
+    bool fanBlockedByHydronicSafety = hydronicHeatingEnabled &&
+        (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout);
+
     // Store current states before any changes
     bool currentHeatingOn = heatingOn;
     bool currentCoolingOn = coolingOn;
@@ -3694,7 +3698,7 @@ void controlRelays(float currentTemp)
         stage2Active = false;
         
         // Handle fan separately based on fanMode
-        if (fanMode == "on") {
+        if (fanMode == "on" && !fanBlockedByHydronicSafety) {
             if (!fanOn) {
                 digitalWrite(FAN_RELAY_PIN, HIGH);
                 fanOn = true;
@@ -3885,6 +3889,9 @@ void controlRelays(float currentTemp)
 void turnOffAllRelays()
 {
     debugLog("[DEBUG] turnOffAllRelays() - Turning off heating/cooling relays\n");
+    bool fanBlockedByHydronicSafety = hydronicHeatingEnabled &&
+        (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout);
+
     digitalWrite(HEAT_RELAY_1_PIN, LOW);
     digitalWrite(HEAT_RELAY_2_PIN, LOW);
     digitalWrite(COOL_RELAY_1_PIN, LOW);
@@ -3895,7 +3902,7 @@ void turnOffAllRelays()
     stage2Active = false; // Reset stage 2 active flag
     
     // Handle fan based on fanMode setting
-    if (fanMode == "on") {
+    if (fanMode == "on" && !fanBlockedByHydronicSafety) {
         // Keep fan running in "on" mode
         if (!fanOn) {
             digitalWrite(FAN_RELAY_PIN, HIGH);
@@ -4021,7 +4028,8 @@ void activateHeating() {
     
     // Control fan based on fanRelayNeeded setting
     // BUT: Never override manual "on" mode - user takes priority
-    if (fanMode == "on") {
+    if (fanMode == "on" && !(hydronicHeatingEnabled &&
+        (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout))) {
         // User has manually set fan to always on - respect that
         if (!fanOn) {
             debugLog("[HVAC] FAN turned ON (manual mode)\n");
@@ -4108,7 +4116,8 @@ void activateCooling()
     
     // Control fan based on fanRelayNeeded setting
     // BUT: Never override manual "on" mode - user takes priority
-    if (fanMode == "on") {
+    if (fanMode == "on" && !(hydronicHeatingEnabled &&
+        (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout))) {
         // User has manually set fan to always on - respect that
         if (!fanOn) {
             digitalWrite(FAN_RELAY_PIN, HIGH);
@@ -5160,15 +5169,15 @@ void updateDisplay(float currentTemp, float currentHumidity)
         tft.setTextSize(2); // Adjust text size to fit the display
         tft.setRotation(1); // Set rotation for vertical display
         
-        // Temperature at y=30 (moved to x=230 to prevent overlap with set temp)
-        tft.setCursor(230, 30);
+        // Temperature at y=30 (shifted left to prevent right-edge wrapping)
+        tft.setCursor(220, 30);
         char tempStr[6];
         dtostrf(currentTemp, 4, 1, tempStr); // Convert temperature to string with 1 decimal place
         tft.print(tempStr);
         tft.print(useFahrenheit ? "F" : "C");
 
-        // Humidity at y=55 (tighter spacing)
-        tft.setCursor(230, 55);
+        // Humidity (even spacing from top temperature row)
+        tft.setCursor(220, 50);
         char humidityStr[6];
         dtostrf(currentHumidity, 4, 1, humidityStr); // Convert humidity to string with 1 decimal place
         tft.print(humidityStr);
@@ -5176,7 +5185,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
         
         // Display pressure if BME280/BME680 sensor is active (convert hPa to inHg: divide by 33.8639)
         if ((activeSensor == SENSOR_BME280 || activeSensor == SENSOR_BME680) && !isnan(currentPressure)) {
-            tft.setCursor(230, 75); // Pressure at y=75, tighter spacing
+            tft.setCursor(220, 70); // Pressure (even spacing)
             float pressureInHg = currentPressure / 33.8639; // Convert hPa to inHg
             char pressureStr[7];
             dtostrf(pressureInHg, 4, 2, pressureStr); // Format as "XX.XX"
@@ -5184,18 +5193,18 @@ void updateDisplay(float currentTemp, float currentHumidity)
             tft.print("in");
         } else {
             // Clear pressure area if not BME280/BME680 or invalid (use 100px to ensure full clear)
-            tft.fillRect(230, 75, 100, 16, COLOR_BACKGROUND);
+            tft.fillRect(220, 70, 100, 16, COLOR_BACKGROUND);
         }
         
         // Display air quality if BME680 sensor is active
         if (activeSensor == SENSOR_BME680) {
-            tft.setCursor(230, 95); // Air quality at y=95, tighter spacing
+            tft.setCursor(220, 90); // Air quality (even spacing)
             int aqScore = (int)currentAirQuality;
             tft.print("AQ:");
             tft.print(aqScore);
         } else {
             // Clear air quality area if not BME680 (use 100px to ensure full clear)
-            tft.fillRect(230, 95, 100, 16, COLOR_BACKGROUND);
+            tft.fillRect(220, 90, 100, 16, COLOR_BACKGROUND);
         }
 
         // Update previous values
@@ -5214,12 +5223,12 @@ void updateDisplay(float currentTemp, float currentHumidity)
         if (hydronicHeatingEnabled) {
             if (hydronicTemp != previousHydronicTemp || hydronicReturnTemp != previousHydronicReturnTemp || !prevHydronicDisplayState) {
                 // Clear hydronic area (two lines) - use 100px to ensure full clear
-                tft.fillRect(230, 110, 100, 32, COLOR_BACKGROUND);
+                tft.fillRect(220, 110, 100, 36, COLOR_BACKGROUND);
                 tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
                 tft.setTextSize(2);
 
                 // Always show SUP slot when enabled, even if sensor missing
-                tft.setCursor(230, 110);
+                tft.setCursor(220, 110);
                 if (ds18b20SensorPresent) {
                     char hydronicTempStr[6];
                     dtostrf(hydronicTemp, 4, 1, hydronicTempStr);
@@ -5231,7 +5240,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
                 }
 
                 if (ds18b20ReturnSensorPresent) {
-                    tft.setCursor(230, 126);
+                    tft.setCursor(220, 130);
                     char hydronicReturnStr[6];
                     dtostrf(hydronicReturnTemp, 4, 1, hydronicReturnStr);
                     tft.print("R:");
@@ -5246,26 +5255,27 @@ void updateDisplay(float currentTemp, float currentHumidity)
         } 
         else if (prevHydronicDisplayState) {
             // If hydronic heating is disabled, clear the DS18B20 display area (use 100px to ensure full clear)
-            tft.fillRect(230, 110, 100, 32, COLOR_BACKGROUND);
+            tft.fillRect(220, 110, 100, 36, COLOR_BACKGROUND);
             prevHydronicDisplayState = false;
         }    // Display hydronic lockout warning if active
     static bool prevHydronicLockoutDisplay = false;
     if (fullRefreshTriggered) { // force refresh on cache reset
         prevHydronicLockoutDisplay = false;
     }
-    if (hydronicHeatingEnabled && hydronicLockout) {
+    bool showHydronicLockoutBanner = hydronicHeatingEnabled && hydronicLockout && (thermostatMode == "heat");
+    if (showHydronicLockoutBanner) {
         if (!prevHydronicLockoutDisplay) {
-            // Show lockout warning
-            tft.fillRect(10, 20, 200, 30, COLOR_WARNING);
+            // Show lockout warning above setpoint area (keeps weather and status indicators unobstructed)
+            tft.fillRect(40, 72, 170, 20, COLOR_WARNING);
             tft.setTextColor(TFT_BLACK, COLOR_WARNING);
-            tft.setTextSize(2);
-            tft.setCursor(15, 30);
+            tft.setTextSize(1);
+            tft.setCursor(66, 78);
             tft.print("BOILER LOCKOUT");
             prevHydronicLockoutDisplay = true;
         }
     } else if (prevHydronicLockoutDisplay) {
         // Clear lockout warning
-        tft.fillRect(10, 20, 200, 30, COLOR_BACKGROUND);
+        tft.fillRect(40, 72, 170, 20, COLOR_BACKGROUND);
         prevHydronicLockoutDisplay = false;
     }
 
@@ -5274,13 +5284,13 @@ void updateDisplay(float currentTemp, float currentHumidity)
     {
         float currentSetTemp = (thermostatMode == "heat") ? setTempHeat : (thermostatMode == "cool") ? setTempCool : setTempAuto;
         
-        // Display set temperature at original location (center-ish)
+        // Display set temperature moved left for better spacing from right-column telemetry
         if (currentSetTemp != previousSetTemp && !showerModeActive) {
             // Only show setpoint when NOT in shower mode (limit width to not overlap sensor readings at x=230)
-            tft.fillRect(60, 95, 165, 50, COLOR_BACKGROUND);
+            tft.fillRect(40, 95, 165, 50, COLOR_BACKGROUND);
             tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
             tft.setTextSize(4);
-            tft.setCursor(60, 100);
+            tft.setCursor(40, 100);
             char tempStr[6];
             dtostrf(currentSetTemp, 4, 1, tempStr);
             tft.print(tempStr);
@@ -5288,7 +5298,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
             previousSetTemp = currentSetTemp;
         } else if (showerModeActive && currentSetTemp != previousSetTemp) {
             // Clear setpoint area when entering shower mode (limit width to not overlap sensor readings at x=230)
-            tft.fillRect(60, 95, 165, 50, COLOR_BACKGROUND);
+            tft.fillRect(40, 95, 165, 50, COLOR_BACKGROUND);
             previousSetTemp = currentSetTemp;
         }
         
@@ -5334,7 +5344,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
     else
     {
         // Clear the set temperature area if mode is "off" (limit width to not overlap sensor readings at x=230)
-        tft.fillRect(60, 100, 165, 40, COLOR_BACKGROUND);
+        tft.fillRect(40, 100, 165, 40, COLOR_BACKGROUND);
     }
 
     // Add status indicators for heating, cooling, and fan
