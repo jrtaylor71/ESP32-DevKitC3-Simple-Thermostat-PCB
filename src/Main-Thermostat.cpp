@@ -58,7 +58,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.4.012"; // Software version - DS18B20 GPIO41 fix (OneWire ESP32-S3 patch)
+const String sw_version = "1.4.013"; // Software version - Add DS18B20 sensors to HA MQTT
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -1604,6 +1604,13 @@ void setup()
         debugLog("DS18B20 return sensor NOT detected\n");
     }
     
+    // Republish MQTT discovery after DS18B20 initialization
+    // (initial discovery happened before sensors were initialized)
+    if (mqttEnabled && mqttClient.connected()) {
+        debugLog("Republishing Home Assistant discovery with DS18B20 sensors...\n");
+        publishHomeAssistantDiscovery();
+    }
+    
     // Create sensor task on core 1
     xTaskCreatePinnedToCore(
         sensorTaskFunction,  // Task function
@@ -2731,6 +2738,72 @@ void publishHomeAssistantDiscovery()
             debugLog("Published BME280 pressure sensor discovery to Home Assistant\n");
         }
         
+        // Publish DS18B20 supply temperature sensor discovery if present
+        debugLog("DS18B20 Supply Sensor Present: %s\n", ds18b20SensorPresent ? "YES" : "NO");
+        if (ds18b20SensorPresent) {
+            StaticJsonDocument<512> ds18b20SupplyDoc;
+            String supplyConfigTopic = "homeassistant/sensor/" + hostname + "_ds18b20_supply/config";
+            
+            ds18b20SupplyDoc["name"] = "Hydronic Supply Temperature";
+            ds18b20SupplyDoc["device_class"] = "temperature";
+            ds18b20SupplyDoc["state_topic"] = hostname + "/ds18b20_supply_temperature";
+            ds18b20SupplyDoc["unit_of_measurement"] = "°F";
+            ds18b20SupplyDoc["unique_id"] = hostname + "_ds18b20_supply";
+            ds18b20SupplyDoc["state_class"] = "measurement";
+            ds18b20SupplyDoc["icon"] = "mdi:thermometer";
+            
+            // Link to same device as main thermostat
+            JsonObject device = ds18b20SupplyDoc.createNestedObject("device");
+            device["identifiers"][0] = hostname;
+            device["name"] = hostname;
+            device["model"] = PROJECT_NAME_SHORT;
+            device["manufacturer"] = "TDC";
+            device["sw_version"] = sw_version;
+            
+            char supplyBuffer[512];
+            serializeJson(ds18b20SupplyDoc, supplyBuffer);
+            mqttClient.publish(supplyConfigTopic.c_str(), supplyBuffer, true);
+            
+            debugLog("Published DS18B20 supply sensor discovery to Home Assistant\n");
+        } else {
+            // Remove sensor if not present
+            String supplyConfigTopic = "homeassistant/sensor/" + hostname + "_ds18b20_supply/config";
+            mqttClient.publish(supplyConfigTopic.c_str(), "", true);
+        }
+        
+        // Publish DS18B20 return temperature sensor discovery if present
+        debugLog("DS18B20 Return Sensor Present: %s\n", ds18b20ReturnSensorPresent ? "YES" : "NO");
+        if (ds18b20ReturnSensorPresent) {
+            StaticJsonDocument<512> ds18b20ReturnDoc;
+            String returnConfigTopic = "homeassistant/sensor/" + hostname + "_ds18b20_return/config";
+            
+            ds18b20ReturnDoc["name"] = "Hydronic Return Temperature";
+            ds18b20ReturnDoc["device_class"] = "temperature";
+            ds18b20ReturnDoc["state_topic"] = hostname + "/ds18b20_return_temperature";
+            ds18b20ReturnDoc["unit_of_measurement"] = "°F";
+            ds18b20ReturnDoc["unique_id"] = hostname + "_ds18b20_return";
+            ds18b20ReturnDoc["state_class"] = "measurement";
+            ds18b20ReturnDoc["icon"] = "mdi:thermometer";
+            
+            // Link to same device as main thermostat
+            JsonObject device = ds18b20ReturnDoc.createNestedObject("device");
+            device["identifiers"][0] = hostname;
+            device["name"] = hostname;
+            device["model"] = PROJECT_NAME_SHORT;
+            device["manufacturer"] = "TDC";
+            device["sw_version"] = sw_version;
+            
+            char returnBuffer[512];
+            serializeJson(ds18b20ReturnDoc, returnBuffer);
+            mqttClient.publish(returnConfigTopic.c_str(), returnBuffer, true);
+            
+            debugLog("Published DS18B20 return sensor discovery to Home Assistant\n");
+        } else {
+            // Remove sensor if not present
+            String returnConfigTopic = "homeassistant/sensor/" + hostname + "_ds18b20_return/config";
+            mqttClient.publish(returnConfigTopic.c_str(), "", true);
+        }
+        
         // Publish shower mode switch discovery if feature is enabled
         if (showerModeEnabled) {
             StaticJsonDocument<512> showerDoc;
@@ -3372,6 +3445,40 @@ void sendMQTTData()
         {
             String hydronicTempTopic = hostname + "/hydronic_temperature";
             mqttClient.publish(hydronicTempTopic.c_str(), String(hydronicTemp, 1).c_str(), true);
+        }
+        
+        // Publish DS18B20 supply temperature if sensor is present
+        if (ds18b20SensorPresent && ds18b20 != nullptr)
+        {
+            static float lastDs18b20SupplyTemp = -999.0;
+            float supplyTempC = ds18b20->getTempCByIndex(0);
+            if (supplyTempC != DEVICE_DISCONNECTED_C && supplyTempC != -127.0)
+            {
+                float supplyTempF = supplyTempC * 9.0 / 5.0 + 32.0;
+                if (abs(supplyTempF - lastDs18b20SupplyTemp) > 0.1)
+                {
+                    String supplyTempTopic = hostname + "/ds18b20_supply_temperature";
+                    mqttClient.publish(supplyTempTopic.c_str(), String(supplyTempF, 1).c_str(), true);
+                    lastDs18b20SupplyTemp = supplyTempF;
+                }
+            }
+        }
+        
+        // Publish DS18B20 return temperature if sensor is present
+        if (ds18b20ReturnSensorPresent && ds18b20 != nullptr)
+        {
+            static float lastDs18b20ReturnTemp = -999.0;
+            float returnTempC = ds18b20->getTempCByIndex(1);
+            if (returnTempC != DEVICE_DISCONNECTED_C && returnTempC != -127.0)
+            {
+                float returnTempF = returnTempC * 9.0 / 5.0 + 32.0;
+                if (abs(returnTempF - lastDs18b20ReturnTemp) > 0.1)
+                {
+                    String returnTempTopic = hostname + "/ds18b20_return_temperature";
+                    mqttClient.publish(returnTempTopic.c_str(), String(returnTempF, 1).c_str(), true);
+                    lastDs18b20ReturnTemp = returnTempF;
+                }
+            }
         }
 
         // Monitor hydronic boiler water temperature and send alerts
