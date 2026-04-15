@@ -58,7 +58,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.4.014"; // Software version - Display cleanup + lockout/fan stability fixes
+const String sw_version = "1.4.015"; // Software version - Display cleanup + lockout/fan stability fixes
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -344,6 +344,7 @@ void drawButtons();
 void handleButtonPress(uint16_t x, uint16_t y);
 void handleKeyboardTouch(uint16_t x, uint16_t y, bool isUpperCaseKeyboard);
 void connectToWiFi();
+void handleWiFiConnectionState(unsigned long currentTime);
 void enterWiFiCredentials();
 void calibrateTouchScreen();
 void runInteractiveCalibration();
@@ -427,6 +428,8 @@ float previousHumidity = 0.0;
 float previousSetTemp = 0.0;
 // bool firstHourAfterBoot = true; // Flag to track the first hour after bootup - DISABLED
 volatile bool mqttFeedbackNeeded = false; // Flag for immediate MQTT feedback on settings change
+bool wifiWasConnected = false; // Track WiFi state transitions for reconnect handling
+bool timeSyncInitialized = false; // Track one-time NTP init after first WiFi connect
 
 // MQTT state tracking variables (moved from sendMQTTData to allow reset on reconnect)
 float mqttLastTemp = 0.0;
@@ -1359,77 +1362,50 @@ void setup()
     // Clear the "Loading Settings..." message
     tft.fillScreen(COLOR_BACKGROUND);
     
-    // Setup WiFi if credentials exist, but don't block if it fails
-    bool wifiConnected = false;
+    // Setup WiFi if credentials exist, but do not block startup if AP is unavailable
     if (wifiSSID != "" && wifiPassword != "")
     {
+        WiFi.setAutoReconnect(true);
         WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
-        unsigned long startAttemptTime = millis();
-        
-        // Only try to connect for 5 seconds, allowing operation without WiFi
-        debugLog("Attempting to connect to WiFi...\n");
-        while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 5000)
-        {
-            delay(500);
-            debugLog(".");
-        }
-        
-        if (WiFi.status() == WL_CONNECTED)
-        {
-            debugLog("\nConnected to WiFi\n");
-            debugLog("IP Address: ");
-            Serial.println(WiFi.localIP());
-            wifiConnected = true;
-            
-            // Only start web server and MQTT if connected
-            handleWebRequests();
-            server.begin();
-            
-            if (mqttEnabled)
-            {
-                setupMQTT();
-                reconnectMQTT();
-            }
-            
-            // Initialize weather module
-            weather.begin();
-            weather.setUseFahrenheit(useFahrenheit);
-            weather.setSource((WeatherSource)weatherSource);
-            weather.setOpenWeatherMapConfig(owmApiKey, owmCity, owmState, owmCountry);
-            weather.setHomeAssistantConfig(haUrl, haToken, haEntityId);
-            weather.setUpdateInterval(weatherUpdateInterval * 60000); // Convert minutes to milliseconds
-            debugLog("Weather module initialized\n");
-            debugLog("Weather Source: %d (0=Disabled, 1=OpenWeatherMap, 2=HomeAssistant)\n", weatherSource);
-            debugLog("Weather Update Interval: %d minutes\n", weatherUpdateInterval);
-            if (weatherSource == 1) {
-                debugLog("OpenWeatherMap: City=%s, State=%s, Country=%s, API Key=%s\n", 
-                             owmCity.c_str(), owmState.c_str(), owmCountry.c_str(), 
-                             owmApiKey.length() > 0 ? "[SET]" : "[NOT SET]");
-            } else if (weatherSource == 2) {
-                debugLog("Home Assistant: URL=%s, Entity=%s, Token=%s\n",
-                             haUrl.c_str(), haEntityId.c_str(),
-                             haToken.length() > 0 ? "[SET]" : "[NOT SET]");
-            }
-            
-            // Fetch initial weather data
-            if (weatherSource != 0) {
-                debugLog("Fetching initial weather data...\n");
-                bool success = weather.update();
-                debugLog("Initial weather fetch: %s\n", success ? "SUCCESS" : "FAILED");
-                if (!success) {
-                    debugLog("Weather error: %s\n", weather.getLastError().c_str());
-                }
-            }
-        }
-        else
-        {
-            debugLog("\nFailed to connect to WiFi. Will operate offline.\n");
-        }
+        debugLog("[WIFI] Connection attempt started (non-blocking)\n");
     }
     else
     {
         debugLog("No WiFi credentials found. Operating in offline mode.\n");
     }
+
+    // Initialize web server/routes at boot so services are ready when WiFi appears later
+    handleWebRequests();
+    server.begin();
+
+    // Initialize MQTT client configuration regardless of initial WiFi state
+    if (mqttEnabled)
+    {
+        setupMQTT();
+    }
+
+    // Initialize weather module regardless of initial WiFi state
+    weather.begin();
+    weather.setUseFahrenheit(useFahrenheit);
+    weather.setSource((WeatherSource)weatherSource);
+    weather.setOpenWeatherMapConfig(owmApiKey, owmCity, owmState, owmCountry);
+    weather.setHomeAssistantConfig(haUrl, haToken, haEntityId);
+    weather.setUpdateInterval(weatherUpdateInterval * 60000); // Convert minutes to milliseconds
+    debugLog("Weather module initialized\n");
+    debugLog("Weather Source: %d (0=Disabled, 1=OpenWeatherMap, 2=HomeAssistant)\n", weatherSource);
+    debugLog("Weather Update Interval: %d minutes\n", weatherUpdateInterval);
+    if (weatherSource == 1) {
+        debugLog("OpenWeatherMap: City=%s, State=%s, Country=%s, API Key=%s\n",
+                     owmCity.c_str(), owmState.c_str(), owmCountry.c_str(),
+                     owmApiKey.length() > 0 ? "[SET]" : "[NOT SET]");
+    } else if (weatherSource == 2) {
+        debugLog("Home Assistant: URL=%s, Entity=%s, Token=%s\n",
+                     haUrl.c_str(), haEntityId.c_str(),
+                     haToken.length() > 0 ? "[SET]" : "[NOT SET]");
+    }
+
+    // Capture initial state so transition logic in loop only fires on real changes
+    wifiWasConnected = (WiFi.status() == WL_CONNECTED);
     
     lastInteractionTime = millis();
 
@@ -1437,11 +1413,22 @@ void setup()
     drawButtons();
 
     // Initialize time from NTP server only if WiFi is connected
-    if (wifiConnected)
+    if (wifiWasConnected)
     {
         configTime(0, 0, "pool.ntp.org", "time.nist.gov");
         setenv("TZ", timeZone.c_str(), 1);
         tzset();
+        timeSyncInitialized = true;
+
+        // Fetch initial weather data when WiFi is already available at boot
+        if (weatherSource != 0) {
+            debugLog("Fetching initial weather data...\n");
+            bool success = weather.update();
+            debugLog("Initial weather fetch: %s\n", success ? "SUCCESS" : "FAILED");
+            if (!success) {
+                debugLog("Weather error: %s\n", weather.getLastError().c_str());
+            }
+        }
     }
 
     // Read initial temperature and humidity
@@ -1880,6 +1867,9 @@ void loop()
         connectToWiFi();
         lastWiFiAttemptTime = currentTime;
     }
+
+    // Handle WiFi connect/disconnect transitions without blocking UI responsiveness
+    handleWiFiConnectionState(currentTime);
     
     if (mqttEnabled)
     {
@@ -1991,33 +1981,19 @@ void connectToWiFi()
 {
     if (wifiSSID != "" && wifiPassword != "")
     {
-        debugLog("Connecting to WiFi with SSID: ");
-        Serial.println(wifiSSID);
-        debugLog("Password: ");
-        Serial.println(wifiPassword);
+        wl_status_t status = WiFi.status();
+        if (status == WL_CONNECTED) {
+            return;
+        }
 
+        // If a previous begin() is still in progress, avoid restarting it.
+        if (status == WL_IDLE_STATUS) {
+            debugLog("[WIFI] Connection already in progress\n");
+            return;
+        }
+
+        debugLog("[WIFI] Starting reconnect attempt for SSID: %s\n", wifiSSID.c_str());
         WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
-        unsigned long startAttemptTime = millis();
-
-        // Only try to connect for 10 seconds
-        while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000)
-        {
-            delay(1000);
-            debugLog("Connecting to WiFi...\n");
-        }
-
-        if (WiFi.status() == WL_CONNECTED)
-        {
-            debugLog("Connected to WiFi\n");
-            debugLog("IP Address: ");
-            Serial.println(WiFi.localIP());
-        }
-        else
-        {
-            debugLog("Failed to connect to WiFi\n");
-            // Don't enter WiFi credentials mode here, just return
-            // This allows the device to keep operating without WiFi
-        }
     }
     else
     {
@@ -2025,6 +2001,48 @@ void connectToWiFi()
         debugLog("No WiFi credentials found. Device operating in offline mode.\n");
         // Note: User can press the WiFi button on the display to configure WiFi if desired
     }
+}
+
+void handleWiFiConnectionState(unsigned long currentTime)
+{
+    bool wifiNowConnected = (WiFi.status() == WL_CONNECTED);
+
+    if (wifiNowConnected && !wifiWasConnected)
+    {
+        debugLog("[WIFI] Connected. IP Address: ");
+        Serial.println(WiFi.localIP());
+
+        if (!timeSyncInitialized) {
+            configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+            setenv("TZ", timeZone.c_str(), 1);
+            tzset();
+            timeSyncInitialized = true;
+            debugLog("[WIFI] NTP time sync initialized\n");
+        }
+
+        if (mqttEnabled && !mqttClient.connected()) {
+            reconnectMQTT();
+        }
+
+        // Trigger a weather refresh once after reconnection.
+        if (weatherSource != 0) {
+            bool success = weather.update();
+            debugLog("[WEATHER] Refresh after WiFi reconnect: %s\n", success ? "SUCCESS" : "FAILED");
+        }
+    }
+    else if (!wifiNowConnected && wifiWasConnected)
+    {
+        debugLog("[WIFI] Disconnected\n");
+    }
+
+    // Periodic heartbeat while disconnected (every 60s) helps diagnose field issues.
+    static unsigned long lastDisconnectedLog = 0;
+    if (!wifiNowConnected && currentTime - lastDisconnectedLog > 60000) {
+        lastDisconnectedLog = currentTime;
+        debugLog("[WIFI] Offline, awaiting reconnect\n");
+    }
+
+    wifiWasConnected = wifiNowConnected;
 }
 
 void enterWiFiCredentials()
