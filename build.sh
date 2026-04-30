@@ -16,7 +16,7 @@ CLEAN_BUILD=false
 VARIANT_CHOICE=""
 QUIET_BUILD=false
 CLEAN_LIBS=false
-KEEP_BUILDS=1
+KEEP_BUILDS=3
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -56,7 +56,7 @@ while [[ $# -gt 0 ]]; do
             echo "  clean    = Clean before building"
             echo "  quiet    = Suppress output"
             echo "  cleanlibs = Remove all downloaded libraries and packages"
-            echo "  --keep N = Retain N builds per variant (default: 1)"
+            echo "  --keep N = Retain N builds per variant (default: 3)"
             exit 1
             ;;
     esac

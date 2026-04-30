@@ -61,6 +61,8 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
                          bool showerModeEnabled, int showerModeDuration,
                          bool stage2HeatingEnabled, bool stage2CoolingEnabled,
                          bool reversingValveEnabled,
+                         bool backupHeatEnabled, int backupHeatRelaySelection, int backupHeatDelayMinutes,
+                         float backupHeatMinTempRise, float backupHeatMaxTempDrop,
                          float hydronicTempLow, float hydronicTempHigh,
                          String wifiSSID, String wifiPassword, String timeZone,
                          bool use24HourClock, bool mqttEnabled, String mqttServer,
@@ -350,8 +352,44 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "</div>";
     
     html += "<div class='form-checkbox'>";
-    html += "<input type='checkbox' name='stage2CoolingEnabled' " + String(stage2CoolingEnabled ? "checked" : "") + ">";
+    html += "<input type='checkbox' id='stage2CoolingEnabled' name='stage2CoolingEnabled' " + String(stage2CoolingEnabled ? "checked" : "") + ">";
     html += "<label class='form-label'>Enable 2nd Stage Cooling</label>";
+    html += "</div>";
+
+    html += "<div class='form-checkbox'>";
+    html += "<input type='checkbox' id='backupHeatEnabled' name='backupHeatEnabled' " + String(backupHeatEnabled ? "checked" : "") + ">";
+    html += "<label class='form-label'>Enable Backup Heat</label>";
+    html += "</div>";
+
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Backup Heat Relay</label>";
+    html += "<select id='backupHeatRelay' name='backupHeatRelay' class='form-select'>";
+    html += "<option value='0'" + String(backupHeatRelaySelection == 0 ? " selected" : "") + ">Pump Relay (default)</option>";
+    html += "<option value='1'" + String(backupHeatRelaySelection == 1 ? " selected" : "") + ">Heat Stage 2 Relay</option>";
+    html += "<option value='2'" + String(backupHeatRelaySelection == 2 ? " selected" : "") + ">Stage 2 Cool Relay</option>";
+    html += "</select>";
+    html += "</div>";
+
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Backup Heat Delay (minutes)</label>";
+    html += "<input type='number' name='backupHeatDelayMinutes' value='" + String(backupHeatDelayMinutes) + "' min='5' max='180' class='form-input'>";
+    html += "<small style='opacity: 0.7;'>Backup relay activates if primary heat does not raise temperature within this duration.</small>";
+    html += "</div>";
+
+    html += "<div style='display: grid; grid-template-columns: 1fr 1fr; gap: 16px;'>";
+
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Backup Min Temp Rise (&deg;)</label>";
+    html += "<input type='number' name='backupHeatMinTempRise' value='" + String(backupHeatMinTempRise, 1) + "' min='0.1' max='5.0' step='0.1' class='form-input'>";
+    html += "<small style='opacity: 0.7;'>Minimum rise expected from primary heat during the timer window.</small>";
+    html += "</div>";
+
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Backup Max Temp Drop (&deg;)</label>";
+    html += "<input type='number' name='backupHeatMaxTempDrop' value='" + String(backupHeatMaxTempDrop, 1) + "' min='0.1' max='10.0' step='0.1' class='form-input'>";
+    html += "<small style='opacity: 0.7;'>Immediate backup trigger if temperature falls by this amount while heating.</small>";
+    html += "</div>";
+
     html += "</div>";
     
     html += "<div class='form-checkbox'>";
@@ -506,19 +544,27 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     
     html += "</form>";
     
-    // Add JavaScript for mutual exclusion
+    // Add JavaScript for relay conflict handling
     html += "<script>";
     html += "(function(){";
     html += "const stage2Heat = document.getElementById('stage2HeatingEnabled');";
     html += "const revValve = document.getElementById('reversingValveEnabled');";
-    html += "if(stage2Heat && revValve){";
-    html += "stage2Heat.addEventListener('change', function(){";
-    html += "if(this.checked && revValve.checked){revValve.checked=false;}";
-    html += "});";
-    html += "revValve.addEventListener('change', function(){";
-    html += "if(this.checked && stage2Heat.checked){stage2Heat.checked=false;}";
-    html += "});";
+    html += "const stage2Cool = document.getElementById('stage2CoolingEnabled');";
+    html += "const backupHeat = document.getElementById('backupHeatEnabled');";
+    html += "const backupRelay = document.getElementById('backupHeatRelay');";
+    html += "function applyConflicts(){";
+    html += "if(stage2Heat && revValve && stage2Heat.checked && revValve.checked){revValve.checked=false;}";
+    html += "if(backupHeat && backupRelay && backupHeat.checked && backupRelay.value==='1'){if(stage2Heat)stage2Heat.checked=false;if(revValve)revValve.checked=false;}";
+    html += "if(backupHeat && backupRelay && backupHeat.checked && backupRelay.value==='2'){if(stage2Cool)stage2Cool.checked=false;}";
     html += "}";
+    html += "if(stage2Heat && revValve){";
+    html += "stage2Heat.addEventListener('change', applyConflicts);";
+    html += "revValve.addEventListener('change', applyConflicts);";
+    html += "}";
+    html += "if(stage2Cool){stage2Cool.addEventListener('change', applyConflicts);}";
+    html += "if(backupHeat){backupHeat.addEventListener('change', applyConflicts);}";
+    html += "if(backupRelay){backupRelay.addEventListener('change', applyConflicts);}";
+    html += "applyConflicts();";
     html += "})();";
     html += "</script>";
     
@@ -732,7 +778,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "<div id='otaStatus' style='display:none;padding:10px;border-radius:6px;font-size:0.9rem;'></div>";
     html += "<p style='font-size:0.75em;color:#888;'><em>⚠️ Do not power off during update. Page stays here; progress shown below. After reboot version will be verified automatically.</em></p>";
     html += "<script>";
-    html += "(function(){const file=document.getElementById('otaFile');const btn=document.getElementById('otaStart');const prog=document.getElementById('otaProgress');const bar=document.getElementById('otaBar');const eta=document.getElementById('otaEta');const status=document.getElementById('otaStatus');let poll=null;function setStatus(ok,msg){status.style.display='block';status.style.background=ok?'#1b5e20':'#b71c1c';status.style.color='#fff';status.textContent=msg;}function human(ms){if(ms<1000)return ms+' ms';let s=ms/1000;if(s<60)return s.toFixed(1)+' s';let m=s/60;return m.toFixed(1)+' m';}btn.addEventListener('click',()=>{if(!file.files.length){alert('Select a .bin file');return;}const f=file.files[0];if(!f.name.endsWith('.bin')){alert('Select a .bin file');return;}btn.disabled=true;prog.style.display='block';status.style.display='none';eta.textContent='Starting...';bar.textContent='0%';bar.style.width='0%';let started=Date.now();let fallbackStarted=false;let lastPct=0;const fallbackTimer=setTimeout(()=>{if(bar.style.width==='0%'&&!fallbackStarted){fallbackStarted=true;eta.textContent='Upload complete, writing to flash...';poll=setInterval(()=>{fetch('/update_status').then(r=>r.json()).then(j=>{if(j.state==='writing'&&j.total>0){let pct=Math.round((j.bytes/j.total)*100);if(pct>100)pct=100;if(pct>lastPct){bar.style.width=pct+'%';bar.textContent=pct+'%';lastPct=pct;eta.textContent='Writing firmware to flash: '+pct+'%';}}else if(j.state==='rebooting'){setStatus(true,'Firmware written. Rebooting...');eta.textContent='Waiting for restart...';if(poll){clearInterval(poll);poll=null;}}}).catch(()=>{});},800);} },2500);const xhr=new XMLHttpRequest();xhr.open('POST','/update');const fd=new FormData();fd.append('firmware',f);xhr.upload.onprogress=(e)=>{if(e.lengthComputable){const p=Math.round(e.loaded/e.total*100);bar.style.width=p+'%';bar.textContent=p+'%';const elapsed=Date.now()-started;const rate=e.loaded/(elapsed/1000);if(rate>0){const remain=(e.total-e.loaded)/rate*1000;eta.textContent='Uploading: '+human(remain)+' remaining';}if(p>=99){eta.textContent='Upload complete, writing to flash...';}if(p>0&&poll){clearInterval(poll);poll=null;}}};xhr.onload=()=>{clearTimeout(fallbackTimer);if(xhr.status==200){setStatus(true,'Flash complete. Device rebooting...');bar.style.width='100%';bar.textContent='100%';eta.textContent='Waiting for reboot and startup (up to 15s)...';if(poll){clearInterval(poll);poll=null;}setTimeout(()=>{const begin=Date.now();const iv=setInterval(()=>{fetch('/version').then(r=>r.json()).then(j=>{setStatus(true,'✓ Update successful! Version '+j.version);eta.textContent='Device ready.';clearInterval(iv);}).catch(()=>{if(Date.now()-begin>70000){setStatus(false,'Device did not return in 70s');eta.textContent='Timeout.';clearInterval(iv);}});},2500);},3000);}else{setStatus(false,'Update failed: '+xhr.responseText);eta.textContent='Error.';btn.disabled=false;if(poll){clearInterval(poll);poll=null;}}};xhr.onerror=()=>{clearTimeout(fallbackTimer);if(poll){clearInterval(poll);poll=null;}setStatus(true,'Flash complete. Device rebooting...');bar.style.width='100%';bar.textContent='100%';eta.textContent='Waiting for reboot and startup (up to 15s)...';setTimeout(()=>{const begin=Date.now();const iv=setInterval(()=>{fetch('/version').then(r=>r.json()).then(j=>{setStatus(true,'✓ Update successful! Version '+j.version);eta.textContent='Device ready.';clearInterval(iv);}).catch(()=>{if(Date.now()-begin>70000){setStatus(false,'Device did not return in 70s');eta.textContent='Timeout.';clearInterval(iv);}});},2500);},3000);};xhr.send(fd);});})();";
+    html += "(function(){const file=document.getElementById('otaFile');const btn=document.getElementById('otaStart');const prog=document.getElementById('otaProgress');const bar=document.getElementById('otaBar');const eta=document.getElementById('otaEta');const status=document.getElementById('otaStatus');let poll=null;function setStatus(ok,msg){status.style.display='block';status.style.background=ok?'#1b5e20':'#b71c1c';status.style.color='#fff';status.textContent=msg;}function human(ms){if(ms<1000)return ms+' ms';let s=ms/1000;if(s<60)return s.toFixed(1)+' s';let m=s/60;return m.toFixed(1)+' m';}function otaSuccessText(j){return '✓ Update successful! Version '+j.version+' • '+(j.device_datetime||'Time not set');}btn.addEventListener('click',()=>{if(!file.files.length){alert('Select a .bin file');return;}const f=file.files[0];if(!f.name.endsWith('.bin')){alert('Select a .bin file');return;}btn.disabled=true;prog.style.display='block';status.style.display='none';eta.textContent='Starting...';bar.textContent='0%';bar.style.width='0%';let started=Date.now();let fallbackStarted=false;let lastPct=0;const fallbackTimer=setTimeout(()=>{if(bar.style.width==='0%'&&!fallbackStarted){fallbackStarted=true;eta.textContent='Upload complete, writing to flash...';poll=setInterval(()=>{fetch('/update_status').then(r=>r.json()).then(j=>{if(j.state==='writing'&&j.total>0){let pct=Math.round((j.bytes/j.total)*100);if(pct>100)pct=100;if(pct>lastPct){bar.style.width=pct+'%';bar.textContent=pct+'%';lastPct=pct;eta.textContent='Writing firmware to flash: '+pct+'%';}}else if(j.state==='rebooting'){setStatus(true,'Firmware written. Rebooting...');eta.textContent='Waiting for restart...';if(poll){clearInterval(poll);poll=null;}}}).catch(()=>{});},800);} },2500);const xhr=new XMLHttpRequest();xhr.open('POST','/update');const fd=new FormData();fd.append('firmware',f);xhr.upload.onprogress=(e)=>{if(e.lengthComputable){const p=Math.round(e.loaded/e.total*100);bar.style.width=p+'%';bar.textContent=p+'%';const elapsed=Date.now()-started;const rate=e.loaded/(elapsed/1000);if(rate>0){const remain=(e.total-e.loaded)/rate*1000;eta.textContent='Uploading: '+human(remain)+' remaining';}if(p>=99){eta.textContent='Upload complete, writing to flash...';}if(p>0&&poll){clearInterval(poll);poll=null;}}};xhr.onload=()=>{clearTimeout(fallbackTimer);if(xhr.status==200){setStatus(true,'Flash complete. Device rebooting...');bar.style.width='100%';bar.textContent='100%';eta.textContent='Waiting for reboot and startup (up to 15s)...';if(poll){clearInterval(poll);poll=null;}setTimeout(()=>{const begin=Date.now();const iv=setInterval(()=>{fetch('/version').then(r=>r.json()).then(j=>{setStatus(true,otaSuccessText(j));eta.textContent='Device ready.';clearInterval(iv);}).catch(()=>{if(Date.now()-begin>70000){setStatus(false,'Device did not return in 70s');eta.textContent='Timeout.';clearInterval(iv);}});},2500);},3000);}else{setStatus(false,'Update failed: '+xhr.responseText);eta.textContent='Error.';btn.disabled=false;if(poll){clearInterval(poll);poll=null;}}};xhr.onerror=()=>{clearTimeout(fallbackTimer);if(poll){clearInterval(poll);poll=null;}setStatus(true,'Flash complete. Device rebooting...');bar.style.width='100%';bar.textContent='100%';eta.textContent='Waiting for reboot and startup (up to 15s)...';setTimeout(()=>{const begin=Date.now();const iv=setInterval(()=>{fetch('/version').then(r=>r.json()).then(j=>{setStatus(true,otaSuccessText(j));eta.textContent='Device ready.';clearInterval(iv);}).catch(()=>{if(Date.now()-begin>70000){setStatus(false,'Device did not return in 70s');eta.textContent='Timeout.';clearInterval(iv);}});},2500);},3000);};xhr.send(fd);});})();";
     html += "</script>";
     html += "</div>";
     html += "</div>";
@@ -879,6 +925,8 @@ String generateSettingsPage(String thermostatMode, String fanMode, float setTemp
                            bool mqttEnabled, int stage1MinRuntime, float stage2TempDelta,
                            bool stage2HeatingEnabled, bool stage2CoolingEnabled,
                            bool reversingValveEnabled,
+                           bool backupHeatEnabled, int backupHeatRelaySelection, int backupHeatDelayMinutes,
+                           float backupHeatMinTempRise, float backupHeatMaxTempDrop,
                            bool hydronicHeatingEnabled, float hydronicTempLow, 
                            float hydronicTempHigh, int fanMinutesPerHour,
                            bool showerModeEnabled, int showerModeDuration,
@@ -1020,8 +1068,44 @@ String generateSettingsPage(String thermostatMode, String fanMode, float setTemp
     html += "</div>";
     
     html += "<div class='form-checkbox'>";
-    html += "<input type='checkbox' name='stage2CoolingEnabled' " + String(stage2CoolingEnabled ? "checked" : "") + ">";
+    html += "<input type='checkbox' id='stage2CoolingEnabled' name='stage2CoolingEnabled' " + String(stage2CoolingEnabled ? "checked" : "") + ">";
     html += "<label class='form-label'>Enable 2nd Stage Cooling</label>";
+    html += "</div>";
+
+    html += "<div class='form-checkbox'>";
+    html += "<input type='checkbox' id='backupHeatEnabled' name='backupHeatEnabled' " + String(backupHeatEnabled ? "checked" : "") + ">";
+    html += "<label class='form-label'>Enable Backup Heat</label>";
+    html += "</div>";
+
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Backup Heat Relay</label>";
+    html += "<select id='backupHeatRelay' name='backupHeatRelay' class='form-select'>";
+    html += "<option value='0'" + String(backupHeatRelaySelection == 0 ? " selected" : "") + ">Pump Relay (default)</option>";
+    html += "<option value='1'" + String(backupHeatRelaySelection == 1 ? " selected" : "") + ">Heat Stage 2 Relay</option>";
+    html += "<option value='2'" + String(backupHeatRelaySelection == 2 ? " selected" : "") + ">Stage 2 Cool Relay</option>";
+    html += "</select>";
+    html += "</div>";
+
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Backup Heat Delay (minutes)</label>";
+    html += "<input type='number' name='backupHeatDelayMinutes' value='" + String(backupHeatDelayMinutes) + "' min='5' max='180' class='form-input'>";
+    html += "<small style='opacity: 0.7;'>Backup relay activates if primary heat does not raise temperature within this duration.</small>";
+    html += "</div>";
+
+    html += "<div style='display: grid; grid-template-columns: 1fr 1fr; gap: 16px;'>";
+
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Backup Min Temp Rise (&deg;)</label>";
+    html += "<input type='number' name='backupHeatMinTempRise' value='" + String(backupHeatMinTempRise, 1) + "' min='0.1' max='5.0' step='0.1' class='form-input'>";
+    html += "<small style='opacity: 0.7;'>Minimum rise expected from primary heat during the timer window.</small>";
+    html += "</div>";
+
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Backup Max Temp Drop (&deg;)</label>";
+    html += "<input type='number' name='backupHeatMaxTempDrop' value='" + String(backupHeatMaxTempDrop, 1) + "' min='0.1' max='10.0' step='0.1' class='form-input'>";
+    html += "<small style='opacity: 0.7;'>Immediate backup trigger if temperature falls by this amount while heating.</small>";
+    html += "</div>";
+
     html += "</div>";
     
     html += "<div class='form-checkbox'>";

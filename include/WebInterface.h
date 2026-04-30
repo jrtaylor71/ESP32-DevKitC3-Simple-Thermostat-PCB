@@ -857,19 +857,34 @@ document.addEventListener('visibilitychange', function() {
 document.addEventListener('DOMContentLoaded', function() {
     const stage2Heat = document.getElementById('stage2HeatingEnabled');
     const revValve = document.getElementById('reversingValveEnabled');
+  const stage2Cool = document.getElementById('stage2CoolingEnabled');
+  const backupHeat = document.getElementById('backupHeatEnabled');
+  const backupRelay = document.getElementById('backupHeatRelay');
     
-    if (stage2Heat && revValve) {
-        stage2Heat.addEventListener('change', function() {
-            if (this.checked && revValve.checked) {
-                revValve.checked = false;
-            }
-        });
-        
-        revValve.addEventListener('change', function() {
-            if (this.checked && stage2Heat.checked) {
-                stage2Heat.checked = false;
-            }
-        });
+  function applyRelayConflicts() {
+    if (stage2Heat && revValve && stage2Heat.checked && revValve.checked) {
+      revValve.checked = false;
+    }
+
+    if (backupHeat && backupRelay && backupHeat.checked) {
+      if (backupRelay.value === '1') {
+        if (stage2Heat) stage2Heat.checked = false;
+        if (revValve) revValve.checked = false;
+      }
+      if (backupRelay.value === '2') {
+        if (stage2Cool) stage2Cool.checked = false;
+      }
+    }
+  }
+
+  if (stage2Heat) stage2Heat.addEventListener('change', applyRelayConflicts);
+  if (revValve) revValve.addEventListener('change', applyRelayConflicts);
+  if (stage2Cool) stage2Cool.addEventListener('change', applyRelayConflicts);
+  if (backupHeat) backupHeat.addEventListener('change', applyRelayConflicts);
+  if (backupRelay) backupRelay.addEventListener('change', applyRelayConflicts);
+
+  if (stage2Heat || revValve || stage2Cool || backupHeat || backupRelay) {
+    applyRelayConflicts();
     }
 });
 </script>

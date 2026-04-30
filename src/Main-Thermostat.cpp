@@ -34,6 +34,7 @@
 #include <DHT.h>
 #include <Adafruit_BME280.h>
 #include <Adafruit_BME680.h>
+#include <Adafruit_SHT4x.h>
 #include <TFT_eSPI.h>
 #include <HTTPClient.h>
 #include <PubSubClient.h> // Include the MQTT library
@@ -58,7 +59,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.4.015"; // Software version - Display cleanup + lockout/fan stability fixes
+const String sw_version = "1.4.016"; // Software version - Display cleanup + lockout/fan stability fixes
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -73,7 +74,8 @@ enum SensorType {
     SENSOR_AHT20 = 1,
     SENSOR_DHT11 = 2,
     SENSOR_BME280 = 3,
-    SENSOR_BME680 = 4
+    SENSOR_BME680 = 4,
+    SENSOR_SHT45 = 5
 };
 
 // Sensor instances (only one will be active based on auto-detection)
@@ -81,6 +83,7 @@ Adafruit_AHTX0 aht;
 DHT dht(I2C_SCL_PIN, DHT11); // DHT11 uses GPIO35 (SCL pin) as data line
 Adafruit_BME280 bme;
 Adafruit_BME680 bme680;
+Adafruit_SHT4x sht45;
 
 // Active sensor tracking
 SensorType activeSensor = SENSOR_NONE;
@@ -175,6 +178,18 @@ bool stage2Active = false; // Flag to track if stage 2 is active
 bool stage2HeatingEnabled = false; // Enable/disable 2nd stage heating
 bool stage2CoolingEnabled = false; // Enable/disable 2nd stage cooling
 bool reversingValveEnabled = false; // Enable reversing valve (heat pump) - mutually exclusive with stage2HeatingEnabled
+
+// Backup heat settings
+// relay: 0=PUMP relay, 1=HEAT relay 2 (stage 2 heat), 2=COOL relay 2 (stage 2 cool output)
+bool backupHeatEnabled = false;
+int backupHeatRelaySelection = 0;
+int backupHeatDelayMinutes = 30;
+float backupHeatMinTempRise = 0.5f;
+float backupHeatMaxTempDrop = 1.5f;
+bool backupHeatActive = false;
+unsigned long backupHeatDemandStart = 0;
+unsigned long backupHeatLastTempRiseTime = 0;
+float backupHeatLastReferenceTemp = NAN;
 
 // Globals
 AsyncWebServer server(80);
@@ -385,6 +400,11 @@ void turnOffAllRelays();
 void activateHeating();
 void activateCooling();
 void handleFanControl();
+void enforceBackupHeatRelayConflicts();
+int getBackupHeatRelayPin();
+void setBackupHeatRelay(bool enabled);
+void clearBackupHeatState(const char* reason);
+void updateBackupHeatState(bool heatDemandActive, float currentTemp);
 
 // Sensor abstraction function prototypes
 SensorType detectSensor();
@@ -426,6 +446,12 @@ bool isUpperCaseKeyboard = true;
 float previousTemp = 0.0;
 float previousHumidity = 0.0;
 float previousSetTemp = 0.0;
+float previousMainDisplayTemp = NAN;
+float previousSidebarSetTemp = NAN;
+bool previousMainShowSetTemp = false;
+bool showSetTempOnMainDisplay = false;
+unsigned long showSetTempUntil = 0;
+const unsigned long SETPOINT_DISPLAY_TIMEOUT_MS = 15000;
 // bool firstHourAfterBoot = true; // Flag to track the first hour after bootup - DISABLED
 volatile bool mqttFeedbackNeeded = false; // Flag for immediate MQTT feedback on settings change
 bool wifiWasConnected = false; // Track WiFi state transitions for reconnect handling
@@ -669,6 +695,13 @@ SensorType detectSensor() {
         return SENSOR_AHT20;
     }
     
+    // Try SHT45 (I2C address 0x44)
+    debugLog("[SENSOR] Checking for SHT45 at I2C address 0x44...\n");
+    if (sht45.begin(&Wire)) {
+        debugLog("[SENSOR] SHT45 detected!\n");
+        return SENSOR_SHT45;
+    }
+    
     // Try BME280 (I2C addresses 0x76 or 0x77)
     debugLog("[SENSOR] Checking for BME280 at I2C address 0x76...\n");
     if (bme.begin(0x76)) {
@@ -709,7 +742,8 @@ bool initializeSensor(SensorType sensor) {
                   sensor == SENSOR_AHT20 ? "AHT20" : 
                   sensor == SENSOR_DHT11 ? "DHT11" : 
                   sensor == SENSOR_BME280 ? "BME280" :
-                  sensor == SENSOR_BME680 ? "BME680" : "NONE");
+                  sensor == SENSOR_BME680 ? "BME680" :
+                  sensor == SENSOR_SHT45 ? "SHT45" : "NONE");
     
     switch(sensor) {
         case SENSOR_AHT20:
@@ -762,6 +796,18 @@ bool initializeSensor(SensorType sensor) {
                 return true;
             }
             debugLog("[SENSOR] BME680 initialization failed\n");
+            return false;
+            
+        case SENSOR_SHT45:
+            Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+            if (sht45.begin(&Wire)) {
+                sht45.setPrecision(SHT4X_HIGH_PRECISION);
+                sht45.setHeater(SHT4X_NO_HEATER);
+                debugLog("[SENSOR] SHT45 initialized successfully\n");
+                sensorName = "SHT45";
+                return true;
+            }
+            debugLog("[SENSOR] SHT45 initialization failed\n");
             return false;
     }
 }
@@ -841,6 +887,23 @@ bool readTemperatureHumidity(float &temp, float &humidity, float &pressure) {
                 return true;
             }
             xSemaphoreGive(i2cMutex);
+            return false;
+        }
+        
+        case SENSOR_SHT45: {
+            if (i2cMutex == NULL || xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+                return false;
+            }
+            
+            sensors_event_t humidityEvent, tempEvent;
+            bool success = sht45.getEvent(&humidityEvent, &tempEvent);
+            xSemaphoreGive(i2cMutex);
+            
+            if (success) {
+                temp = tempEvent.temperature;
+                humidity = humidityEvent.relative_humidity;
+                return true;
+            }
             return false;
         }
         
@@ -2056,6 +2119,10 @@ void enterWiFiCredentials()
     
     // Draw the keyboard with the screen freshly cleared
     drawKeyboard(isUpperCaseKeyboard);
+
+    // Prevent an indefinite lock if credentials flow is entered while WiFi is unavailable.
+    const unsigned long credentialsWaitTimeoutMs = 120000;
+    unsigned long credentialsWaitStart = millis();
     
     while (WiFi.status() != WL_CONNECTED)
     {
@@ -2072,6 +2139,20 @@ void enterWiFiCredentials()
         if (currentTime - lastStatusPrint > 5000) {
             debugLog("Waiting for WiFi credentials...\n");
             lastStatusPrint = currentTime;
+        }
+
+        if (currentTime - credentialsWaitStart > credentialsWaitTimeoutMs) {
+            debugLog("[WIFI] Credential entry timeout; returning to main UI\n");
+            tft.fillScreen(COLOR_BACKGROUND);
+            tft.setTextColor(COLOR_WARNING, COLOR_BACKGROUND);
+            tft.setTextSize(2);
+            tft.setCursor(20, 100);
+            tft.println("WiFi setup timeout");
+            tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
+            tft.setCursor(20, 130);
+            tft.println("Returning to main...");
+            delay(1200);
+            return;
         }
     }
 }
@@ -2433,6 +2514,15 @@ void handleButtonPress(uint16_t x, uint16_t y)
     // "+" button
     if (x > 265 && x < 315 && y > 195 && y < 245)
     {
+        if (!showSetTempOnMainDisplay || millis() >= showSetTempUntil) {
+            showSetTempOnMainDisplay = true;
+            showSetTempUntil = millis() + SETPOINT_DISPLAY_TIMEOUT_MS;
+            updateDisplay(currentTemp, currentHumidity);
+            return;
+        }
+
+        showSetTempUntil = millis() + SETPOINT_DISPLAY_TIMEOUT_MS;
+
         // Enable and persist schedule override when manually adjusting temperature while schedule is active
         if (scheduleEnabled && !scheduleOverride) {
             scheduleOverride = true;
@@ -2479,6 +2569,15 @@ void handleButtonPress(uint16_t x, uint16_t y)
     }
     else if (x > 0 && x < 45 && y > 195 && y < 245) // "-" button with slightly increased touch area
     {
+        if (!showSetTempOnMainDisplay || millis() >= showSetTempUntil) {
+            showSetTempOnMainDisplay = true;
+            showSetTempUntil = millis() + SETPOINT_DISPLAY_TIMEOUT_MS;
+            updateDisplay(currentTemp, currentHumidity);
+            return;
+        }
+
+        showSetTempUntil = millis() + SETPOINT_DISPLAY_TIMEOUT_MS;
+
         // Enable and persist schedule override when manually adjusting temperature while schedule is active
         if (scheduleEnabled && !scheduleOverride) {
             scheduleOverride = true;
@@ -2569,6 +2668,8 @@ void handleButtonPress(uint16_t x, uint16_t y)
 
 void setupMQTT()
 {
+    // Keep network outages from stalling the main loop on socket operations.
+    espClient.setTimeout(3000);
     mqttClient.setServer(mqttServer.c_str(), mqttPort);
     mqttClient.setBufferSize(1024); // Ensure buffer size is sufficient for large payloads
     mqttClient.setCallback(mqttCallback);
@@ -3641,6 +3742,103 @@ void sendMQTTData()
     }
 }
 
+void enforceBackupHeatRelayConflicts()
+{
+    if (!backupHeatEnabled) {
+        return;
+    }
+
+    if (backupHeatRelaySelection == 1) {
+        if (stage2HeatingEnabled) {
+            stage2HeatingEnabled = false;
+            debugLog("[BACKUP HEAT] Disabled stage2 heating (H2 relay reserved)\n");
+        }
+        if (reversingValveEnabled) {
+            reversingValveEnabled = false;
+            debugLog("[BACKUP HEAT] Disabled reversing valve (H2 relay reserved)\n");
+        }
+    }
+
+    if (backupHeatRelaySelection == 2 && stage2CoolingEnabled) {
+        stage2CoolingEnabled = false;
+        debugLog("[BACKUP HEAT] Disabled stage2 cooling (C2 relay reserved)\n");
+    }
+}
+
+int getBackupHeatRelayPin()
+{
+    if (backupHeatRelaySelection == 1) {
+        return HEAT_RELAY_2_PIN;
+    }
+    if (backupHeatRelaySelection == 2) {
+        return COOL_RELAY_2_PIN;
+    }
+    return PUMP_RELAY_PIN;
+}
+
+void setBackupHeatRelay(bool enabled)
+{
+    int pin = getBackupHeatRelayPin();
+    digitalWrite(pin, enabled ? HIGH : LOW);
+}
+
+void clearBackupHeatState(const char* reason)
+{
+    if (backupHeatActive || backupHeatDemandStart != 0) {
+        debugLog("[BACKUP HEAT] Cleared: %s\n", reason);
+    }
+    backupHeatActive = false;
+    backupHeatDemandStart = 0;
+    backupHeatLastTempRiseTime = 0;
+    backupHeatLastReferenceTemp = NAN;
+    setBackupHeatRelay(false);
+}
+
+void updateBackupHeatState(bool heatDemandActive, float currentTemp)
+{
+    if (!backupHeatEnabled) {
+        clearBackupHeatState("feature disabled");
+        return;
+    }
+
+    if (!heatDemandActive) {
+        clearBackupHeatState("no active heat demand");
+        return;
+    }
+
+    if (backupHeatDemandStart == 0) {
+        backupHeatDemandStart = millis();
+        backupHeatLastTempRiseTime = backupHeatDemandStart;
+        backupHeatLastReferenceTemp = currentTemp;
+        backupHeatActive = false;
+        setBackupHeatRelay(false);
+        debugLog("[BACKUP HEAT] Monitoring primary heat recovery (%d min window)\n", backupHeatDelayMinutes);
+        return;
+    }
+
+    unsigned long delayMs = (unsigned long)backupHeatDelayMinutes * 60000UL;
+    float tempRiseThreshold = backupHeatMinTempRise;
+    if (!isnan(backupHeatLastReferenceTemp) && currentTemp >= (backupHeatLastReferenceTemp + tempRiseThreshold)) {
+        backupHeatLastReferenceTemp = currentTemp;
+        backupHeatLastTempRiseTime = millis();
+    }
+
+    if (!backupHeatActive && !isnan(backupHeatLastReferenceTemp) && currentTemp <= (backupHeatLastReferenceTemp - backupHeatMaxTempDrop)) {
+        backupHeatActive = true;
+        setBackupHeatRelay(true);
+        debugLog("[BACKUP HEAT] Primary temperature dropped by %.2f - backup activated\n", backupHeatMaxTempDrop);
+        return;
+    }
+
+    if (!backupHeatActive && (millis() - backupHeatLastTempRiseTime >= delayMs)) {
+        backupHeatActive = true;
+        setBackupHeatRelay(true);
+        debugLog("[BACKUP HEAT] Primary heat failure detected - backup activated\n");
+    } else if (backupHeatActive) {
+        setBackupHeatRelay(true);
+    }
+}
+
 void controlRelays(float currentTemp)
 {
     // Take mutex to prevent concurrent access from multiple cores
@@ -3648,6 +3846,8 @@ void controlRelays(float currentTemp)
         debugLog("[WARNING] controlRelays: Failed to acquire mutex, skipping this call\n");
         return;
     }
+
+    enforceBackupHeatRelayConflicts();
     
     // Check if shower mode is active and has expired
     if (showerModeActive) {
@@ -3689,6 +3889,8 @@ void controlRelays(float currentTemp)
     // Check if temperature reading is valid
     if (isnan(currentTemp)) {
         debugLog("WARNING: Invalid temperature reading, skipping relay control\n");
+        clearBackupHeatState("invalid temperature");
+        xSemaphoreGive(controlRelaysMutex);
         return;
     }
     
@@ -3728,6 +3930,7 @@ void controlRelays(float currentTemp)
             fanOn = false;
         }
         // Note: "cycle" fan mode is handled by controlFanSchedule()
+        clearBackupHeatState("thermostat mode off");
         updateStatusLEDs(); // Update LED status
         
         xSemaphoreGive(controlRelaysMutex);
@@ -3865,6 +4068,32 @@ void controlRelays(float currentTemp)
         }
     }
 
+    bool heatDemandActive = false;
+    if (!showerModeActive && heatingOn && thermostatMode == "heat") {
+        heatDemandActive = currentTemp < (setTempHeat - tempSwing);
+    } else if (!showerModeActive && heatingOn && thermostatMode == "auto") {
+        heatDemandActive = currentTemp < (setTempAuto - autoTempSwing);
+    }
+    updateBackupHeatState(heatDemandActive, currentTemp);
+
+    // Emergency/backup mode behavior: once tripped, run backup relay and force primary heat outputs off.
+    if (backupHeatActive && heatDemandActive) {
+        int backupPin = getBackupHeatRelayPin();
+        if (backupPin != HEAT_RELAY_1_PIN) {
+            digitalWrite(HEAT_RELAY_1_PIN, LOW);
+        }
+        if (backupPin != HEAT_RELAY_2_PIN) {
+            digitalWrite(HEAT_RELAY_2_PIN, LOW);
+        }
+        if (backupPin != COOL_RELAY_2_PIN) {
+            digitalWrite(COOL_RELAY_2_PIN, LOW);
+        }
+        stage1Active = false;
+        if (backupPin != HEAT_RELAY_2_PIN && backupPin != COOL_RELAY_2_PIN) {
+            stage2Active = false;
+        }
+    }
+
     // Make sure fan control is applied
     handleFanControl();
     
@@ -3914,10 +4143,13 @@ void turnOffAllRelays()
     digitalWrite(HEAT_RELAY_2_PIN, LOW);
     digitalWrite(COOL_RELAY_1_PIN, LOW);
     digitalWrite(COOL_RELAY_2_PIN, LOW);
+    setBackupHeatRelay(false);
     heatingOn = false;
     coolingOn = false;
     stage1Active = false; // Reset stage 1 active flag
     stage2Active = false; // Reset stage 2 active flag
+    backupHeatActive = false;
+    backupHeatDemandStart = 0;
     
     // Handle fan based on fanMode setting
     if (fanMode == "on" && !fanBlockedByHydronicSafety) {
@@ -4296,6 +4528,8 @@ void handleWebRequests()
                                        showerModeEnabled, showerModeDuration,
                                        stage2HeatingEnabled, stage2CoolingEnabled,
                                        reversingValveEnabled,
+                                       backupHeatEnabled, backupHeatRelaySelection, backupHeatDelayMinutes,
+                                       backupHeatMinTempRise, backupHeatMaxTempDrop,
                                        hydronicTempLow, hydronicTempHigh,
                                        wifiSSID, wifiPassword, timeZone,
                                        use24HourClock, mqttEnabled, mqttServer,
@@ -4316,6 +4550,8 @@ void handleWebRequests()
                                           tempSwing, autoTempSwing, fanRelayNeeded, useFahrenheit, mqttEnabled, 
                                           stage1MinRuntime, stage2TempDelta, stage2HeatingEnabled, stage2CoolingEnabled,
                                           reversingValveEnabled,
+                                          backupHeatEnabled, backupHeatRelaySelection, backupHeatDelayMinutes,
+                                          backupHeatMinTempRise, backupHeatMaxTempDrop,
                                           hydronicHeatingEnabled, hydronicTempLow, hydronicTempHigh, fanMinutesPerHour,
                                           showerModeEnabled, showerModeDuration,
                                           mqttServer, mqttPort, mqttUsername, mqttPassword, wifiSSID, wifiPassword,
@@ -4471,6 +4707,28 @@ void handleWebRequests()
         } else {
             stage2CoolingEnabled = false; // Ensure stage2CoolingEnabled is set to false if not present in the form
         }
+        if (request->hasParam("backupHeatEnabled", true)) {
+            backupHeatEnabled = request->getParam("backupHeatEnabled", true)->value() == "on";
+        } else {
+            backupHeatEnabled = false;
+        }
+        if (request->hasParam("backupHeatRelay", true)) {
+            backupHeatRelaySelection = request->getParam("backupHeatRelay", true)->value().toInt();
+            backupHeatRelaySelection = constrain(backupHeatRelaySelection, 0, 2);
+        }
+        if (request->hasParam("backupHeatDelayMinutes", true)) {
+            backupHeatDelayMinutes = request->getParam("backupHeatDelayMinutes", true)->value().toInt();
+            backupHeatDelayMinutes = constrain(backupHeatDelayMinutes, 5, 180);
+        }
+        if (request->hasParam("backupHeatMinTempRise", true)) {
+            backupHeatMinTempRise = request->getParam("backupHeatMinTempRise", true)->value().toFloat();
+            backupHeatMinTempRise = constrain(backupHeatMinTempRise, 0.1f, 5.0f);
+        }
+        if (request->hasParam("backupHeatMaxTempDrop", true)) {
+            backupHeatMaxTempDrop = request->getParam("backupHeatMaxTempDrop", true)->value().toFloat();
+            backupHeatMaxTempDrop = constrain(backupHeatMaxTempDrop, 0.1f, 10.0f);
+        }
+        enforceBackupHeatRelayConflicts();
         if (request->hasParam("tempOffset", true)) {
             tempOffset = request->getParam("tempOffset", true)->value().toFloat();
             // Constrain to reasonable range (-10°C to +10°C)
@@ -4638,10 +4896,18 @@ void handleWebRequests()
 
     server.on("/version", HTTP_GET, [](AsyncWebServerRequest *request)
               {
+        time_t now;
+        struct tm timeinfo;
+        char deviceDateTime[32] = "Time not set";
+        time(&now);
+        if (localtime_r(&now, &timeinfo) && timeinfo.tm_year >= (2020 - 1900)) {
+            strftime(deviceDateTime, sizeof(deviceDateTime), "%Y-%m-%d %H:%M:%S", &timeinfo);
+        }
         String response = "{\"version\": \"" + sw_version + "\",";
         response += "\"build_date\": \"" + build_date + "\",";
         response += "\"build_time\": \"" + build_time + "\",";
         response += "\"full_version\": \"" + version_info + "\",";
+        response += "\"device_datetime\": \"" + String(deviceDateTime) + "\",";
         response += "\"hostname\": \"" + hostname + "\"}";
         request->send(200, "application/json", response); });
 
@@ -5031,7 +5297,14 @@ void updateDisplay(float currentTemp, float currentHumidity)
         previousHumidity = NAN;
         previousHydronicTemp = NAN;
         previousSetTemp = NAN;
+        previousMainDisplayTemp = NAN;
+        previousSidebarSetTemp = NAN;
+        previousMainShowSetTemp = false;
         forceFullDisplayRefresh = false;
+    }
+
+    if (showSetTempOnMainDisplay && millis() >= showSetTempUntil) {
+        showSetTempOnMainDisplay = false;
     }
     
     unsigned long displayStart = millis();
@@ -5179,23 +5452,27 @@ void updateDisplay(float currentTemp, float currentHumidity)
             tft.print("X");
         }
     }
-    if (currentTemp != previousTemp || currentHumidity != previousHumidity)
+    float currentSetTemp = (thermostatMode == "heat") ? setTempHeat : (thermostatMode == "cool") ? setTempCool : setTempAuto;
+
+    if (currentSetTemp != previousSidebarSetTemp || currentHumidity != previousHumidity || fullRefreshTriggered)
     {
-        // Display temperature and humidity on the right side with compact spacing
+        // Display setpoint and humidity on the right side with compact spacing
         // Background color in setTextColor will clear as it writes
         tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
-        tft.setTextSize(2); // Adjust text size to fit the display
+        tft.setTextSize(1); // Adjust text size to fit the display
         tft.setRotation(1); // Set rotation for vertical display
         
-        // Temperature at y=30 (shifted left to prevent right-edge wrapping)
-        tft.setCursor(220, 30);
-        char tempStr[6];
-        dtostrf(currentTemp, 4, 1, tempStr); // Convert temperature to string with 1 decimal place
-        tft.print(tempStr);
+        // Setpoint at y=30 (shifted left to prevent right-edge wrapping)
+        tft.fillRect(260, 30, 60, 8, COLOR_BACKGROUND); // clear full row before redraw
+        tft.setCursor(260, 30);
+        tft.print("Set:");
+        char setpointStr[6];
+        dtostrf(currentSetTemp, 4, 1, setpointStr); // Convert setpoint to string with 1 decimal place
+        tft.print(setpointStr);
         tft.print(useFahrenheit ? "F" : "C");
 
         // Humidity (even spacing from top temperature row)
-        tft.setCursor(220, 50);
+        tft.setCursor(260, 50);
         char humidityStr[6];
         dtostrf(currentHumidity, 4, 1, humidityStr); // Convert humidity to string with 1 decimal place
         tft.print(humidityStr);
@@ -5203,7 +5480,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
         
         // Display pressure if BME280/BME680 sensor is active (convert hPa to inHg: divide by 33.8639)
         if ((activeSensor == SENSOR_BME280 || activeSensor == SENSOR_BME680) && !isnan(currentPressure)) {
-            tft.setCursor(220, 70); // Pressure (even spacing)
+            tft.setCursor(260, 70); // Pressure (even spacing)
             float pressureInHg = currentPressure / 33.8639; // Convert hPa to inHg
             char pressureStr[7];
             dtostrf(pressureInHg, 4, 2, pressureStr); // Format as "XX.XX"
@@ -5211,22 +5488,22 @@ void updateDisplay(float currentTemp, float currentHumidity)
             tft.print("in");
         } else {
             // Clear pressure area if not BME280/BME680 or invalid (use 100px to ensure full clear)
-            tft.fillRect(220, 70, 100, 16, COLOR_BACKGROUND);
+            tft.fillRect(260, 70, 60, 8, COLOR_BACKGROUND);
         }
         
         // Display air quality if BME680 sensor is active
         if (activeSensor == SENSOR_BME680) {
-            tft.setCursor(220, 90); // Air quality (even spacing)
+            tft.setCursor(260, 90); // Air quality (even spacing)
             int aqScore = (int)currentAirQuality;
             tft.print("AQ:");
             tft.print(aqScore);
         } else {
             // Clear air quality area if not BME680 (use 100px to ensure full clear)
-            tft.fillRect(220, 90, 100, 16, COLOR_BACKGROUND);
+            tft.fillRect(260, 90, 60, 8, COLOR_BACKGROUND);
         }
 
         // Update previous values
-        previousTemp = currentTemp;
+        previousSidebarSetTemp = currentSetTemp;
         previousHumidity = currentHumidity;
     }
 
@@ -5297,28 +5574,38 @@ void updateDisplay(float currentTemp, float currentHumidity)
         prevHydronicLockoutDisplay = false;
     }
 
-    // Update set temperature only if it has changed and mode is not "off"
+    // Main center temperature: default to sensor temp, temporarily show setpoint after +/- press
     if (thermostatMode != "off")
     {
-        float currentSetTemp = (thermostatMode == "heat") ? setTempHeat : (thermostatMode == "cool") ? setTempCool : setTempAuto;
-        
-        // Display set temperature moved left for better spacing from right-column telemetry
-        if (currentSetTemp != previousSetTemp && !showerModeActive) {
-            // Only show setpoint when NOT in shower mode (limit width to not overlap sensor readings at x=230)
+        bool showSetTempNow = showSetTempOnMainDisplay && !showerModeActive;
+        float mainDisplayTemp = showSetTempNow ? currentSetTemp : currentTemp;
+
+        if ((mainDisplayTemp != previousMainDisplayTemp || showSetTempNow != previousMainShowSetTemp || fullRefreshTriggered) && !showerModeActive) {
             tft.fillRect(40, 95, 165, 50, COLOR_BACKGROUND);
             tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
             tft.setTextSize(4);
             tft.setCursor(40, 100);
             char tempStr[6];
-            dtostrf(currentSetTemp, 4, 1, tempStr);
+            dtostrf(mainDisplayTemp, 4, 1, tempStr);
             tft.print(tempStr);
             tft.println(useFahrenheit ? " F" : " C");
-            previousSetTemp = currentSetTemp;
-        } else if (showerModeActive && currentSetTemp != previousSetTemp) {
-            // Clear setpoint area when entering shower mode (limit width to not overlap sensor readings at x=230)
+            if (showSetTempNow) {
+                uint16_t setLabelColor = COLOR_WARNING; // default orange for auto
+                if (thermostatMode == "heat") setLabelColor = TFT_RED;
+                else if (thermostatMode == "cool") setLabelColor = COLOR_PRIMARY;
+                tft.setTextColor(setLabelColor, COLOR_BACKGROUND);
+                tft.setTextSize(2);
+                tft.setCursor(40, 134);
+                tft.print("Set Temp");
+            }
+            previousMainDisplayTemp = mainDisplayTemp;
+            previousMainShowSetTemp = showSetTempNow;
+        } else if (showerModeActive) {
+            // Clear main temp area when shower mode takes over this region
             tft.fillRect(40, 95, 165, 50, COLOR_BACKGROUND);
-            previousSetTemp = currentSetTemp;
         }
+
+        previousSetTemp = currentSetTemp;
         
         // Display shower mode countdown on left side (separate from setpoint)
         static bool prevShowerMode = false;
@@ -5356,7 +5643,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
             tft.fillRect(0, 85, 225, 50, COLOR_BACKGROUND);
             prevShowerMode = false;
             prevSecondsRemaining = -1;
-            previousSetTemp = -999; // Force redraw of setpoint on next update
+            previousMainDisplayTemp = NAN; // Force redraw of main temperature on next update
         }
     }
     else
@@ -5370,14 +5657,16 @@ void updateDisplay(float currentTemp, float currentHumidity)
     static bool prevHeatingStatus = false;
     static bool prevCoolingStatus = false;
     static bool prevFanStatus = false;
+    static bool prevBackupHeatStatus = false;
     
     // Use software state flags instead of GPIO reads for display indicators
     bool heatActive = heatingOn;
     bool coolActive = coolingOn;
     bool fanActive = fanOn;
+    bool backupHeatDisplayActive = heatActive && backupHeatActive;
     
     // Check if status has changed and update only when necessary
-    if (heatActive != prevHeatingStatus || coolActive != prevCoolingStatus || fanActive != prevFanStatus)
+    if (heatActive != prevHeatingStatus || coolActive != prevCoolingStatus || fanActive != prevFanStatus || backupHeatDisplayActive != prevBackupHeatStatus)
     {
         // Clear the status indicator area - make sure to clear the full area where indicators are drawn
         tft.fillRect(0, 145, 320, 35, COLOR_BACKGROUND);
@@ -5387,9 +5676,17 @@ void updateDisplay(float currentTemp, float currentHumidity)
         {
             tft.fillRoundRect(10, 145, 90, 30, 5, COLOR_WARNING);
             tft.setTextColor(TFT_BLACK);
-            tft.setTextSize(2);
-            tft.setCursor(15, 152);
-            tft.print("HEATING");
+            if (backupHeatDisplayActive) {
+                tft.setTextSize(1);
+                tft.setCursor(29, 149);
+                tft.print("BACKUP");
+                tft.setCursor(25, 160);
+                tft.print("HEATING");
+            } else {
+                tft.setTextSize(2);
+                tft.setCursor(15, 152);
+                tft.print("HEATING");
+            }
         }
         
         // Draw cool indicator if cooling is on (same position as heating)
@@ -5416,6 +5713,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
         prevHeatingStatus = heatActive;
         prevCoolingStatus = coolActive;
         prevFanStatus = fanActive;
+        prevBackupHeatStatus = backupHeatDisplayActive;
     }
 
     // Draw buttons at the bottom
@@ -5463,6 +5761,11 @@ void saveSettings()
     preferences.putBool("stg2HeatEn", stage2HeatingEnabled);
     preferences.putBool("stg2CoolEn", stage2CoolingEnabled);
     preferences.putBool("revValve", reversingValveEnabled);
+    preferences.putBool("bkHeatEn", backupHeatEnabled);
+    preferences.putInt("bkHeatRl", backupHeatRelaySelection);
+    preferences.putInt("bkHeatDly", backupHeatDelayMinutes);
+    preferences.putFloat("bkHeatRise", backupHeatMinTempRise);
+    preferences.putFloat("bkHeatDrop", backupHeatMaxTempDrop);
     preferences.putFloat("tempOffset", tempOffset);
     preferences.putFloat("humOffset", humidityOffset);
     preferences.putBool("dispSleepEn", displaySleepEnabled);
@@ -5576,6 +5879,12 @@ void loadSettings()
     stage2HeatingEnabled = preferences.getBool("stg2HeatEn", false);
     stage2CoolingEnabled = preferences.getBool("stg2CoolEn", false);
     reversingValveEnabled = preferences.getBool("revValve", false);
+    backupHeatEnabled = preferences.getBool("bkHeatEn", false);
+    backupHeatRelaySelection = constrain(preferences.getInt("bkHeatRl", 0), 0, 2);
+    backupHeatDelayMinutes = constrain(preferences.getInt("bkHeatDly", 30), 5, 180);
+    backupHeatMinTempRise = constrain(preferences.getFloat("bkHeatRise", 0.5f), 0.1f, 5.0f);
+    backupHeatMaxTempDrop = constrain(preferences.getFloat("bkHeatDrop", 1.5f), 0.1f, 10.0f);
+    enforceBackupHeatRelayConflicts();
     tempOffset = preferences.getFloat("tempOffset", -4.0);
     humidityOffset = preferences.getFloat("humOffset", 0.0);
     displaySleepEnabled = preferences.getBool("dispSleepEn", false);
@@ -5627,6 +5936,9 @@ void loadSettings()
     debugLog("stage2TempDelta: "); Serial.println(stage2TempDelta);
     debugLog("stage2HeatingEnabled: "); Serial.println(stage2HeatingEnabled);
     debugLog("stage2CoolingEnabled: "); Serial.println(stage2CoolingEnabled);
+    debugLog("backupHeatEnabled: "); Serial.println(backupHeatEnabled);
+    debugLog("backupHeatRelaySelection: "); Serial.println(backupHeatRelaySelection);
+    debugLog("backupHeatDelayMinutes: "); Serial.println(backupHeatDelayMinutes);
     debugLog("tempOffset: "); Serial.println(tempOffset);
     debugLog("humidityOffset: "); Serial.println(humidityOffset);
     debugLog("displaySleepEnabled: "); Serial.println(displaySleepEnabled);
@@ -5853,6 +6165,11 @@ void restoreDefaultSettings()
     hydronicLowTempAlertSent = false; // Reset hydronic alert state
     stage2HeatingEnabled = false; // Reset stage 2 heating enabled to default
     stage2CoolingEnabled = false; // Reset stage 2 cooling enabled to default
+    backupHeatEnabled = false;
+    backupHeatRelaySelection = 0;
+    backupHeatDelayMinutes = 30;
+    backupHeatMinTempRise = 0.5f;
+    backupHeatMaxTempDrop = 1.5f;
     tempOffset = -4.0; // Reset temperature calibration offset to default
     humidityOffset = 0.0; // Reset humidity calibration offset to default
     displaySleepEnabled = false; // Reset display sleep enabled to default

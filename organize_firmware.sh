@@ -13,7 +13,17 @@ VARIANTS=(
 )
 
 # Default number of builds to keep (per variant)
-KEEP_BUILDS=1
+KEEP_BUILDS=3
+
+# Read firmware version from source so filenames include traceable version info.
+VERSION_FILE="$PROJECT_DIR/src/Main-Thermostat.cpp"
+FW_VERSION=$(grep -E 'const String sw_version\s*=\s*"[^"]+"' "$VERSION_FILE" | sed -E 's/.*"([^"]+)".*/\1/' | head -n 1)
+if [[ -z "$FW_VERSION" ]]; then
+    FW_VERSION="unknown"
+fi
+
+# Keep only safe filename characters.
+SAFE_VERSION=$(echo "$FW_VERSION" | tr -cd '[:alnum:]._-')
 
 # Parse optional arguments
 while [[ $# -gt 0 ]]; do
@@ -30,7 +40,7 @@ while [[ $# -gt 0 ]]; do
         *)
             echo "[POST-BUILD] Unknown argument: $1"
             echo "Usage: ./organize_firmware.sh [--keep N]"
-            echo "  --keep, -k   Number of builds to retain per variant (default: 1)"
+            echo "  --keep, -k   Number of builds to retain per variant (default: 3)"
             exit 1
             ;;
     esac
@@ -42,7 +52,7 @@ mkdir -p "$FIRMWARE_DIR"
 # Create version directory with build date and time
 BUILD_TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
 
-echo "[POST-BUILD] Organizing firmware builds from $BUILD_TIMESTAMP (keeping $KEEP_BUILDS per variant)"
+echo "[POST-BUILD] Organizing firmware builds from $BUILD_TIMESTAMP (version $FW_VERSION, keeping $KEEP_BUILDS per variant)"
 
 # Process each variant
 for VARIANT_INFO in "${VARIANTS[@]}"; do
@@ -57,26 +67,32 @@ for VARIANT_INFO in "${VARIANTS[@]}"; do
     
     # Create chip-specific directory and date/time subdirectory
     CHIP_DIR="$FIRMWARE_DIR/$CHIP_NAME"
-    VERSION_DIR="$CHIP_DIR/build_$BUILD_TIMESTAMP"
+    VERSION_DIR="$CHIP_DIR/build_${BUILD_TIMESTAMP}_v${SAFE_VERSION}"
     mkdir -p "$VERSION_DIR"
+
+    FILE_STAMP="v${SAFE_VERSION}_${BUILD_TIMESTAMP}"
+    BOOTLOADER_FILE="bootloader_${FILE_STAMP}.bin"
+    FIRMWARE_FILE="firmware_${FILE_STAMP}.bin"
+    PARTITIONS_FILE="partitions_${FILE_STAMP}.bin"
+    ELF_FILE="firmware_${FILE_STAMP}.elf"
     
     echo "[POST-BUILD] Processing $VARIANT ($FLASH_SIZE)..."
     
     # Copy bootloader, firmware, partitions, and ELF file
     if [ -f "$BUILD_DIR/bootloader.bin" ]; then
-        cp "$BUILD_DIR/bootloader.bin" "$VERSION_DIR/"
+        cp "$BUILD_DIR/bootloader.bin" "$VERSION_DIR/$BOOTLOADER_FILE"
     fi
     
     if [ -f "$BUILD_DIR/firmware.bin" ]; then
-        cp "$BUILD_DIR/firmware.bin" "$VERSION_DIR/"
+        cp "$BUILD_DIR/firmware.bin" "$VERSION_DIR/$FIRMWARE_FILE"
     fi
     
     if [ -f "$BUILD_DIR/partitions.bin" ]; then
-        cp "$BUILD_DIR/partitions.bin" "$VERSION_DIR/"
+        cp "$BUILD_DIR/partitions.bin" "$VERSION_DIR/$PARTITIONS_FILE"
     fi
     
     if [ -f "$BUILD_DIR/firmware.elf" ]; then
-        cp "$BUILD_DIR/firmware.elf" "$VERSION_DIR/"
+        cp "$BUILD_DIR/firmware.elf" "$VERSION_DIR/$ELF_FILE"
     fi
     
     # Create a flash script for easy esptool flashing
@@ -84,6 +100,7 @@ for VARIANT_INFO in "${VARIANTS[@]}"; do
     cat > "$FLASH_SCRIPT" << FLASHEOF
 #!/bin/bash
 # Flash script for ESP32-S3 Simple Thermostat - $VARIANT ($FLASH_SIZE)
+# Firmware version: $FW_VERSION
 # Usage: ./flash.sh [port]
 # Default port: /dev/ttyACM0
 
@@ -91,13 +108,13 @@ PORT=\${1:-/dev/ttyACM0}
 SCRIPT_DIR="\$( cd "\$( dirname "\${BASH_SOURCE[0]}" )" && pwd )"
 
 echo "[FLASH] Using port: \$PORT"
-echo "[FLASH] Flashing ESP32-S3 $VARIANT ($FLASH_SIZE)..."
+echo "[FLASH] Flashing ESP32-S3 $VARIANT ($FLASH_SIZE), version $FW_VERSION, build $BUILD_TIMESTAMP..."
 
 esptool.py --chip esp32s3 --port "\$PORT" --baud 460800 --before default_reset --after hard_reset write_flash -z \\
     --flash_mode dio --flash_freq 80m --flash_size $FLASH_SIZE \\
-    0x0 "\$SCRIPT_DIR/bootloader.bin" \\
-    0x8000 "\$SCRIPT_DIR/partitions.bin" \\
-    0x10000 "\$SCRIPT_DIR/firmware.bin"
+    0x0 "\$SCRIPT_DIR/$BOOTLOADER_FILE" \\
+    0x8000 "\$SCRIPT_DIR/$PARTITIONS_FILE" \\
+    0x10000 "\$SCRIPT_DIR/$FIRMWARE_FILE"
 
 if [ \$? -eq 0 ]; then
     echo "[FLASH] Successfully flashed!"
@@ -108,7 +125,7 @@ fi
 FLASHEOF
     
     chmod +x "$FLASH_SCRIPT"
-    echo "[POST-BUILD] ✓ $VARIANT ($FLASH_SIZE) organized in $CHIP_NAME/build_$BUILD_TIMESTAMP/"
+    echo "[POST-BUILD] ✓ $VARIANT ($FLASH_SIZE) organized in $CHIP_NAME/build_${BUILD_TIMESTAMP}_v${SAFE_VERSION}/"
     
     # Clean up old builds - keep only N most recent ones
     BUILDS=$(ls -1d "$CHIP_DIR"/build_* 2>/dev/null | sort -r)
@@ -130,21 +147,22 @@ FLASHEOF
     cat > "$LATEST_FLASH" << LATESTEOF
 #!/bin/bash
 # Flash script for ESP32-S3 Simple Thermostat - $CHIP_NAME ($FLASH_SIZE) - Latest Build
+# Firmware version: $FW_VERSION
 # Usage: ./latest_flash_$CHIP_NAME.sh [port]
 # Default port: /dev/ttyACM0
 
 PORT=\${1:-/dev/ttyACM0}
 SCRIPT_DIR="\$( cd "\$( dirname "\${BASH_SOURCE[0]}" )" && pwd )"
-LATEST_BUILD="\$SCRIPT_DIR/$CHIP_NAME/build_$BUILD_TIMESTAMP"
+LATEST_BUILD="\$SCRIPT_DIR/$CHIP_NAME/build_${BUILD_TIMESTAMP}_v${SAFE_VERSION}"
 
 echo "[FLASH] Using port: \$PORT"
-echo "[FLASH] Flashing ESP32-S3 $CHIP_NAME ($FLASH_SIZE) - Latest Build ($BUILD_TIMESTAMP)..."
+echo "[FLASH] Flashing ESP32-S3 $CHIP_NAME ($FLASH_SIZE) - Latest Build ($BUILD_TIMESTAMP), version $FW_VERSION..."
 
 esptool.py --chip esp32s3 --port "\$PORT" --baud 460800 --before default_reset --after hard_reset write_flash -z \\
     --flash_mode dio --flash_freq 80m --flash_size $FLASH_SIZE \\
-    0x0 "\$LATEST_BUILD/bootloader.bin" \\
-    0x8000 "\$LATEST_BUILD/partitions.bin" \\
-    0x10000 "\$LATEST_BUILD/firmware.bin"
+    0x0 "\$LATEST_BUILD/$BOOTLOADER_FILE" \\
+    0x8000 "\$LATEST_BUILD/$PARTITIONS_FILE" \\
+    0x10000 "\$LATEST_BUILD/$FIRMWARE_FILE"
 
 if [ \$? -eq 0 ]; then
     echo "[FLASH] Successfully flashed $CHIP_NAME!"

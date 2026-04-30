@@ -45,3 +45,6 @@ MATTER/
 
 # Local-only mobile app work
 mobile_app_private/
+
+# Local-only Zigbee planning and experiments
+zigbee_private/
