@@ -3972,12 +3972,14 @@ void controlRelays(float currentTemp)
                          (currentTemp < (setTempHeat - tempSwing)) ? "YES" : "NO");
             if (currentTemp < (setTempHeat - tempSwing))
             {
-                // Only call activateHeating if not already heating
+                // Call activateHeating on every pass so stage 2 escalation can fire
+                // after stage1MinRuntime elapses (guarded internally by !stage1Active /
+                // !stage2Active checks inside activateHeating).
                 if (!heatingOn) {
                     debugLog("[HVAC] HEAT ACTIVATED: %.1f < %.1f (setpoint-swing)\n", 
                              currentTemp, (setTempHeat - tempSwing));
-                    activateHeating();
                 }
+                activateHeating();
             }
             // Only turn off if above setpoint (hysteresis)
             else if (currentTemp >= setTempHeat)
@@ -5195,12 +5197,21 @@ void handleWebRequests()
     server.on("/api/debug", HTTP_GET, [](AsyncWebServerRequest *request) {
         String logOutput = getDebugLog();
         
-        // Use ArduinoJson for proper JSON serialization
-        DynamicJsonDocument doc(40960);  // 40KB for 32KB buffer + overhead
-        doc["log"] = logOutput;
-        
+        // Manually build JSON to avoid DynamicJsonDocument capacity overflow
+        // when log content exceeds the document pool size (was causing empty responses)
         String json;
-        serializeJson(doc, json);
+        json.reserve(logOutput.length() + 12);
+        json = "{\"log\":\"";
+        for (size_t i = 0; i < (size_t)logOutput.length(); i++) {
+            char c = logOutput.charAt(i);
+            if      (c == '"')  json += "\\\"";
+            else if (c == '\\') json += "\\\\";
+            else if (c == '\n') json += "\\n";
+            else if (c == '\r') json += "\\r";
+            else if (c == '\t') json += "\\t";
+            else                json += c;
+        }
+        json += "\"}";
         request->send(200, "application/json", json);
     });
     
