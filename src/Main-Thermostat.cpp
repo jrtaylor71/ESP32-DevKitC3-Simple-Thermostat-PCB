@@ -35,7 +35,7 @@
 #include <Adafruit_BME280.h>
 #include <Adafruit_BME680.h>
 #include <Adafruit_SHT4x.h>
-#include <TFT_eSPI.h>
+#include "TFT_Setup_ESP32_S3_Thermostat.h"
 #include <HTTPClient.h>
 #include <PubSubClient.h> // Include the MQTT library
 #include <esp_task_wdt.h> // Include the watchdog timer library
@@ -59,7 +59,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.4.016"; // Software version - Display cleanup + lockout/fan stability fixes
+const String sw_version = "1.5.000"; // Software version - Display cleanup + lockout/fan stability fixes
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -193,7 +193,8 @@ float backupHeatLastReferenceTemp = NAN;
 
 // Globals
 AsyncWebServer server(80);
-TFT_eSPI tft = TFT_eSPI();
+LGFX tft;
+DisplayVariant activeDisplay = DISPLAY_ILI9341;  // updated at boot by tft.initDisplay()
 WiFiClient espClient;
 PubSubClient mqttClient(espClient); // Initialize the MQTT client
 Preferences preferences; // Preferences instance
@@ -228,11 +229,17 @@ const char* KEYBOARD_LOWER[5][10] = {
 };
 
 // Keyboard layout constants
-const int KEY_WIDTH = 28;
+const int KEY_WIDTH = 27;
 const int KEY_HEIGHT = 28;
-const int KEY_SPACING = 3;
+const int KEY_SPACING = 2;
 const int KEYBOARD_X_OFFSET = 15;
 const int KEYBOARD_Y_OFFSET = 75;
+
+// UI scaling helpers: keep layout logic in 320x240 virtual space and scale at draw time.
+static inline int uiScaleX(int x) { return (x * dispW()) / 320; }
+static inline int uiScaleY(int y) { return (y * dispH()) / 240; }
+static inline int uiUnscaleX(int x) { return (x * 320) / dispW(); }
+static inline int uiUnscaleY(int y) { return (y * 240) / dispH(); }
 
 // Dual-core task handle
 TaskHandle_t sensorTask;
@@ -483,6 +490,10 @@ volatile bool systemRebootInProgress = false; // Prevent multiple reboot request
 unsigned long otaStartTime = 0;           // millis() when OTA began
 unsigned long otaLastUpdateLog = 0;       // For throttled serial logging
 
+// Sensor task watchdog: updated each time the sensor task completes a control cycle.
+// Main loop checks this and forces relays off if it stalls too long.
+volatile unsigned long sensorTaskLastAlive = 0;
+
 // Sensor reading task (runs on core 1)
 void sensorTaskFunction(void *parameter) {
     unsigned long lastSensorError = 0;
@@ -570,6 +581,7 @@ void sensorTaskFunction(void *parameter) {
         
         // Control HVAC relays
         controlRelays(currentTemp);
+        sensorTaskLastAlive = millis(); // Heartbeat: sensor task is alive
         
         // 5 second delay for responsive control while minimizing CPU load
         vTaskDelay(5000 / portTICK_PERIOD_MS);
@@ -635,18 +647,13 @@ void updateDisplayIndicators() {
         setCoolLED(coolingOn);  
         setFanLED(fanOn);
         
-        debugLog("DISPLAY_UPDATE: Heat=");
-        Serial.print(displayIndicators.heatIndicator ? "ON" : "OFF");
-        debugLog(", Cool=");
-        Serial.print(displayIndicators.coolIndicator ? "ON" : "OFF");
-        debugLog(", Fan=");
-        Serial.print(displayIndicators.fanIndicator ? "ON" : "OFF");
-        debugLog(", Auto=");
-        Serial.print(displayIndicators.autoIndicator ? "ON" : "OFF");
-        debugLog(", Stage1=");
-        Serial.print(displayIndicators.stage1Indicator ? "ON" : "OFF");
-        debugLog(", Stage2=");
-        Serial.println(displayIndicators.stage2Indicator ? "ON" : "OFF");
+        debugLog("DISPLAY_UPDATE: Heat=%s, Cool=%s, Fan=%s, Auto=%s, Stage1=%s, Stage2=%s\n",
+             displayIndicators.heatIndicator ? "ON" : "OFF",
+             displayIndicators.coolIndicator ? "ON" : "OFF",
+             displayIndicators.fanIndicator ? "ON" : "OFF",
+             displayIndicators.autoIndicator ? "ON" : "OFF",
+             displayIndicators.stage1Indicator ? "ON" : "OFF",
+             displayIndicators.stage2Indicator ? "ON" : "OFF");
     } else {
         debugLog("DISPLAY_UPDATE: Failed to take mutex, skipping update\n");
     }
@@ -1106,10 +1113,32 @@ void saveScheduleSettings() {
 
 // Load schedule settings from preferences
 void loadScheduleSettings() {
-    scheduleEnabled = preferences.getBool("schedEnabled", false);
-    scheduleOverride = preferences.getBool("schedOverride", false);
-    overrideEndTime = preferences.getULong("overrideEnd", 0);
-    activePeriod = preferences.getString("activePeriod", "manual");
+    auto getOrInitBool = [&](const char* key, bool def) -> bool {
+        if (!preferences.isKey(key)) {
+            preferences.putBool(key, def);
+            return def;
+        }
+        return preferences.getBool(key, def);
+    };
+    auto getOrInitULong = [&](const char* key, unsigned long def) -> unsigned long {
+        if (!preferences.isKey(key)) {
+            preferences.putULong(key, def);
+            return def;
+        }
+        return preferences.getULong(key, def);
+    };
+    auto getOrInitString = [&](const char* key, const char* def) -> String {
+        if (!preferences.isKey(key)) {
+            preferences.putString(key, def);
+            return String(def);
+        }
+        return preferences.getString(key, def);
+    };
+
+    scheduleEnabled = getOrInitBool("schedEnabled", false);
+    scheduleOverride = getOrInitBool("schedOverride", false);
+    overrideEndTime = getOrInitULong("overrideEnd", 0);
+    activePeriod = getOrInitString("activePeriod", "manual");
     
     // If override was active before reboot, clear it since overrideEndTime is stale
     // (millis() resets to 0 after each reboot, making the stored endTime unreliable)
@@ -1166,8 +1195,9 @@ bool debugBufferWrapped = false;  // Track if buffer has wrapped around
 SemaphoreHandle_t debugBufferMutex = NULL;
 
 void addToDebugBuffer(const char* message) {
-    if (debugBufferMutex == NULL || xSemaphoreTake(debugBufferMutex, pdMS_TO_TICKS(10)) != pdTRUE) {
-        return;  // Can't acquire mutex, skip
+    bool haveLock = false;
+    if (debugBufferMutex != NULL) {
+        haveLock = (xSemaphoreTake(debugBufferMutex, portMAX_DELAY) == pdTRUE);
     }
     
     int len = strlen(message);
@@ -1182,32 +1212,45 @@ void addToDebugBuffer(const char* message) {
         }
     }
     
-    xSemaphoreGive(debugBufferMutex);
+    if (haveLock) {
+        xSemaphoreGive(debugBufferMutex);
+    }
 }
 
 String getDebugLog() {
     String result = "";
-    if (debugBufferMutex == NULL || xSemaphoreTake(debugBufferMutex, pdMS_TO_TICKS(50)) != pdTRUE) {
-        return result;
+    bool haveLock = false;
+    if (debugBufferMutex != NULL) {
+        haveLock = (xSemaphoreTake(debugBufferMutex, portMAX_DELAY) == pdTRUE);
     }
     
-    // Return the buffer contents in order
-    result.reserve(DEBUG_BUFFER_SIZE + 100);
-    
-    // If buffer has wrapped, start from debugBufferIndex (oldest data)
-    // Otherwise start from 0 (buffer not full yet)
+    // Return only valid bytes in chronological order.
+    int count = debugBufferWrapped ? DEBUG_BUFFER_SIZE : debugBufferIndex;
     int startIdx = debugBufferWrapped ? debugBufferIndex : 0;
-    int endIdx = debugBufferIndex;
-    
-    for (int i = 0; i < DEBUG_BUFFER_SIZE; i++) {
-        int idx = (startIdx + i) % DEBUG_BUFFER_SIZE;
-        result += debugBuffer[idx];
-        if (idx == endIdx && !debugBufferWrapped) {
-            break;  // Stop if we haven't wrapped and reached current index
+
+    // When the circular buffer has wrapped, the oldest byte may be in the middle
+    // of a log line. Advance to the next newline so the served log starts cleanly.
+    if (debugBufferWrapped && count > 0) {
+        int trim = 0;
+        while (trim < count && debugBuffer[(startIdx + trim) % DEBUG_BUFFER_SIZE] != '\n') {
+            trim++;
+        }
+        if (trim < count) {
+            trim++; // skip the newline itself
+            startIdx = (startIdx + trim) % DEBUG_BUFFER_SIZE;
+            count -= trim;
         }
     }
+
+    result.reserve(count + 16);
+    for (int i = 0; i < count; i++) {
+        int idx = (startIdx + i) % DEBUG_BUFFER_SIZE;
+        result += debugBuffer[idx];
+    }
     
-    xSemaphoreGive(debugBufferMutex);
+    if (haveLock) {
+        xSemaphoreGive(debugBufferMutex);
+    }
     return result;
 }
 
@@ -1281,15 +1324,11 @@ void setup()
     // Print version information at startup
     debugLog("\n");
     debugLog("========================================\n");
-    Serial.println(PROJECT_NAME_SHORT);
-    debugLog("Version: ");
-    Serial.println(sw_version);
-    debugLog("Build Date: ");
-    Serial.println(build_date);
-    debugLog("Build Time: ");
-    Serial.println(build_time);
-    debugLog("Hostname: ");
-    Serial.println(hostname);
+    debugLog("%s\n", PROJECT_NAME_SHORT);
+    debugLog("Version: %s\n", sw_version.c_str());
+    debugLog("Build Date: %s\n", build_date.c_str());
+    debugLog("Build Time: %s\n", build_time.c_str());
+    debugLog("Hostname: %s\n", hostname.c_str());
     debugLog("========================================\n");
     debugLog("\n");
     
@@ -1345,8 +1384,7 @@ void setup()
     }
 
     // Initialize the TFT display
-    tft.init();
-    tft.setRotation(1); // Set the rotation of the display as needed
+    tft.initDisplay();  // detects panel, sets activeDisplay, calls init()+setRotation()
     tft.fillScreen(COLOR_BACKGROUND);
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
     tft.setTextSize(3);  // Increased size from 2 to 3
@@ -1661,18 +1699,7 @@ void setup()
         publishHomeAssistantDiscovery();
     }
     
-    // Create sensor task on core 1
-    xTaskCreatePinnedToCore(
-        sensorTaskFunction,  // Task function
-        "SensorTask",       // Name
-        10000,             // Stack size
-        NULL,              // Parameters
-        1,                 // Priority
-        &sensorTask,       // Task handle
-        1                  // Core 1
-    );
-    
-    // Option C: Create display update mutex and task on core 0
+    // Create all mutexes BEFORE spawning any tasks that use them
     displayUpdateMutex = xSemaphoreCreateMutex();
     if (displayUpdateMutex == NULL) {
         debugLog("ERROR: Failed to create display update mutex!\n");
@@ -1695,7 +1722,22 @@ void setup()
     } else {
         debugLog("Radar sensor mutex created successfully\n");
     }
-    
+
+    // Initialize sensor task watchdog timestamp before spawning the task
+    sensorTaskLastAlive = millis();
+
+    // Create sensor task on core 1
+    xTaskCreatePinnedToCore(
+        sensorTaskFunction,  // Task function
+        "SensorTask",       // Name
+        10000,             // Stack size
+        NULL,              // Parameters
+        1,                 // Priority
+        &sensorTask,       // Task handle
+        1                  // Core 1
+    );
+
+    // Option C: Create display update task on core 0
     xTaskCreatePinnedToCore(
         displayUpdateTaskFunction,  // Task function
         "DisplayUpdateTask",       // Name
@@ -1779,6 +1821,25 @@ void loop()
         lastWatchdogTime = currentTime;
     }
 
+    // Sensor task watchdog: if the sensor task hasn't updated in 30s, all relays
+    // are forced off to prevent heating/cooling running uncontrolled.
+    static unsigned long lastSensorWatchdogLog = 0;
+    const unsigned long SENSOR_TASK_TIMEOUT = 30000;
+    if (sensorTaskLastAlive > 0 && (currentTime - sensorTaskLastAlive) > SENSOR_TASK_TIMEOUT) {
+        digitalWrite(HEAT_RELAY_1_PIN, LOW);
+        digitalWrite(HEAT_RELAY_2_PIN, LOW);
+        digitalWrite(COOL_RELAY_1_PIN, LOW);
+        digitalWrite(COOL_RELAY_2_PIN, LOW);
+        digitalWrite(FAN_RELAY_PIN, LOW);
+        heatingOn = false;
+        coolingOn = false;
+        fanOn = false;
+        if (currentTime - lastSensorWatchdogLog > 5000) {
+            debugLog("[WATCHDOG] Sensor task stalled >30s - all relays forced OFF\n");
+            lastSensorWatchdogLog = currentTime;
+        }
+    }
+
     // Handle touch input with priority - check this first for responsiveness
     uint16_t x, y;
     static unsigned long lastTouchDebug = 0;
@@ -1787,27 +1848,26 @@ void loop()
     {
         // Debug: Log all touches for diagnosis
         // Ignore touches on the edges of the display (deadzone for case edge artifacts)
-        // ILI9341 display is 320x240, add a 5-pixel deadzone on all edges to filter case pressure
         const int TOUCH_DEADZONE = 5;
+        const int touchWidth = dispW();
+        const int touchHeight = dispH();
         
         unsigned long currentTime = millis();
         if (currentTime - lastTouchDebug > 500) {
             char touchMsg[64];
             snprintf(touchMsg, sizeof(touchMsg), "[TOUCH] X=%u Y=%u DZ=%d\n", x, y, TOUCH_DEADZONE);
-            Serial.print(touchMsg);
-            addToDebugBuffer(touchMsg);
+            debugLog("%s", touchMsg);
             lastTouchDebug = currentTime;
         }
         
-        if (x < TOUCH_DEADZONE || x >= 320 - TOUCH_DEADZONE ||
-            y < TOUCH_DEADZONE || y >= 240 - TOUCH_DEADZONE) {
+        if (x < TOUCH_DEADZONE || x >= touchWidth - TOUCH_DEADZONE ||
+            y < TOUCH_DEADZONE || y >= touchHeight - TOUCH_DEADZONE) {
             // Touch is outside valid area - ignore it (but log it occasionally)
             static unsigned long lastDeadzoneLog = 0;
             if (currentTime - lastDeadzoneLog > 2000) {
                 char dzMsg[64];
                 snprintf(dzMsg, sizeof(dzMsg), "[FILTERED] X=%u Y=%u (deadzone)\n", x, y);
-                Serial.print(dzMsg);
-                addToDebugBuffer(dzMsg);
+                debugLog("%s", dzMsg);
                 lastDeadzoneLog = currentTime;
             }
         } else {
@@ -1909,13 +1969,9 @@ void loop()
     static unsigned long lastDebugOutput = 0;
     if (currentTime - lastDebugOutput > 5000) {
         lastDebugOutput = currentTime;
-        char dbgMsg[128];
-        snprintf(dbgMsg, sizeof(dbgMsg), 
-                 "[DEBUG] Temp=%.1f H=%.1f Sleep=%d SleepTime=%lu\n",
-                 currentTemp, currentHumidity, displayIsAsleep, 
+        debugLog("[DEBUG] Temp=%.1f H=%.1f Sleep=%d SleepTime=%lu\n",
+                 currentTemp, currentHumidity, displayIsAsleep,
                  currentTime - lastInteractionTime);
-        Serial.print(dbgMsg);
-        addToDebugBuffer(dbgMsg);
     }
     // Periodic display updates - now called from main loop for thread safety with TFT library
     if (currentTime - lastDisplayUpdateTime > displayUpdateInterval)
@@ -2023,8 +2079,7 @@ void setupWiFi()
         if (WiFi.status() == WL_CONNECTED)
         {
             debugLog("Connected to WiFi\n");
-            debugLog("IP Address: ");
-            Serial.println(WiFi.localIP());
+            debugLog("IP Address: %s\n", WiFi.localIP().toString().c_str());
         }
         else
         {
@@ -2072,8 +2127,7 @@ void handleWiFiConnectionState(unsigned long currentTime)
 
     if (wifiNowConnected && !wifiWasConnected)
     {
-        debugLog("[WIFI] Connected. IP Address: ");
-        Serial.println(WiFi.localIP());
+        debugLog("[WIFI] Connected. IP Address: %s\n", WiFi.localIP().toString().c_str());
 
         if (!timeSyncInitialized) {
             configTime(0, 0, "pool.ntp.org", "time.nist.gov");
@@ -2159,13 +2213,20 @@ void enterWiFiCredentials()
 
 void drawKeyboard(bool isUpperCaseKeyboard)
 {
+    const int keyW = uiScaleX(KEY_WIDTH);
+    const int keyH = uiScaleY(KEY_HEIGHT);
+    const int keySpacingX = uiScaleX(KEY_SPACING);
+    const int keySpacingY = uiScaleY(KEY_SPACING);
+    const int keyOffsetX = uiScaleX(KEYBOARD_X_OFFSET);
+    const int keyOffsetY = uiScaleY(KEYBOARD_Y_OFFSET);
+
     // Clear the entire screen first to prevent any overlapping elements
     tft.fillScreen(COLOR_BACKGROUND);
     
     // Draw header with better styling
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
     tft.setTextSize(2);
-    tft.setCursor(10, 10);
+    tft.setCursor(uiScaleX(10), uiScaleY(10));
     const char* header = "Enter SSID:";
     if (keyboardMode == KB_WIFI_PASS) {
         header = "Enter Password:";
@@ -2175,22 +2236,22 @@ void drawKeyboard(bool isUpperCaseKeyboard)
     tft.println(header);
 
     // Back button to exit to main/settings
-    int backX = 250, backY = 5, backW = 60, backH = 25;
+    int backX = uiScaleX(250), backY = uiScaleY(5), backW = uiScaleX(60), backH = uiScaleY(25);
     tft.fillRect(backX, backY, backW, backH, COLOR_WARNING);
     tft.drawRect(backX, backY, backW, backH, COLOR_TEXT);
     tft.setTextColor(TFT_BLACK, COLOR_WARNING);
     tft.setTextSize(1);
-    tft.setCursor(backX + 10, backY + 9);
+    tft.setCursor(backX + uiScaleX(10), backY + uiScaleY(9));
     tft.print("Back");
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
     tft.setTextSize(2);
     
     // Draw input text area with border
-    tft.drawRect(5, 35, 310, 30, COLOR_TEXT);
-    tft.fillRect(6, 36, 308, 28, COLOR_BACKGROUND);
+    tft.drawRect(uiScaleX(5), uiScaleY(35), uiScaleX(310), uiScaleY(30), COLOR_TEXT);
+    tft.fillRect(uiScaleX(6), uiScaleY(36), uiScaleX(308), uiScaleY(28), COLOR_BACKGROUND);
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
     tft.setTextSize(2);
-    tft.setCursor(10, 42);
+    tft.setCursor(uiScaleX(10), uiScaleY(42));
     tft.println(inputText);
 
     // Select keyboard layout
@@ -2202,8 +2263,8 @@ void drawKeyboard(bool isUpperCaseKeyboard)
     {
         for (int col = 0; col < 10; col++)
         {
-            int x = col * (KEY_WIDTH + KEY_SPACING) + KEYBOARD_X_OFFSET;
-            int y = row * (KEY_HEIGHT + KEY_SPACING) + KEYBOARD_Y_OFFSET;
+            int x = col * (keyW + keySpacingX) + keyOffsetX;
+            int y = row * (keyH + keySpacingY) + keyOffsetY;
             
             // Choose key color based on function
             uint16_t keyColor = COLOR_SECONDARY;
@@ -2221,14 +2282,14 @@ void drawKeyboard(bool isUpperCaseKeyboard)
             }
             
             // Draw key background
-            tft.fillRect(x, y, KEY_WIDTH, KEY_HEIGHT, keyColor);
-            tft.drawRect(x, y, KEY_WIDTH, KEY_HEIGHT, COLOR_TEXT);
+            tft.fillRect(x, y, keyW, keyH, keyColor);
+            tft.drawRect(x, y, keyW, keyH, COLOR_TEXT);
             
             // Draw key label - center the text
             tft.setTextColor(textColor);
             int textWidth = strlen(keyLabel) * 6; // Approximate width
-            int textX = x + (KEY_WIDTH - textWidth) / 2;
-            int textY = y + (KEY_HEIGHT - 8) / 2;
+            int textX = x + (keyW - textWidth) / 2;
+            int textY = y + (keyH - 8) / 2;
             tft.setCursor(textX, textY);
             
             // Special display for space key
@@ -2243,21 +2304,28 @@ void drawKeyboard(bool isUpperCaseKeyboard)
 
 void handleKeyPress(int row, int col)
 {
+    const int keyW = uiScaleX(KEY_WIDTH);
+    const int keyH = uiScaleY(KEY_HEIGHT);
+    const int keySpacingX = uiScaleX(KEY_SPACING);
+    const int keySpacingY = uiScaleY(KEY_SPACING);
+    const int keyOffsetX = uiScaleX(KEYBOARD_X_OFFSET);
+    const int keyOffsetY = uiScaleY(KEYBOARD_Y_OFFSET);
+
     // Get the appropriate keyboard layout
     const char* (*keys)[10] = isUpperCaseKeyboard ? KEYBOARD_UPPER : KEYBOARD_LOWER;
     const char* keyLabel = keys[row][col];
 
     // Provide visual feedback for key press
-    int x = col * (KEY_WIDTH + KEY_SPACING) + KEYBOARD_X_OFFSET;
-    int y = row * (KEY_HEIGHT + KEY_SPACING) + KEYBOARD_Y_OFFSET;
+    int x = col * (keyW + keySpacingX) + keyOffsetX;
+    int y = row * (keyH + keySpacingY) + keyOffsetY;
     
     // Flash the key white briefly for feedback
-    tft.fillRect(x, y, KEY_WIDTH, KEY_HEIGHT, TFT_WHITE);
-    tft.drawRect(x, y, KEY_WIDTH, KEY_HEIGHT, COLOR_TEXT);
+    tft.fillRect(x, y, keyW, keyH, TFT_WHITE);
+    tft.drawRect(x, y, keyW, keyH, COLOR_TEXT);
     tft.setTextColor(TFT_BLACK);
     int textWidth = strlen(keyLabel) * 6;
-    int textX = x + (KEY_WIDTH - textWidth) / 2;
-    int textY = y + (KEY_HEIGHT - 8) / 2;
+    int textX = x + (keyW - textWidth) / 2;
+    int textY = y + (keyH - 8) / 2;
     tft.setCursor(textX, textY);
     tft.setTextSize(1);
     if (strcmp(keyLabel, "SPC") == 0) {
@@ -2344,8 +2412,7 @@ void handleKeyPress(int row, int col)
                     tft.setCursor(30, 130);
                     tft.println("Restarting...");
                     debugLog("Connected to WiFi\n");
-                    debugLog("IP Address: ");
-                    Serial.println(WiFi.localIP());
+                    debugLog("IP Address: %s\n", WiFi.localIP().toString().c_str());
                     delay(2000);
                     ESP.restart();
                 }
@@ -2384,10 +2451,10 @@ void handleKeyPress(int row, int col)
     }
 
     // Update input display
-    tft.fillRect(6, 36, 308, 28, COLOR_BACKGROUND);
+    tft.fillRect(uiScaleX(6), uiScaleY(36), uiScaleX(308), uiScaleY(28), COLOR_BACKGROUND);
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
     tft.setTextSize(2);
-    tft.setCursor(10, 42);
+    tft.setCursor(uiScaleX(10), uiScaleY(42));
     tft.println(inputText);
     
     // Redraw the keyboard to restore normal key colors
@@ -2397,41 +2464,41 @@ void handleKeyPress(int row, int col)
 void drawButtons()
 {
     // Draw the "+" button
-    tft.fillRect(270, 200, 40, 40, COLOR_SUCCESS);
-    tft.setCursor(285, 215);
+    tft.fillRect(uiScaleX(270), uiScaleY(200), uiScaleX(40), uiScaleY(40), COLOR_SUCCESS);
+    tft.setCursor(uiScaleX(285), uiScaleY(215));
     tft.setTextColor(TFT_BLACK);
     tft.setTextSize(2);
     tft.print("+");
 
     // Move the "-" button to the far bottom left corner
-    tft.fillRect(0, 200, 40, 40, COLOR_WARNING);
-    tft.setCursor(15, 215);
+    tft.fillRect(uiScaleX(0), uiScaleY(200), uiScaleX(40), uiScaleY(40), COLOR_WARNING);
+    tft.setCursor(uiScaleX(15), uiScaleY(215));
     tft.setTextColor(TFT_BLACK);
     tft.setTextSize(2);
     tft.print("-");
 
     // Draw the Settings button between minus and mode buttons
-    tft.fillRect(47, 200, 68, 40, COLOR_SECONDARY);
+    tft.fillRect(uiScaleX(47), uiScaleY(200), uiScaleX(68), uiScaleY(40), COLOR_SECONDARY);
     tft.setTextColor(TFT_BLACK);
     tft.setTextSize(1);
     // Center "Settings" text on button (button center x=81, text width ~42px at size 1)
-    tft.setCursor(57, 214);
+    tft.setCursor(uiScaleX(57), uiScaleY(214));
     tft.print("Settings");
 
     // Draw the thermostat mode button
-    tft.fillRect(125, 200, 60, 40, COLOR_PRIMARY);
-    tft.setCursor(130, 208);
+    tft.fillRect(uiScaleX(125), uiScaleY(200), uiScaleX(60), uiScaleY(40), COLOR_PRIMARY);
+    tft.setCursor(uiScaleX(130), uiScaleY(208));
     tft.setTextColor(TFT_BLACK);
     tft.setTextSize(1);
     tft.print("Mode:");
-    tft.setCursor(133, 220);
+    tft.setCursor(uiScaleX(133), uiScaleY(220));
     tft.setTextSize(2);
     tft.print(thermostatMode);
 
     // Draw the fan mode button - make it wider to fit "cycle"
-    tft.fillRect(195, 200, 65, 40, COLOR_ACCENT);
+    tft.fillRect(uiScaleX(195), uiScaleY(200), uiScaleX(65), uiScaleY(40), COLOR_ACCENT);
     
-    tft.setCursor(205, 208);
+    tft.setCursor(uiScaleX(205), uiScaleY(208));
     tft.setTextColor(TFT_BLACK);
     tft.setTextSize(1);
     tft.print("Fan:");
@@ -2446,7 +2513,7 @@ void drawButtons()
         fanTextX = 200;
     }
     
-    tft.setCursor(fanTextX, 220);
+    tft.setCursor(uiScaleX(fanTextX), uiScaleY(220));
     tft.setTextColor(TFT_BLACK);
     tft.setTextSize(2);
     tft.print(fanMode);
@@ -2456,6 +2523,10 @@ void drawButtons()
 
 void handleButtonPress(uint16_t x, uint16_t y)
 {
+    // Convert physical touch coordinates to 320x240 virtual UI space.
+    x = uiUnscaleX(x);
+    y = uiUnscaleY(y);
+
     // Provide immediate audio feedback for touch
     buzzerBeep(50);
     
@@ -2680,12 +2751,8 @@ void reconnectMQTT()
     // Non-blocking approach - only try once per function call
     if (!mqttClient.connected())
     {
-        debugLog("Attempting MQTT connection to server: ");
-        Serial.print(mqttServer);
-        debugLog(" port: ");
-        Serial.print(mqttPort);
-        debugLog(" username: ");
-        Serial.print(mqttUsername);
+        debugLog("Attempting MQTT connection to server: %s port: %d username: %s\n",
+             mqttServer.c_str(), mqttPort, mqttUsername.c_str());
         
         if (mqttClient.connect(hostname.c_str(), mqttUsername.c_str(), mqttPassword.c_str())) {
             debugLog(" - Connected successfully\n");
@@ -2718,9 +2785,7 @@ void reconnectMQTT()
         else
         {
             int mqttState = mqttClient.state();
-            debugLog(" - Connection failed, rc=");
-            Serial.print(mqttState);
-            debugLog(" (");
+            debugLog(" - Connection failed, rc=%d (", mqttState);
             
             // Provide human-readable error messages
             switch(mqttState) {
@@ -2737,10 +2802,7 @@ void reconnectMQTT()
             }
             
             debugLog(")\n");
-            debugLog("Server: ");
-            Serial.print(mqttServer);
-            debugLog(", Port: ");
-            Serial.println(mqttPort);
+            debugLog("Server: %s, Port: %d\n", mqttServer.c_str(), mqttPort);
         }
     }
 }
@@ -2801,8 +2863,7 @@ void publishHomeAssistantDiscovery()
         mqttClient.publish(availabilityTopic.c_str(), "online", true);
 
         // Debug log for payload
-        debugLog("Published Home Assistant discovery payload:\n");
-        Serial.println(buffer);
+        debugLog("Published Home Assistant discovery payload:\n%s\n", buffer);
 
         // Publish motion sensor discovery if LD2410 is connected
         if (ld2410Connected) {
@@ -3175,10 +3236,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
         message += (char)payload[i];
     }
 
-    debugLog("Message arrived [");
-    Serial.print(topic);
-    debugLog("] ");
-    Serial.println(message);
+    debugLog("Message arrived [%s] %s\n", topic, message.c_str());
 
     // Set flag to indicate we're handling an MQTT message to prevent publish loops
     handlingMQTTMessage = true;
@@ -3199,8 +3257,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
         if (message != thermostatMode)
         {
             thermostatMode = message;
-            debugLog("Updated thermostat mode to: ");
-            Serial.println(thermostatMode);
+            debugLog("Updated thermostat mode to: %s\n", thermostatMode.c_str());
             settingsNeedSaving = true;
             controlRelays(currentTemp); // Apply changes to relays
             setDisplayUpdateFlag(); // Option C: Request display update
@@ -3211,8 +3268,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
         if (message != fanMode)
         {
             fanMode = message;
-            debugLog("Updated fan mode to: ");
-            Serial.println(fanMode);
+            debugLog("Updated fan mode to: %s\n", fanMode.c_str());
             settingsNeedSaving = true;
             controlRelays(currentTemp); // Apply changes to relays
         }
@@ -3224,24 +3280,21 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
         if (thermostatMode == "heat" && newTargetTemp != setTempHeat)
         {
             setTempHeat = newTargetTemp;
-            debugLog("Updated heating target temperature to: ");
-            Serial.println(setTempHeat);
+            debugLog("Updated heating target temperature to: %.1f\n", setTempHeat);
             settingsNeedSaving = true;
             tempChanged = true;
         }
         else if (thermostatMode == "cool" && newTargetTemp != setTempCool)
         {
             setTempCool = newTargetTemp;
-            debugLog("Updated cooling target temperature to: ");
-            Serial.println(setTempCool);
+            debugLog("Updated cooling target temperature to: %.1f\n", setTempCool);
             settingsNeedSaving = true;
             tempChanged = true;
         }
         else if (thermostatMode == "auto" && newTargetTemp != setTempAuto)
         {
             setTempAuto = newTargetTemp;
-            debugLog("Updated auto target temperature to: ");
-            Serial.println(setTempAuto);
+            debugLog("Updated auto target temperature to: %.1f\n", setTempAuto);
             settingsNeedSaving = true;
             tempChanged = true;
         }
@@ -3988,6 +4041,8 @@ void controlRelays(float currentTemp)
                     debugLog("[HVAC] HEAT DEACTIVATED: %.1f >= %.1f (setpoint)\n", 
                              currentTemp, setTempHeat);
                 }
+                // Called unconditionally even if already off — re-asserts relay pin states
+                // every cycle as a safety net to prevent relays from getting stuck ON
                 turnOffAllRelays();
             }
             // Otherwise maintain current state (hysteresis band)
@@ -4029,6 +4084,8 @@ void controlRelays(float currentTemp)
                 debugLog("[HVAC] COOL DEACTIVATED: %.1f < %.1f (setpoint)\n", 
                          currentTemp, setTempCool);
             }
+            // Called unconditionally even if already off — re-asserts relay pin states
+            // every cycle as a safety net to prevent relays from getting stuck ON
             turnOffAllRelays();
         }
         // Otherwise maintain current state (hysteresis band between setpoint and setpoint+swing)
@@ -4066,6 +4123,8 @@ void controlRelays(float currentTemp)
                 debugLog("Auto mode temperature in deadband, turning off: %.1f is between %.1f and %.1f\n", 
                              currentTemp, (setTempAuto - autoTempSwing), (setTempAuto + autoTempSwing));
             }
+            // Called unconditionally even if already off — re-asserts relay pin states
+            // every cycle as a safety net to prevent relays from getting stuck ON
             turnOffAllRelays();
         }
     }
@@ -4174,8 +4233,10 @@ void turnOffAllRelays()
     
     debugLog("[DEBUG] turnOffAllRelays() COMPLETE: heatingOn=%d, coolingOn=%d, fanOn=%d, fanMode=%s\n", 
                  heatingOn, coolingOn, fanOn, fanMode.c_str());
-    updateStatusLEDs(); // Update LED status
-    setDisplayUpdateFlag(); // Option C: Request display update
+    // Always update LEDs and display even if state didn't change — keeps display and
+    // hardware in sync and ensures any drift is corrected every control cycle
+    updateStatusLEDs();
+    setDisplayUpdateFlag();
 }
 
 void activateHeating() {
@@ -5197,28 +5258,40 @@ void handleWebRequests()
     server.on("/api/debug", HTTP_GET, [](AsyncWebServerRequest *request) {
         String logOutput = getDebugLog();
         
-        // Manually build JSON to avoid DynamicJsonDocument capacity overflow
-        // when log content exceeds the document pool size (was causing empty responses)
-        String json;
-        json.reserve(logOutput.length() + 12);
-        json = "{\"log\":\"";
+        // Stream JSON directly to avoid malformed responses from large concatenated
+        // strings or partial escape sequences when logs get long.
+        AsyncResponseStream *response = request->beginResponseStream("application/json");
+        response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        response->addHeader("Pragma", "no-cache");
+        response->addHeader("Expires", "0");
+        response->print("{\"log\":\"");
         for (size_t i = 0; i < (size_t)logOutput.length(); i++) {
             char c = logOutput.charAt(i);
-            if      (c == '"')  json += "\\\"";
-            else if (c == '\\') json += "\\\\";
-            else if (c == '\n') json += "\\n";
-            else if (c == '\r') json += "\\r";
-            else if (c == '\t') json += "\\t";
-            else                json += c;
+            if      (c == '"')  response->print("\\\"");
+            else if (c == '\\') response->print("\\\\");
+            else if (c == '\n') response->print("\\n");
+            else if (c == '\r') response->print("\\r");
+            else if (c == '\t') response->print("\\t");
+            else if ((unsigned char)c < 0x20) {
+                char esc[7];
+                snprintf(esc, sizeof(esc), "\\u%04X", (unsigned char)c);
+                response->print(esc);
+            } else {
+                response->write((const uint8_t*)&c, 1);
+            }
         }
-        json += "\"}";
-        request->send(200, "application/json", json);
+        response->print("\"}");
+        request->send(response);
     });
     
     // Debug plain text endpoint (simpler, easier to debug)
     server.on("/api/debug/plain", HTTP_GET, [](AsyncWebServerRequest *request) {
         String logOutput = getDebugLog();
-        request->send(200, "text/plain", logOutput);
+        AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", logOutput);
+        response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        response->addHeader("Pragma", "no-cache");
+        response->addHeader("Expires", "0");
+        request->send(response);
     });
     
     // Debug HTML page
@@ -5230,7 +5303,7 @@ void handleWebRequests()
         html += "body { font-family: monospace; background: #1e1e1e; color: #00ff00; margin: 0; padding: 10px; }";
         html += ".container { max-width: 1200px; margin: 0 auto; }";
         html += "h1 { color: #0099ff; }";
-        html += "#log { background: #000; padding: 10px; border: 1px solid #333; height: 600px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; font-size: 12px; }";
+        html += "#log { background: #000; padding: 10px; border: 1px solid #333; height: 600px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; font-size: 12px; margin: 0; }";
         html += ".controls { margin: 10px 0; }";
         html += "button { padding: 8px 16px; background: #0099ff; color: #000; border: none; cursor: pointer; border-radius: 4px; margin-right: 10px; }";
         html += "button:hover { background: #00cc00; }";
@@ -5242,7 +5315,7 @@ void handleWebRequests()
         html += "<button onclick=\"toggleAutoRefresh()\">Auto Refresh: ON</button>";
         html += "<span class=\"refresh-rate\">Refresh every <input type=\"number\" id=\"refreshInterval\" value=\"1\" min=\"0.5\" max=\"10\" step=\"0.5\" style=\"width: 50px;\"> sec</span>";
         html += "</div>";
-        html += "<div id=\"log\">Waiting for data...</div></div>";
+        html += "<pre id=\"log\">Waiting for data...</pre></div>";
         html += "<script>";
         html += "let autoRefresh = true;";
         html += "let refreshInterval = 1000;";
@@ -5251,18 +5324,36 @@ void handleWebRequests()
         html += "  event.target.textContent = 'Auto Refresh: ' + (autoRefresh ? 'ON' : 'OFF');";
         html += "  if (autoRefresh) startAutoRefresh();";
         html += "}";
+        html += "function normalizeLogPayload(text) {";
+        html += "  if (!text) return '';";
+        html += "  const trimmed = text.trim();";
+        html += "  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {";
+        html += "    try {";
+        html += "      const parsed = JSON.parse(trimmed);";
+        html += "      if (parsed && typeof parsed.log === 'string') return parsed.log;";
+        html += "    } catch (e) {}";
+        html += "  }";
+        html += "  if (trimmed.startsWith('\\\"') && trimmed.endsWith('\\\"')) {";
+        html += "    try { return JSON.parse(trimmed); } catch (e) {}";
+        html += "  }";
+        html += "  if (text.indexOf('\\\\n') !== -1 || text.indexOf('\\\\r') !== -1 || text.indexOf('\\\\t') !== -1) {";
+        html += "    return text.replace(/\\\\r\\\\n/g, '\\n').replace(/\\\\n/g, '\\n').replace(/\\\\r/g, '\\r').replace(/\\\\t/g, '\\t');";
+        html += "  }";
+        html += "  return text;";
+        html += "}";
         html += "function refreshLog() {";
-        html += "  fetch('/api/debug')";
+        html += "  fetch('/api/debug/plain?ts=' + Date.now(), { cache: 'no-store' })";
         html += "    .then(r => {";
         html += "      if (!r.ok) throw new Error('HTTP ' + r.status);";
-        html += "      return r.json();";
+        html += "      return r.text();";
         html += "    })";
-        html += "    .then(data => {";
+        html += "    .then(text => {";
         html += "      const logDiv = document.getElementById('log');";
-        html += "      if (!data.log || data.log.length === 0) {";
+        html += "      const normalized = normalizeLogPayload(text);";
+        html += "      if (!normalized || normalized.length === 0) {";
         html += "        logDiv.textContent = '[WAITING] No debug output yet. System just started?';";
         html += "      } else {";
-        html += "        logDiv.textContent = data.log;";
+        html += "        logDiv.textContent = normalized;";
         html += "      }";
         html += "      logDiv.scrollTop = logDiv.scrollHeight;";
         html += "    })";
@@ -5289,12 +5380,25 @@ void handleWebRequests()
         html += "startAutoRefresh();";
         html += "</script>";
         html += "</body></html>";
-        request->send(200, "text/html", html);
+        AsyncWebServerResponse *response = request->beginResponse(200, "text/html", html);
+        response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        response->addHeader("Pragma", "no-cache");
+        response->addHeader("Expires", "0");
+        request->send(response);
     });
 }
 
 void updateDisplay(float currentTemp, float currentHumidity)
 {
+    auto sx = [](int v) { return uiScaleX(v); };
+    auto sy = [](int v) { return uiScaleY(v); };
+    const bool wideDisplay = (dispW() > 320);
+    // Right sidebar anchor positions. Keep 320x240 layout unchanged.
+    // On 4" displays, use a true right column near the edge.
+    const int rightValueX = wideDisplay ? 362 : sx(220);
+    const int rightLabelX = wideDisplay ? 350 : sx(208);
+    const int rightColW = wideDisplay ? 110 : sx(100);
+
     // Skip display updates when asleep to prevent flickering
     if (displayIsAsleep) {
         return;
@@ -5422,7 +5526,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
         lastWiFiRSSI = currentWiFiRSSI;
         
         // Clear WiFi indicator area (nudged ~10px right, slightly narrower to stay on-screen)
-        tft.fillRect(290, 0, 30, 25, COLOR_BACKGROUND);
+        tft.fillRect(sx(290), sy(0), sx(30), sy(25), COLOR_BACKGROUND);
         
         if (currentWiFiStatus == WL_CONNECTED) {
             // Draw WiFi signal strength bars (0-4 bars based on RSSI)
@@ -5438,14 +5542,14 @@ void updateDisplay(float currentTemp, float currentHumidity)
             tft.setTextColor(COLOR_SUCCESS, COLOR_BACKGROUND);
             
             // Draw filled bars based on signal strength
-            int barX = 295;
-            int barY = 5;
-            int barWidth = 2;
-            int barSpacing = 3;
+            int barX = sx(295);
+            int barY = sy(5);
+            int barWidth = sx(2);
+            int barSpacing = sx(3);
             
             for (int i = 0; i < 4; i++) {
-                int barHeight = 2 + (i * 3); // Progressive heights: 2, 5, 8, 11
-                int y = barY + (12 - barHeight); // Bottom-aligned
+                int barHeight = sy(2 + (i * 3)); // Progressive heights: 2, 5, 8, 11
+                int y = barY + (sy(12) - barHeight); // Bottom-aligned
                 
                 if (i < bars) {
                     // Draw filled bar
@@ -5459,7 +5563,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
             // Draw X for no WiFi
             tft.setTextColor(COLOR_WARNING, COLOR_BACKGROUND);
             tft.setTextSize(2);
-            tft.setCursor(295, 3);
+            tft.setCursor(sx(295), sy(3));
             tft.print("X");
         }
     }
@@ -5471,11 +5575,10 @@ void updateDisplay(float currentTemp, float currentHumidity)
         // Background color in setTextColor will clear as it writes
         tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
         tft.setTextSize(2); // Increase right-side readout visibility
-        tft.setRotation(1); // Set rotation for vertical display
         
         // Setpoint at y=30 with wider clear area for larger text
-        tft.fillRect(220, 30, 100, 16, COLOR_BACKGROUND); // clear full row before redraw
-        tft.setCursor(220, 30);
+        tft.fillRect(rightLabelX, sy(30), sx(112), sy(16), COLOR_BACKGROUND); // clear full row before redraw
+        tft.setCursor(rightLabelX, sy(30));
         tft.print("Set:");
         char setpointStr[6];
         dtostrf(currentSetTemp, 4, 1, setpointStr); // Convert setpoint to string with 1 decimal place
@@ -5483,8 +5586,8 @@ void updateDisplay(float currentTemp, float currentHumidity)
         tft.print(useFahrenheit ? "F" : "C");
 
         // Humidity (even spacing from top temperature row)
-        tft.fillRect(220, 54, 100, 16, COLOR_BACKGROUND);
-        tft.setCursor(220, 54);
+        tft.fillRect(rightValueX, sy(54), rightColW, sy(16), COLOR_BACKGROUND);
+        tft.setCursor(rightValueX, sy(54));
         char humidityStr[6];
         dtostrf(currentHumidity, 4, 1, humidityStr); // Convert humidity to string with 1 decimal place
         tft.print(humidityStr);
@@ -5492,8 +5595,8 @@ void updateDisplay(float currentTemp, float currentHumidity)
         
         // Display pressure if BME280/BME680 sensor is active (convert hPa to inHg: divide by 33.8639)
         if ((activeSensor == SENSOR_BME280 || activeSensor == SENSOR_BME680) && !isnan(currentPressure)) {
-            tft.fillRect(220, 78, 100, 16, COLOR_BACKGROUND);
-            tft.setCursor(220, 78); // Pressure (even spacing)
+            tft.fillRect(rightValueX, sy(78), rightColW, sy(16), COLOR_BACKGROUND);
+            tft.setCursor(rightValueX, sy(78)); // Pressure (even spacing)
             float pressureInHg = currentPressure / 33.8639; // Convert hPa to inHg
             char pressureStr[7];
             dtostrf(pressureInHg, 4, 2, pressureStr); // Format as "XX.XX"
@@ -5501,19 +5604,19 @@ void updateDisplay(float currentTemp, float currentHumidity)
             tft.print("in");
         } else {
             // Clear pressure area if not BME280/BME680 or invalid
-            tft.fillRect(220, 78, 100, 16, COLOR_BACKGROUND);
+            tft.fillRect(rightValueX, sy(78), rightColW, sy(16), COLOR_BACKGROUND);
         }
         
         // Display air quality if BME680 sensor is active
         if (activeSensor == SENSOR_BME680) {
-            tft.fillRect(220, 102, 100, 16, COLOR_BACKGROUND);
-            tft.setCursor(220, 102); // Air quality (even spacing)
+            tft.fillRect(rightValueX, sy(102), rightColW, sy(16), COLOR_BACKGROUND);
+            tft.setCursor(rightValueX, sy(102)); // Air quality (even spacing)
             int aqScore = (int)currentAirQuality;
             tft.print("AQ:");
             tft.print(aqScore);
         } else {
             // Clear air quality area if not BME680
-            tft.fillRect(220, 102, 100, 16, COLOR_BACKGROUND);
+            tft.fillRect(rightValueX, sy(102), rightColW, sy(16), COLOR_BACKGROUND);
         }
 
         // Update previous values
@@ -5532,12 +5635,12 @@ void updateDisplay(float currentTemp, float currentHumidity)
         if (hydronicHeatingEnabled) {
             if (hydronicTemp != previousHydronicTemp || hydronicReturnTemp != previousHydronicReturnTemp || !prevHydronicDisplayState) {
                 // Clear hydronic area (two lines) - use 100px to ensure full clear
-                tft.fillRect(220, 110, 100, 36, COLOR_BACKGROUND);
+                tft.fillRect(rightValueX, sy(110), rightColW, sy(36), COLOR_BACKGROUND);
                 tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
                 tft.setTextSize(2);
 
                 // Always show SUP slot when enabled, even if sensor missing
-                tft.setCursor(220, 110);
+                tft.setCursor(rightValueX, sy(110));
                 if (ds18b20SensorPresent) {
                     char hydronicTempStr[6];
                     dtostrf(hydronicTemp, 4, 1, hydronicTempStr);
@@ -5549,7 +5652,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
                 }
 
                 if (ds18b20ReturnSensorPresent) {
-                    tft.setCursor(220, 130);
+                    tft.setCursor(rightValueX, sy(130));
                     char hydronicReturnStr[6];
                     dtostrf(hydronicReturnTemp, 4, 1, hydronicReturnStr);
                     tft.print("R:");
@@ -5564,7 +5667,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
         } 
         else if (prevHydronicDisplayState) {
             // If hydronic heating is disabled, clear the DS18B20 display area (use 100px to ensure full clear)
-            tft.fillRect(220, 110, 100, 36, COLOR_BACKGROUND);
+            tft.fillRect(rightValueX, sy(110), rightColW, sy(36), COLOR_BACKGROUND);
             prevHydronicDisplayState = false;
         }    // Display hydronic lockout warning if active
     static bool prevHydronicLockoutDisplay = false;
@@ -5575,16 +5678,16 @@ void updateDisplay(float currentTemp, float currentHumidity)
     if (showHydronicLockoutBanner) {
         if (!prevHydronicLockoutDisplay) {
             // Show lockout warning above setpoint area (keeps weather and status indicators unobstructed)
-            tft.fillRect(40, 72, 170, 20, COLOR_WARNING);
+            tft.fillRect(sx(40), sy(72), sx(170), sy(20), COLOR_WARNING);
             tft.setTextColor(TFT_BLACK, COLOR_WARNING);
             tft.setTextSize(1);
-            tft.setCursor(66, 78);
+            tft.setCursor(sx(66), sy(78));
             tft.print("BOILER LOCKOUT");
             prevHydronicLockoutDisplay = true;
         }
     } else if (prevHydronicLockoutDisplay) {
         // Clear lockout warning
-        tft.fillRect(40, 72, 170, 20, COLOR_BACKGROUND);
+        tft.fillRect(sx(40), sy(72), sx(170), sy(20), COLOR_BACKGROUND);
         prevHydronicLockoutDisplay = false;
     }
 
@@ -5595,10 +5698,10 @@ void updateDisplay(float currentTemp, float currentHumidity)
         float mainDisplayTemp = showSetTempNow ? currentSetTemp : currentTemp;
 
         if ((mainDisplayTemp != previousMainDisplayTemp || showSetTempNow != previousMainShowSetTemp || fullRefreshTriggered) && !showerModeActive) {
-            tft.fillRect(40, 95, 165, 50, COLOR_BACKGROUND);
+            tft.fillRect(sx(40), sy(95), sx(165), sy(60), COLOR_BACKGROUND);
             tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
-            tft.setTextSize(4);
-            tft.setCursor(40, 100);
+            tft.setTextSize((dispW() > 320) ? 5 : 4);
+            tft.setCursor(sx(40), sy(100));
             char tempStr[6];
             dtostrf(mainDisplayTemp, 4, 1, tempStr);
             tft.print(tempStr);
@@ -5608,15 +5711,15 @@ void updateDisplay(float currentTemp, float currentHumidity)
                 if (thermostatMode == "heat") setLabelColor = TFT_RED;
                 else if (thermostatMode == "cool") setLabelColor = COLOR_PRIMARY;
                 tft.setTextColor(setLabelColor, COLOR_BACKGROUND);
-                tft.setTextSize(2);
-                tft.setCursor(40, 134);
+                tft.setTextSize((dispW() > 320) ? 3 : 2);
+                tft.setCursor(sx(40), sy(134));
                 tft.print("Set Temp");
             }
             previousMainDisplayTemp = mainDisplayTemp;
             previousMainShowSetTemp = showSetTempNow;
         } else if (showerModeActive) {
             // Clear main temp area when shower mode takes over this region
-            tft.fillRect(40, 95, 165, 50, COLOR_BACKGROUND);
+            tft.fillRect(sx(40), sy(95), sx(165), sy(50), COLOR_BACKGROUND);
         }
 
         previousSetTemp = currentSetTemp;
@@ -5634,11 +5737,11 @@ void updateDisplay(float currentTemp, float currentHumidity)
             // Only update display if seconds changed
             if (!prevShowerMode || secondsRemaining != prevSecondsRemaining) {
                 // Clear the area (stop before pressure sensor at x=230 and hydronic at y=120)
-                tft.fillRect(0, 85, 225, 50, COLOR_BACKGROUND);
+                tft.fillRect(sx(0), sy(85), sx(225), sy(50), COLOR_BACKGROUND);
                 
                 tft.setTextColor(TFT_ORANGE, COLOR_BACKGROUND);
-                tft.setTextSize(2);
-                tft.setCursor(5, 90);
+                tft.setTextSize((dispW() > 320) ? 3 : 2);
+                tft.setCursor(sx(5), sy(90));
                 tft.print("SHOWER MODE");
                 
                 // Format as "ON for X min Y sec" on next line
@@ -5646,7 +5749,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
                 int seconds = secondsRemaining % 60;
                 char timerStr[30];
                 snprintf(timerStr, sizeof(timerStr), "ON for %d m %d s", minutes, seconds);
-                tft.setCursor(5, 115);
+                tft.setCursor(sx(5), sy(115));
                 tft.print(timerStr);
                 
                 prevShowerMode = true;
@@ -5654,7 +5757,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
             }
         } else if (prevShowerMode) {
             // Clear shower timer when exiting shower mode and restore setpoint display
-            tft.fillRect(0, 85, 225, 50, COLOR_BACKGROUND);
+            tft.fillRect(sx(0), sy(85), sx(225), sy(50), COLOR_BACKGROUND);
             prevShowerMode = false;
             prevSecondsRemaining = -1;
             previousMainDisplayTemp = NAN; // Force redraw of main temperature on next update
@@ -5663,7 +5766,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
     else
     {
         // Clear the set temperature area if mode is "off" (limit width to not overlap sensor readings at x=230)
-        tft.fillRect(40, 100, 165, 40, COLOR_BACKGROUND);
+        tft.fillRect(sx(40), sy(100), sx(165), sy(40), COLOR_BACKGROUND);
     }
 
     // Add status indicators for heating, cooling, and fan
@@ -5683,22 +5786,22 @@ void updateDisplay(float currentTemp, float currentHumidity)
     if (heatActive != prevHeatingStatus || coolActive != prevCoolingStatus || fanActive != prevFanStatus || backupHeatDisplayActive != prevBackupHeatStatus)
     {
         // Clear the status indicator area - make sure to clear the full area where indicators are drawn
-        tft.fillRect(0, 145, 320, 35, COLOR_BACKGROUND);
+        tft.fillRect(sx(0), sy(145), sx(320), sy(35), COLOR_BACKGROUND);
         
         // Draw heat indicator if heating is on
         if (heatActive)
         {
-            tft.fillRoundRect(10, 145, 90, 30, 5, COLOR_WARNING);
+            tft.fillRoundRect(sx(10), sy(145), sx(90), sy(30), sx(5), COLOR_WARNING);
             tft.setTextColor(TFT_BLACK);
             if (backupHeatDisplayActive) {
                 tft.setTextSize(1);
-                tft.setCursor(29, 149);
+                tft.setCursor(sx(29), sy(149));
                 tft.print("BACKUP");
-                tft.setCursor(25, 160);
+                tft.setCursor(sx(25), sy(160));
                 tft.print("HEATING");
             } else {
                 tft.setTextSize(2);
-                tft.setCursor(15, 152);
+                tft.setCursor(sx(15), sy(152));
                 tft.print("HEATING");
             }
         }
@@ -5706,20 +5809,20 @@ void updateDisplay(float currentTemp, float currentHumidity)
         // Draw cool indicator if cooling is on (same position as heating)
         if (coolActive)
         {
-            tft.fillRoundRect(10, 145, 90, 30, 5, COLOR_PRIMARY);
+            tft.fillRoundRect(sx(10), sy(145), sx(90), sy(30), sx(5), COLOR_PRIMARY);
             tft.setTextColor(TFT_BLACK);
             tft.setTextSize(2);
-            tft.setCursor(15, 152);
+            tft.setCursor(sx(15), sy(152));
             tft.print("COOLING");
         }
         
         // Draw fan indicator if fan is on (moved to old cooling position)
         if (fanActive)
         {
-            tft.fillRoundRect(115, 145, 90, 30, 5, COLOR_ACCENT);
+            tft.fillRoundRect(sx(115), sy(145), sx(90), sy(30), sx(5), COLOR_ACCENT);
             tft.setTextColor(TFT_BLACK);
             tft.setTextSize(2);
-            tft.setCursor(140, 152);
+            tft.setCursor(sx(140), sy(152));
             tft.print("FAN");
         }
         
@@ -5859,116 +5962,159 @@ void saveSettings()
 
 void loadSettings()
 {
-    setTempHeat = preferences.getFloat("setHeat", 72.0);
-    setTempCool = preferences.getFloat("setCool", 76.0);
-    setTempAuto = preferences.getFloat("setAuto", 74.0);
-    tempSwing = preferences.getFloat("swing", 1.0);
-    autoTempSwing = preferences.getFloat("autoSwing", 1.5);
-    fanRelayNeeded = preferences.getBool("fanRelay", false);
-    useFahrenheit = preferences.getBool("useF", true);
-    mqttEnabled = preferences.getBool("mqttEn", false);
-    fanMinutesPerHour = preferences.getInt("fanMinHr", 15);
-    mqttServer = preferences.getString("mqttSrv", "0.0.0.0");
-    mqttPort = preferences.getInt("mqttPrt", 1883);
-    mqttUsername = preferences.getString("mqttUsr", "mqtt");
-    mqttPassword = preferences.getString("mqttPwd", "password");
-    wifiSSID = preferences.getString("wifiSSID", "");
-    wifiPassword = preferences.getString("wifiPassword", "");
-    thermostatMode = preferences.getString("thermoMd", "off");
-    fanMode = preferences.getString("fanMd", "auto");
+    auto getOrInitFloat = [&](const char* key, float def) -> float {
+        if (!preferences.isKey(key)) {
+            preferences.putFloat(key, def);
+            return def;
+        }
+        return preferences.getFloat(key, def);
+    };
+    auto getOrInitBool = [&](const char* key, bool def) -> bool {
+        if (!preferences.isKey(key)) {
+            preferences.putBool(key, def);
+            return def;
+        }
+        return preferences.getBool(key, def);
+    };
+    auto getOrInitInt = [&](const char* key, int def) -> int {
+        if (!preferences.isKey(key)) {
+            preferences.putInt(key, def);
+            return def;
+        }
+        return preferences.getInt(key, def);
+    };
+    auto getOrInitUInt = [&](const char* key, unsigned int def) -> unsigned int {
+        if (!preferences.isKey(key)) {
+            preferences.putUInt(key, def);
+            return def;
+        }
+        return preferences.getUInt(key, def);
+    };
+    auto getOrInitULong = [&](const char* key, unsigned long def) -> unsigned long {
+        if (!preferences.isKey(key)) {
+            preferences.putULong(key, def);
+            return def;
+        }
+        return preferences.getULong(key, def);
+    };
+    auto getOrInitString = [&](const char* key, const char* def) -> String {
+        if (!preferences.isKey(key)) {
+            preferences.putString(key, def);
+            return String(def);
+        }
+        return preferences.getString(key, def);
+    };
+
+    setTempHeat = getOrInitFloat("setHeat", 72.0);
+    setTempCool = getOrInitFloat("setCool", 76.0);
+    setTempAuto = getOrInitFloat("setAuto", 74.0);
+    tempSwing = getOrInitFloat("swing", 1.0);
+    autoTempSwing = getOrInitFloat("autoSwing", 1.5);
+    fanRelayNeeded = getOrInitBool("fanRelay", false);
+    useFahrenheit = getOrInitBool("useF", true);
+    mqttEnabled = getOrInitBool("mqttEn", false);
+    fanMinutesPerHour = getOrInitInt("fanMinHr", 15);
+    mqttServer = getOrInitString("mqttSrv", "0.0.0.0");
+    mqttPort = getOrInitInt("mqttPrt", 1883);
+    mqttUsername = getOrInitString("mqttUsr", "mqtt");
+    mqttPassword = getOrInitString("mqttPwd", "password");
+    wifiSSID = getOrInitString("wifiSSID", "");
+    wifiPassword = getOrInitString("wifiPassword", "");
+    thermostatMode = getOrInitString("thermoMd", "off");
+    fanMode = getOrInitString("fanMd", "auto");
     
     // Initialize lastFanRunTime to skip the first fan cycle on boot
     // Set it as if the fan already ran its cycle (fanMinutesPerHour minutes ago)
     lastFanRunTime = millis() - (fanMinutesPerHour * 60UL * 1000UL);
     
-    timeZone = preferences.getString("tz", "CST6CDT,M3.2.0,M11.1.0");
-    use24HourClock = preferences.getBool("use24Clk", true);
-    hydronicHeatingEnabled = preferences.getBool("hydHeat", false);
-    hydronicTempLow = preferences.getFloat("hydLow", 110.0);
-    hydronicTempHigh = preferences.getFloat("hydHigh", 130.0);
-    hydronicLowTempAlertSent = preferences.getBool("hydAlertSent", false);
-    hostname = preferences.getString("host", DEFAULT_HOSTNAME);
-    stage1MinRuntime = preferences.getUInt("stg1MnRun", 300);
-    stage2TempDelta = preferences.getFloat("stg2Delta", 2.0);
-    stage2HeatingEnabled = preferences.getBool("stg2HeatEn", false);
-    stage2CoolingEnabled = preferences.getBool("stg2CoolEn", false);
-    reversingValveEnabled = preferences.getBool("revValve", false);
-    backupHeatEnabled = preferences.getBool("bkHeatEn", false);
-    backupHeatRelaySelection = constrain(preferences.getInt("bkHeatRl", 0), 0, 2);
-    backupHeatDelayMinutes = constrain(preferences.getInt("bkHeatDly", 30), 5, 180);
-    backupHeatMinTempRise = constrain(preferences.getFloat("bkHeatRise", 0.5f), 0.1f, 5.0f);
-    backupHeatMaxTempDrop = constrain(preferences.getFloat("bkHeatDrop", 1.5f), 0.1f, 10.0f);
+    timeZone = getOrInitString("tz", "CST6CDT,M3.2.0,M11.1.0");
+    use24HourClock = getOrInitBool("use24Clk", true);
+    hydronicHeatingEnabled = getOrInitBool("hydHeat", false);
+    hydronicTempLow = getOrInitFloat("hydLow", 110.0);
+    hydronicTempHigh = getOrInitFloat("hydHigh", 130.0);
+    hydronicLowTempAlertSent = getOrInitBool("hydAlertSent", false);
+    hostname = getOrInitString("host", DEFAULT_HOSTNAME);
+    stage1MinRuntime = getOrInitUInt("stg1MnRun", 300);
+    stage2TempDelta = getOrInitFloat("stg2Delta", 2.0);
+    stage2HeatingEnabled = getOrInitBool("stg2HeatEn", false);
+    stage2CoolingEnabled = getOrInitBool("stg2CoolEn", false);
+    reversingValveEnabled = getOrInitBool("revValve", false);
+    backupHeatEnabled = getOrInitBool("bkHeatEn", false);
+    backupHeatRelaySelection = constrain(getOrInitInt("bkHeatRl", 0), 0, 2);
+    backupHeatDelayMinutes = constrain(getOrInitInt("bkHeatDly", 30), 5, 180);
+    backupHeatMinTempRise = constrain(getOrInitFloat("bkHeatRise", 0.5f), 0.1f, 5.0f);
+    backupHeatMaxTempDrop = constrain(getOrInitFloat("bkHeatDrop", 1.5f), 0.1f, 10.0f);
     enforceBackupHeatRelayConflicts();
-    tempOffset = preferences.getFloat("tempOffset", -4.0);
-    humidityOffset = preferences.getFloat("humOffset", 0.0);
-    displaySleepEnabled = preferences.getBool("dispSleepEn", false);
-    displaySleepTimeout = preferences.getULong("dispTimeout", 300000); // Default 5 minutes
-    currentBrightness = preferences.getInt("brightness", 130);
+    tempOffset = getOrInitFloat("tempOffset", -4.0);
+    humidityOffset = getOrInitFloat("humOffset", 0.0);
+    displaySleepEnabled = getOrInitBool("dispSleepEn", false);
+    displaySleepTimeout = getOrInitULong("dispTimeout", 300000); // Default 5 minutes
+    currentBrightness = getOrInitInt("brightness", 130);
     currentBrightness = constrain(currentBrightness, MIN_BRIGHTNESS, MAX_BRIGHTNESS);
-    ldrDimmingEnabled = preferences.getBool("ldrDimEn", false);
+    ldrDimmingEnabled = getOrInitBool("ldrDimEn", false);
     
     // Load weather settings
-    weatherSource = preferences.getInt("weatherSrc", 0);
-    owmApiKey = preferences.getString("owmApiKey", "");
-    owmCity = preferences.getString("owmCity", "");
-    owmState = preferences.getString("owmState", "");
-    owmCountry = preferences.getString("owmCountry", "");
-    haUrl = preferences.getString("haUrl", "");
-    haToken = preferences.getString("haToken", "");
-    haEntityId = preferences.getString("haEntityId", "");
-    weatherUpdateInterval = preferences.getInt("weatherInt", 10);
-    showerModeEnabled = preferences.getBool("showerEn", false);
-    showerModeDuration = preferences.getInt("showerDur", 30);
+    weatherSource = getOrInitInt("weatherSrc", 0);
+    owmApiKey = getOrInitString("owmApiKey", "");
+    owmCity = getOrInitString("owmCity", "");
+    owmState = getOrInitString("owmState", "");
+    owmCountry = getOrInitString("owmCountry", "");
+    haUrl = getOrInitString("haUrl", "");
+    haToken = getOrInitString("haToken", "");
+    haEntityId = getOrInitString("haEntityId", "");
+    weatherUpdateInterval = getOrInitInt("weatherInt", 10);
+    showerModeEnabled = getOrInitBool("showerEn", false);
+    showerModeDuration = getOrInitInt("showerDur", 30);
     
     // Debug print to confirm settings are loaded
     debugLog("Loading settings:\n");
-    debugLog("setTempHeat: "); Serial.println(setTempHeat);
-    debugLog("setTempCool: "); Serial.println(setTempCool);
-    debugLog("setTempAuto: "); Serial.println(setTempAuto);
-    debugLog("tempSwing: "); Serial.println(tempSwing);
-    debugLog("autoTempSwing: "); Serial.println(autoTempSwing);
-    debugLog("fanRelayNeeded: "); Serial.println(fanRelayNeeded);
-    debugLog("useFahrenheit: "); Serial.println(useFahrenheit);
-    debugLog("mqttEnabled: "); Serial.println(mqttEnabled);
-    debugLog("fanMinutesPerHour: "); Serial.println(fanMinutesPerHour);
-    debugLog("mqttServer: "); Serial.println(mqttServer);
-    debugLog("mqttPort: "); Serial.println(mqttPort);
-    debugLog("mqttUsername: "); Serial.println(mqttUsername);
-    debugLog("mqttPassword: "); Serial.println(mqttPassword);
-    debugLog("wifiSSID: "); Serial.println(wifiSSID);
-    debugLog("wifiPassword: "); Serial.println(wifiPassword);
-    debugLog("thermostatMode: "); Serial.println(thermostatMode);
-    debugLog("fanMode: "); Serial.println(fanMode);
-    debugLog("timeZone: "); Serial.println(timeZone);
-    debugLog("use24HourClock: "); Serial.println(use24HourClock);
-    debugLog("hydronicHeatingEnabled: "); Serial.println(hydronicHeatingEnabled);
-    debugLog("hydronicTempLow: "); Serial.println(hydronicTempLow);
-    debugLog("hydronicTempHigh: "); Serial.println(hydronicTempHigh);
-    debugLog("hydronicLowTempAlertSent: "); Serial.println(hydronicLowTempAlertSent);
-    debugLog("hostname: "); Serial.println(hostname);
-    debugLog("stage1MinRuntime: "); Serial.println(stage1MinRuntime);
-    debugLog("stage2TempDelta: "); Serial.println(stage2TempDelta);
-    debugLog("stage2HeatingEnabled: "); Serial.println(stage2HeatingEnabled);
-    debugLog("stage2CoolingEnabled: "); Serial.println(stage2CoolingEnabled);
-    debugLog("backupHeatEnabled: "); Serial.println(backupHeatEnabled);
-    debugLog("backupHeatRelaySelection: "); Serial.println(backupHeatRelaySelection);
-    debugLog("backupHeatDelayMinutes: "); Serial.println(backupHeatDelayMinutes);
-    debugLog("tempOffset: "); Serial.println(tempOffset);
-    debugLog("humidityOffset: "); Serial.println(humidityOffset);
-    debugLog("displaySleepEnabled: "); Serial.println(displaySleepEnabled);
-    debugLog("displaySleepTimeout: "); Serial.println(displaySleepTimeout);
-    debugLog("weatherSource: "); Serial.println(weatherSource);
-    debugLog("owmApiKey: "); Serial.println(owmApiKey.length() > 0 ? "[SET]" : "[NOT SET]");
-    debugLog("owmCity: "); Serial.println(owmCity);
-    debugLog("owmState: "); Serial.println(owmState);
-    debugLog("owmCountry: "); Serial.println(owmCountry);
-    debugLog("haUrl: "); Serial.println(haUrl);
-    debugLog("haToken: "); Serial.println(haToken.length() > 0 ? "[SET]" : "[NOT SET]");
-    debugLog("haEntityId: "); Serial.println(haEntityId);
-    debugLog("weatherUpdateInterval: "); Serial.println(weatherUpdateInterval);
+    debugLog("setTempHeat: %.2f\n", setTempHeat);
+    debugLog("setTempCool: %.2f\n", setTempCool);
+    debugLog("setTempAuto: %.2f\n", setTempAuto);
+    debugLog("tempSwing: %.2f\n", tempSwing);
+    debugLog("autoTempSwing: %.2f\n", autoTempSwing);
+    debugLog("fanRelayNeeded: %d\n", fanRelayNeeded);
+    debugLog("useFahrenheit: %d\n", useFahrenheit);
+    debugLog("mqttEnabled: %d\n", mqttEnabled);
+    debugLog("fanMinutesPerHour: %d\n", fanMinutesPerHour);
+    debugLog("mqttServer: %s\n", mqttServer.c_str());
+    debugLog("mqttPort: %d\n", mqttPort);
+    debugLog("mqttUsername: %s\n", mqttUsername.c_str());
+    debugLog("mqttPassword: %s\n", mqttPassword.c_str());
+    debugLog("wifiSSID: %s\n", wifiSSID.c_str());
+    debugLog("wifiPassword: %s\n", wifiPassword.c_str());
+    debugLog("thermostatMode: %s\n", thermostatMode.c_str());
+    debugLog("fanMode: %s\n", fanMode.c_str());
+    debugLog("timeZone: %s\n", timeZone.c_str());
+    debugLog("use24HourClock: %d\n", use24HourClock);
+    debugLog("hydronicHeatingEnabled: %d\n", hydronicHeatingEnabled);
+    debugLog("hydronicTempLow: %.2f\n", hydronicTempLow);
+    debugLog("hydronicTempHigh: %.2f\n", hydronicTempHigh);
+    debugLog("hydronicLowTempAlertSent: %d\n", hydronicLowTempAlertSent);
+    debugLog("hostname: %s\n", hostname.c_str());
+    debugLog("stage1MinRuntime: %u\n", stage1MinRuntime);
+    debugLog("stage2TempDelta: %.2f\n", stage2TempDelta);
+    debugLog("stage2HeatingEnabled: %d\n", stage2HeatingEnabled);
+    debugLog("stage2CoolingEnabled: %d\n", stage2CoolingEnabled);
+    debugLog("backupHeatEnabled: %d\n", backupHeatEnabled);
+    debugLog("backupHeatRelaySelection: %d\n", backupHeatRelaySelection);
+    debugLog("backupHeatDelayMinutes: %d\n", backupHeatDelayMinutes);
+    debugLog("tempOffset: %.2f\n", tempOffset);
+    debugLog("humidityOffset: %.2f\n", humidityOffset);
+    debugLog("displaySleepEnabled: %d\n", displaySleepEnabled);
+    debugLog("displaySleepTimeout: %lu\n", displaySleepTimeout);
+    debugLog("weatherSource: %d\n", weatherSource);
+    debugLog("owmApiKey: %s\n", owmApiKey.length() > 0 ? "[SET]" : "[NOT SET]");
+    debugLog("owmCity: %s\n", owmCity.c_str());
+    debugLog("owmState: %s\n", owmState.c_str());
+    debugLog("owmCountry: %s\n", owmCountry.c_str());
+    debugLog("haUrl: %s\n", haUrl.c_str());
+    debugLog("haToken: %s\n", haToken.length() > 0 ? "[SET]" : "[NOT SET]");
+    debugLog("haEntityId: %s\n", haEntityId.c_str());
+    debugLog("weatherUpdateInterval: %d\n", weatherUpdateInterval);
 
     // Debug print to confirm settings are loaded
-    debugLog("Settings loaded.");
+    debugLog("Settings loaded.\n");
 }
 
 float convertCtoF(float celsius)
@@ -5984,42 +6130,54 @@ void saveWiFiSettings()
 
 void calibrateTouchScreen()
 {
-    uint16_t calData[5];
+    uint16_t calData[8];
+    const bool isLargeDisplay = (activeDisplay == DISPLAY_ILI9488 || activeDisplay == DISPLAY_ST7796);
+    const char* calKey = isLargeDisplay ? "calData4in" : "calData";
 
-    // Check if calibration data is stored in Preferences
-    if (preferences.getBytesLength("calData") == sizeof(calData))
+    // Check if calibration data is stored in Preferences.
+    // isKey() avoids NOT_FOUND error logging on first boot for new keys.
+    if (preferences.isKey(calKey) && preferences.getBytesLength(calKey) == sizeof(calData))
     {
-        preferences.getBytes("calData", calData, sizeof(calData));
-        tft.setTouch(calData);
-        debugLog("Touch screen calibration data loaded from Preferences\n");
-        debugLog("  calData[0] (TL X): %d\n", calData[0]);
-        debugLog("  calData[1] (BR X): %d\n", calData[1]);
-        debugLog("  calData[2] (TL Y): %d\n", calData[2]);
-        debugLog("  calData[3] (BR Y): %d\n", calData[3]);
-        debugLog("  calData[4] (Rotation): %d\n", calData[4]);
+        preferences.getBytes(calKey, calData, sizeof(calData));
+        // LGFX touch calibration stores 4 raw touch points (x,y pairs) = 8 values.
+        tft.setTouchCalibrate(calData);
+        debugLog("Touch screen calibration data loaded from Preferences key: %s\n", calKey);
+        debugLog("  P0: (%d, %d)\n", calData[0], calData[1]);
+        debugLog("  P1: (%d, %d)\n", calData[2], calData[3]);
+        debugLog("  P2: (%d, %d)\n", calData[4], calData[5]);
+        debugLog("  P3: (%d, %d)\n", calData[6], calData[7]);
     }
     else
     {
-        // No calibration data found - use default values to avoid blocking startup
-        // These are tested values from actual hardware calibration
-        calData[0] = 426;   // Top-left X
-        calData[1] = 3526;  // Bottom-right X  
-        calData[2] = 248;   // Top-left Y
-        calData[3] = 3417;  // Bottom-right Y
-        calData[4] = 7;     // Rotation
-        tft.setTouch(calData);
-        debugLog("Touch screen using default calibration (no stored data found)\n");
-        debugLog("  calData[0] (TL X): %d\n", calData[0]);
-        debugLog("  calData[1] (BR X): %d\n", calData[1]);
-        debugLog("  calData[2] (TL Y): %d\n", calData[2]);
-        debugLog("  calData[3] (BR Y): %d\n", calData[3]);
-        debugLog("  calData[4] (Rotation): %d\n", calData[4]);
+        // No calibration data found - use measured hardware defaults.
+        // Format: {TL_x,TL_y, BL_x,BL_y, TR_x,TR_y, BR_x,BR_y}
+        if (isLargeDisplay) {
+            // 4.0" panel (ILI9488-compatible), captured via touch_test
+            calData[0] = 225;  calData[1] = 3625;
+            calData[2] = 190;  calData[3] = 274;
+            calData[4] = 3581; calData[5] = 3595;
+            calData[6] = 3570; calData[7] = 288;
+        } else {
+            // 3.2" ILI9341 panel, captured via touch_test
+            calData[0] = 3618; calData[1] = 396;
+            calData[2] = 3607; calData[3] = 3743;
+            calData[4] = 195;  calData[5] = 486;
+            calData[6] = 212;  calData[7] = 3794;
+        }
+        tft.setTouchCalibrate(calData);
+        debugLog("Touch screen using default calibration for key: %s (no stored data found)\n", calKey);
+        debugLog("  P0: (%d, %d)\n", calData[0], calData[1]);
+        debugLog("  P1: (%d, %d)\n", calData[2], calData[3]);
+        debugLog("  P2: (%d, %d)\n", calData[4], calData[5]);
+        debugLog("  P3: (%d, %d)\n", calData[6], calData[7]);
     }
 }
 
 void runInteractiveCalibration()
 {
-    uint16_t calData[5];
+    uint16_t calData[8];
+    const bool isLargeDisplay = (activeDisplay == DISPLAY_ILI9488 || activeDisplay == DISPLAY_ST7796);
+    const char* calKey = isLargeDisplay ? "calData4in" : "calData";
     
     tft.fillScreen(TFT_BLACK);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -6033,16 +6191,15 @@ void runInteractiveCalibration()
     tft.fillScreen(TFT_BLACK);
     tft.calibrateTouch(calData, TFT_WHITE, TFT_BLACK, 15);
     
-    // Save calibration data to NVP
-    preferences.putBytes("calData", calData, sizeof(calData));
-    tft.setTouch(calData);
+    // Save calibration data to NVS
+    preferences.putBytes(calKey, calData, sizeof(calData));
+    tft.setTouchCalibrate(calData);
     
-    debugLog("Touch calibration completed and saved\n");
-    debugLog("  calData[0] (TL X): %d\n", calData[0]);
-    debugLog("  calData[1] (BR X): %d\n", calData[1]);
-    debugLog("  calData[2] (TL Y): %d\n", calData[2]);
-    debugLog("  calData[3] (BR Y): %d\n", calData[3]);
-    debugLog("  calData[4] (Rotation): %d\n", calData[4]);
+    debugLog("Touch calibration completed and saved to key: %s\n", calKey);
+    debugLog("  P0: (%d, %d)\n", calData[0], calData[1]);
+    debugLog("  P1: (%d, %d)\n", calData[2], calData[3]);
+    debugLog("  P2: (%d, %d)\n", calData[4], calData[5]);
+    debugLog("  P3: (%d, %d)\n", calData[6], calData[7]);
     
     tft.fillScreen(TFT_BLACK);
     tft.setCursor(20, 100);
@@ -6084,19 +6241,27 @@ void handleKeyboardTouch(uint16_t x, uint16_t y, bool isUpperCaseKeyboard)
         return;
     }
 
-    // Use raw X and Y coordinates without any correction
-    int correctedX = x;
-    int correctedY = y;
+    // Use the same scaled geometry as drawKeyboard so touch hitboxes match visuals.
+    const int keyW = uiScaleX(KEY_WIDTH);
+    const int keyH = uiScaleY(KEY_HEIGHT);
+    const int keySpacingX = uiScaleX(KEY_SPACING);
+    const int keySpacingY = uiScaleY(KEY_SPACING);
+    const int keyOffsetX = uiScaleX(KEYBOARD_X_OFFSET);
+    const int keyOffsetY = uiScaleY(KEYBOARD_Y_OFFSET);
+    // Small correction for resistive panel X nonlinearity.
+    // Keep stronger correction on 4" where users reported left-shifted hit detection.
+    const int xBias = (dispW() > 320) ? 22 : 15;
+    int correctedX = (int)x + (((int)dispW() - (int)x) * xBias) / (int)dispW();
 
     // Check for back button tap (top-right)
-    if (y < 35 && correctedX > 250 && correctedX < 310) {
+    if (y < uiScaleY(35) && correctedX > uiScaleX(250) && correctedX < uiScaleX(310)) {
         exitKeyboardToPreviousScreen();
         lastTouchTime = currentTime;
         return;
     }
     
     // Check if touch is within the keyboard area
-    if (y < 60) {  // Touch is above the keyboard, ignore other regions
+    if (y < keyOffsetY) {  // Touch is above the keyboard, ignore other regions
         return;
     }
     
@@ -6105,37 +6270,21 @@ void handleKeyboardTouch(uint16_t x, uint16_t y, bool isUpperCaseKeyboard)
     {
         for (int col = 0; col < 10; col++)
         {
-            // Use the same constants as the visual keyboard
-            int keyX = col * (KEY_WIDTH + KEY_SPACING) + KEYBOARD_X_OFFSET;
-            int keyY = row * (KEY_HEIGHT + KEY_SPACING) + KEYBOARD_Y_OFFSET;
-            
-            // Expand touch area by 15% to account for touch inaccuracy
-            int touchMargin = 4; // Extra pixels around each key for easier touching
-            int expandedX = keyX - touchMargin;
-            int expandedY = keyY - touchMargin;
-            int expandedWidth = KEY_WIDTH + (touchMargin * 2);
-            int expandedHeight = KEY_HEIGHT + (touchMargin * 2);
+            int keyX = col * (keyW + keySpacingX) + keyOffsetX;
+            int keyY = row * (keyH + keySpacingY) + keyOffsetY;
+            // Expand hitbox slightly but avoid overlap into neighboring keys.
+            int touchMarginX = (keySpacingX >= 2) ? 1 : 0;
+            int touchMarginY = (keySpacingY >= 2) ? 1 : 0;
+            int keyLeft = keyX - touchMarginX;
+            int keyRight = keyX + keyW + touchMarginX;
+            int keyTop = keyY - touchMarginY;
+            int keyBottom = keyY + keyH + touchMarginY;
 
-            if (correctedX >= expandedX && correctedX <= expandedX + expandedWidth &&
-                y >= expandedY && y <= expandedY + expandedHeight)
+            if (correctedX >= keyLeft && correctedX <= keyRight &&
+                y >= keyTop && y <= keyBottom)
             {
-                debugLog("Touch at (");
-                Serial.print(correctedX);
-                debugLog(",");
-                Serial.print(y);
-                debugLog(") -> Key[");
-                Serial.print(row);
-                debugLog(",");
-                Serial.print(col);
-                debugLog("] KeyArea(");
-                Serial.print(keyX);
-                debugLog(",");
-                Serial.print(keyY);
-                debugLog(" ");
-                Serial.print(KEY_WIDTH);
-                debugLog("x");
-                Serial.print(KEY_HEIGHT);
-                debugLog(")\n");
+                debugLog("Touch at (%u,%u) corrX=%d -> Key[%d,%d] KeyArea(%d,%d %dx%d)\n",
+                         x, y, correctedX, row, col, keyX, keyY, keyW, keyH);
                 
                 // Process the key press
                 handleKeyPress(row, col);

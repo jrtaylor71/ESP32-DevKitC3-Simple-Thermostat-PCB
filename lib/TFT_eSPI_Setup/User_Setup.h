@@ -1,7 +1,11 @@
-// Custom User_Setup.h for Smart Thermostat Alt Firmware
-// Based on Setup70b_ESP32_S3_ILI9341.h but with custom pins
-
-#define USER_SETUP_ID 70
+// RETIRED — project migrated from TFT_eSPI to LovyanGFX (LGFX).
+// Display configuration now lives in include/TFT_Setup_ESP32_S3_Thermostat.h.
+// This file is kept for reference only and has no effect on the build.
+//
+// Original: Custom User_Setup.h for Smart Thermostat Alt Firmware
+//           Based on Setup70b_ESP32_S3_ILI9341.h but with custom pins
+//
+// #define USER_SETUP_ID 70
 
 #define ILI9341_DRIVER     // Generic driver for common displays
 

@@ -154,11 +154,11 @@ if [ -n "$SPECIFIC_VARIANT" ]; then
     fi
 else
     echo "[BUILD] Building all variants..."
-    # Build all variants (all are now uncommented in platformio.ini)
+    # Build only production firmware variants (exclude test environments)
     if [ "$QUIET_BUILD" = true ]; then
-        pio run > /dev/null 2>&1
+        pio run -e esp32-s3-wroom-1-n8 -e esp32-s3-wroom-1-n16 -e esp32-s3-wroom-1-n32r16v > /dev/null 2>&1
     else
-        pio run
+        pio run -e esp32-s3-wroom-1-n8 -e esp32-s3-wroom-1-n16 -e esp32-s3-wroom-1-n32r16v
     fi
     BUILD_RESULT=$?
     

@@ -290,7 +290,7 @@ String Weather::getLastError() {
     return _lastError;
 }
 
-void Weather::drawWeatherIcon(TFT_eSPI &tft, int x, int y, String condition) {
+void Weather::drawWeatherIcon(LGFX &tft, int x, int y, String condition) {
     // Draw a 36x36 icon using standard OWM icon codes
     // Icon code is stored in _data.iconCode (e.g., "01d", "10n")
     // We use the numeric part: 01=clear, 02=few clouds, 03/04=clouds, 09=shower, 10=rain, 11=storm, 13=snow, 50=mist
@@ -435,7 +435,7 @@ void Weather::drawWeatherIcon(TFT_eSPI &tft, int x, int y, String condition) {
     }
 }
 
-void Weather::displayOnTFT(TFT_eSPI &tft, int x, int y, bool useFahrenheit) {
+void Weather::displayOnTFT(LGFX &tft, int x, int y, bool useFahrenheit) {
     debugLog("[Weather] displayOnTFT() - called at position (%d, %d), data valid: %d\n", x, y, _data.valid);
     
     if (!_data.valid) {

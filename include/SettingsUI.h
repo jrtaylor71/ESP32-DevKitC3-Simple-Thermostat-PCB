@@ -14,7 +14,7 @@
 #ifndef SETTINGS_UI_H
 #define SETTINGS_UI_H
 
-#include <TFT_eSPI.h>
+#include "TFT_Setup_ESP32_S3_Thermostat.h"
 #include <Preferences.h>
 #include <WiFi.h>
 
@@ -22,7 +22,7 @@
 enum KeyboardMode { KB_WIFI_SSID, KB_WIFI_PASS, KB_HOSTNAME };
 
 // External references to main code objects (defined in Main-Thermostat.cpp)
-extern TFT_eSPI tft;
+extern LGFX tft;
 extern Preferences preferences;
 
 // External references to global settings (updated via UI)
@@ -112,16 +112,24 @@ void startHostnameEntry();
 void exitKeyboardToPreviousScreen();
 void settingsLoopTick();
 
+// Keep SettingsUI layout in a 320x240 virtual coordinate system.
+static inline int settingsScaleX(int x) { return (x * dispW()) / 320; }
+static inline int settingsScaleY(int y) { return (y * dispH()) / 240; }
+
 // Helper: draw a labeled button
 void drawSettingsButton(int x, int y, int w, int h, const char* label, uint16_t color) {
-    tft.fillRect(x, y, w, h, color);
-    tft.drawRect(x, y, w, h, COLOR_TEXT);
+    int sx = settingsScaleX(x);
+    int sy = settingsScaleY(y);
+    int sw = settingsScaleX(w);
+    int sh = settingsScaleY(h);
+    tft.fillRect(sx, sy, sw, sh, color);
+    tft.drawRect(sx, sy, sw, sh, COLOR_TEXT);
     tft.setTextColor(TFT_BLACK, color);
     tft.setTextSize(2);
     int textLen = strlen(label);
     int textWidth = textLen * 12; // approx for size 2
-    int textX = x + (w - textWidth) / 2;
-    int textY = y + (h - 16) / 2;
+    int textX = sx + (sw - textWidth) / 2;
+    int textY = sy + (sh - 16) / 2;
     tft.setCursor(textX, textY);
     tft.print(label);
 }
@@ -129,11 +137,14 @@ void drawSettingsButton(int x, int y, int w, int h, const char* label, uint16_t 
 // Helper: draw small toggle indicator
 void drawToggle(int x, int y, bool state) {
     uint16_t toggleColor = state ? COLOR_SUCCESS : COLOR_WARNING;
-    tft.fillCircle(x, y, 10, toggleColor);
-    tft.drawCircle(x, y, 10, COLOR_TEXT);
+    int sx = settingsScaleX(x);
+    int sy = settingsScaleY(y);
+    int r = settingsScaleX(10);
+    tft.fillCircle(sx, sy, r, toggleColor);
+    tft.drawCircle(sx, sy, r, COLOR_TEXT);
     tft.setTextColor(TFT_BLACK, toggleColor);
     tft.setTextSize(1);
-    tft.setCursor(x - 6, y - 4);
+    tft.setCursor(sx - settingsScaleX(6), sy - settingsScaleY(4));
     tft.print(state ? "ON" : "OFF");
 }
 
@@ -141,20 +152,20 @@ void drawToggle(int x, int y, bool state) {
 void drawNumericControl(int x, int y, const char* label, float value, int fieldId) {
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
     tft.setTextSize(2);
-    tft.setCursor(x, y);
+    tft.setCursor(settingsScaleX(x), settingsScaleY(y));
     tft.print(label);
     
     // - button
     int btnY = y + 25;
-    tft.fillRect(x, btnY, 30, 30, COLOR_WARNING);
-    tft.drawRect(x, btnY, 30, 30, COLOR_TEXT);
+    tft.fillRect(settingsScaleX(x), settingsScaleY(btnY), settingsScaleX(30), settingsScaleY(30), COLOR_WARNING);
+    tft.drawRect(settingsScaleX(x), settingsScaleY(btnY), settingsScaleX(30), settingsScaleY(30), COLOR_TEXT);
     tft.setTextColor(TFT_BLACK, COLOR_WARNING);
-    tft.setCursor(x + 10, btnY + 8);
+    tft.setCursor(settingsScaleX(x + 10), settingsScaleY(btnY + 8));
     tft.print("-");
     
     // Value display
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
-    tft.setCursor(x + 35, btnY + 6);
+    tft.setCursor(settingsScaleX(x + 35), settingsScaleY(btnY + 6));
     char buf[16];
     if (fieldId == 1 || fieldId == 2 || fieldId == 4) { // float fields
         snprintf(buf, sizeof(buf), "%.1f", value);
@@ -164,10 +175,10 @@ void drawNumericControl(int x, int y, const char* label, float value, int fieldI
     tft.print(buf);
     
     // + button
-    tft.fillRect(x + 100, btnY, 30, 30, COLOR_SUCCESS);
-    tft.drawRect(x + 100, btnY, 30, 30, COLOR_TEXT);
+    tft.fillRect(settingsScaleX(x + 100), settingsScaleY(btnY), settingsScaleX(30), settingsScaleY(30), COLOR_SUCCESS);
+    tft.drawRect(settingsScaleX(x + 100), settingsScaleY(btnY), settingsScaleX(30), settingsScaleY(30), COLOR_TEXT);
     tft.setTextColor(TFT_BLACK, COLOR_SUCCESS);
-    tft.setCursor(x + 110, btnY + 8);
+    tft.setCursor(settingsScaleX(x + 110), settingsScaleY(btnY + 8));
     tft.print("+");
 }
 
@@ -231,8 +242,8 @@ void drawSettingsMenu() {
 void drawComfortSettings() {
     tft.fillScreen(COLOR_BACKGROUND);
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
-    tft.setTextSize(2);
-    tft.setCursor(10, 10);
+    tft.setTextSize((dispW() > 320) ? 3 : 2);
+    tft.setCursor(settingsScaleX(10), settingsScaleY(10));
     tft.print("Comfort Settings");
     
     int yPos = 30;
@@ -247,14 +258,14 @@ void drawComfortSettings() {
     
     // Fan Relay Required toggle (compact layout)
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
-    tft.setTextSize(1);
-    tft.setCursor(20, yPos);
+    tft.setTextSize((dispW() > 320) ? 2 : 1);
+    tft.setCursor(settingsScaleX(20), settingsScaleY(yPos));
     tft.print("Fan Relay Required:");
     drawToggle(220, yPos + 5, editFanRelayNeeded);
     yPos += 18;
     
     // Use Fahrenheit toggle
-    tft.setCursor(20, yPos);
+    tft.setCursor(settingsScaleX(20), settingsScaleY(yPos));
     tft.print("Use Fahrenheit:");
     drawToggle(220, yPos + 5, editUseFahrenheit);
     
@@ -267,8 +278,8 @@ void drawComfortSettings() {
 void drawHVACAdvancedSettings() {
     tft.fillScreen(COLOR_BACKGROUND);
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
-    tft.setTextSize(2);
-    tft.setCursor(10, 10);
+    tft.setTextSize((dispW() > 320) ? 3 : 2);
+    tft.setCursor(settingsScaleX(10), settingsScaleY(10));
     tft.print("HVAC Advanced");
     
     int yPos = 30;
@@ -283,14 +294,14 @@ void drawHVACAdvancedSettings() {
     
     // Stage2 Heat Enable toggle
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
-    tft.setTextSize(1);
-    tft.setCursor(20, yPos);
+    tft.setTextSize((dispW() > 320) ? 2 : 1);
+    tft.setCursor(settingsScaleX(20), settingsScaleY(yPos));
     tft.print("Stage2 Heat Enable:");
     drawToggle(220, yPos + 5, editStage2HeatingEnabled);
     yPos += 18;
     
     // Stage2 Cool Enable toggle
-    tft.setCursor(20, yPos);
+    tft.setCursor(settingsScaleX(20), settingsScaleY(yPos));
     tft.print("Stage2 Cool Enable:");
     drawToggle(220, yPos + 5, editStage2CoolingEnabled);
     
@@ -493,7 +504,7 @@ bool settingsHandleTouch(uint16_t x, uint16_t y) {
     
     // Comfort settings page
     else if (currentPage == PAGE_COMFORT) {
-        int yPos = 40;
+        int yPos = 30;
         
         // Temp Swing +/-
         if (y >= yPos + 25 && y <= yPos + 55) {
@@ -509,7 +520,7 @@ bool settingsHandleTouch(uint16_t x, uint16_t y) {
                 return true;
             }
         }
-        yPos += 65;
+        yPos += 60;
         
         // Auto Temp Swing +/-
         if (y >= yPos + 25 && y <= yPos + 55) {
@@ -525,7 +536,7 @@ bool settingsHandleTouch(uint16_t x, uint16_t y) {
                 return true;
             }
         }
-        yPos += 65;
+        yPos += 60;
         
         // Fan Relay Required toggle
         if (x >= 200 && x <= 240 && y >= yPos && y <= yPos + 20) {
@@ -566,7 +577,7 @@ bool settingsHandleTouch(uint16_t x, uint16_t y) {
     
     // HVAC Advanced settings page
     else if (currentPage == PAGE_HVAC_ADV) {
-        int yPos = 40;
+        int yPos = 30;
         
         // Stage1 Min Runtime +/-
         if (y >= yPos + 25 && y <= yPos + 55) {
@@ -580,7 +591,7 @@ bool settingsHandleTouch(uint16_t x, uint16_t y) {
                 return true;
             }
         }
-        yPos += 65;
+        yPos += 60;
         
         // Stage2 Temp Delta +/-
         if (y >= yPos + 25 && y <= yPos + 55) {
@@ -596,7 +607,7 @@ bool settingsHandleTouch(uint16_t x, uint16_t y) {
                 return true;
             }
         }
-        yPos += 65;
+        yPos += 60;
         
         // Stage2 Heat Enable toggle
         if (x >= 200 && x <= 240 && y >= yPos && y <= yPos + 20) {

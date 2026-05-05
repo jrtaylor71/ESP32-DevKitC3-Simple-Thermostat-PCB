@@ -14,7 +14,7 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <TFT_eSPI.h>
+#include "TFT_Setup_ESP32_S3_Thermostat.h"
 
 // Forward declaration for debugLog from Main-Thermostat.cpp
 extern void debugLog(const char* format, ...);
@@ -64,7 +64,7 @@ public:
     String getLastError();
     
     // Display on TFT
-    void displayOnTFT(TFT_eSPI &tft, int x, int y, bool useFahrenheit);
+    void displayOnTFT(LGFX &tft, int x, int y, bool useFahrenheit);
     
 private:
     // Configuration
@@ -88,7 +88,7 @@ private:
     // Private methods
     bool updateFromOpenWeatherMap();
     bool updateFromHomeAssistant();
-    void drawWeatherIcon(TFT_eSPI &tft, int x, int y, String condition);
+    void drawWeatherIcon(LGFX &tft, int x, int y, String condition);
     String getIconFromCondition(String condition);
 };
 
