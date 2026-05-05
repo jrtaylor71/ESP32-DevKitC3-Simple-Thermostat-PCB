@@ -5470,12 +5470,12 @@ void updateDisplay(float currentTemp, float currentHumidity)
         // Display setpoint and humidity on the right side with compact spacing
         // Background color in setTextColor will clear as it writes
         tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
-        tft.setTextSize(1); // Adjust text size to fit the display
+        tft.setTextSize(2); // Increase right-side readout visibility
         tft.setRotation(1); // Set rotation for vertical display
         
-        // Setpoint at y=30 (shifted left to prevent right-edge wrapping)
-        tft.fillRect(260, 30, 60, 8, COLOR_BACKGROUND); // clear full row before redraw
-        tft.setCursor(260, 30);
+        // Setpoint at y=30 with wider clear area for larger text
+        tft.fillRect(220, 30, 100, 16, COLOR_BACKGROUND); // clear full row before redraw
+        tft.setCursor(220, 30);
         tft.print("Set:");
         char setpointStr[6];
         dtostrf(currentSetTemp, 4, 1, setpointStr); // Convert setpoint to string with 1 decimal place
@@ -5483,7 +5483,8 @@ void updateDisplay(float currentTemp, float currentHumidity)
         tft.print(useFahrenheit ? "F" : "C");
 
         // Humidity (even spacing from top temperature row)
-        tft.setCursor(260, 50);
+        tft.fillRect(220, 54, 100, 16, COLOR_BACKGROUND);
+        tft.setCursor(220, 54);
         char humidityStr[6];
         dtostrf(currentHumidity, 4, 1, humidityStr); // Convert humidity to string with 1 decimal place
         tft.print(humidityStr);
@@ -5491,26 +5492,28 @@ void updateDisplay(float currentTemp, float currentHumidity)
         
         // Display pressure if BME280/BME680 sensor is active (convert hPa to inHg: divide by 33.8639)
         if ((activeSensor == SENSOR_BME280 || activeSensor == SENSOR_BME680) && !isnan(currentPressure)) {
-            tft.setCursor(260, 70); // Pressure (even spacing)
+            tft.fillRect(220, 78, 100, 16, COLOR_BACKGROUND);
+            tft.setCursor(220, 78); // Pressure (even spacing)
             float pressureInHg = currentPressure / 33.8639; // Convert hPa to inHg
             char pressureStr[7];
             dtostrf(pressureInHg, 4, 2, pressureStr); // Format as "XX.XX"
             tft.print(pressureStr);
             tft.print("in");
         } else {
-            // Clear pressure area if not BME280/BME680 or invalid (use 100px to ensure full clear)
-            tft.fillRect(260, 70, 60, 8, COLOR_BACKGROUND);
+            // Clear pressure area if not BME280/BME680 or invalid
+            tft.fillRect(220, 78, 100, 16, COLOR_BACKGROUND);
         }
         
         // Display air quality if BME680 sensor is active
         if (activeSensor == SENSOR_BME680) {
-            tft.setCursor(260, 90); // Air quality (even spacing)
+            tft.fillRect(220, 102, 100, 16, COLOR_BACKGROUND);
+            tft.setCursor(220, 102); // Air quality (even spacing)
             int aqScore = (int)currentAirQuality;
             tft.print("AQ:");
             tft.print(aqScore);
         } else {
-            // Clear air quality area if not BME680 (use 100px to ensure full clear)
-            tft.fillRect(260, 90, 60, 8, COLOR_BACKGROUND);
+            // Clear air quality area if not BME680
+            tft.fillRect(220, 102, 100, 16, COLOR_BACKGROUND);
         }
 
         // Update previous values
