@@ -1,52 +1,47 @@
 SESSION HANDOFF
 
 Project: ESP32-DevKitC3-Simple-Thermostat-PCB
-Last Updated: 2026-04-30
+Last Updated: 2026-05-06
 Current Branch: main
 
 What Changed This Session
-- Added SHT45 sensor support in src/Main-Thermostat.cpp.
-: Includes Adafruit_SHT4x, sensor enum value, instance, detect/init/read paths.
-- Added SHT4x dependency in platformio.ini.
-- Hardened WiFi/MQTT against blocking in src/Main-Thermostat.cpp.
-: setupMQTT() sets espClient timeout to 3000ms to bound MQTT connect stalls.
-: enterWiFiCredentials() exits after 120s to avoid indefinite UI/system lock.
-- Added backup heat feature with relay conflict protection and emergency behavior refinements.
-: Settings include backup enable, relay select (pump default / heat stage 2 / cool stage 2), delay minutes.
-: Added failure-detection style backup logic and force-primary-off behavior when backup is active.
-: Added extra tuning controls for backup in web UI: minimum temp rise and maximum temp drop thresholds.
-- Updated OTA confirmation payload/UI support to include device date/time after reboot.
-- Updated TFT main display interaction.
-: Big center number now defaults to sensor temperature.
-: Plus/minus first press switches center display to setpoint only (no setpoint change).
-: Subsequent plus/minus presses adjust setpoint while in setpoint view.
-: Center display auto-returns to sensor temperature after 15 seconds.
-: Added "Set Temp" label below big center number during setpoint-edit mode.
-: Label color is red for heat mode, blue for cool mode, orange for auto mode.
-- Updated firmware organization scripts.
-: Artifact filenames now include version and timestamp (bin/elf).
-: Build folder name now includes timestamp and version: build_YYYYMMDD-HHMMSS_vVERSION.
-: Retention default restored to keep 3 builds per variant.
-- Reduced right-side sidebar text size from 2 to 1 (Set, humidity, pressure, air quality).
-: Sidebar cursors shifted right to x=260 to keep items flush right on the 320px display.
+- Added runtime display detection with NVS persistence in include/TFT_Setup_ESP32_S3_Thermostat.h.
+: Detects 4-inch (480x320 ILI9488) vs 2.8-inch display at boot.
+: Persists detected variant to NVS key "dispVariant" so next boot skips detection.
+: dispW()==480 / dispH()==320 identifies the 4-inch variant.
+- Unified all debug logging through debugLog() in src/Main-Thermostat.cpp.
+: Last 4 remaining direct Serial.print() debug calls converted to debugLog().
+: debugLog() writes to both Serial and the 64KB ring buffer (debugBuffer).
+- Fixed /debug web console renderer (HTML/JS in src/Main-Thermostat.cpp).
+: Root cause: renderer was displaying literal \n characters instead of line breaks.
+: Added normalizeLogPayload() JS function to handle raw text, JSON {"log":"..."}, escaped string, and literal \n patterns.
+: Changed log container from <div> to <pre> element so whitespace/newlines render natively.
+: /debug page fetches from /api/debug/plain (plain text endpoint), not /api/debug (JSON).
+- Fixed /api/debug crash (heap exhaustion on core 1) in src/Main-Thermostat.cpp.
+: Root cause: /api/debug JSON endpoint was escaping the full 64KB buffer into AsyncResponseStream.
+: AsyncResponseStream::write() resizes its internal cbuf dynamically; the full 64KB escape loop caused new() to throw.
+: Fix: /api/debug now extracts only the last 8KB of the buffer (aligned to newline boundary) before escaping.
+: /api/debug/plain is unaffected and still returns the full buffer as plain text.
+- Released as tag 1.5.000 (commit 7b84991), pushed to origin.
+
+*** IMPORTANT: Post-1.5.000 crash fix in src/Main-Thermostat.cpp is NOT yet committed/pushed ***
+: git diff HEAD -- src/Main-Thermostat.cpp shows 12 lines changed (the /api/debug 8KB tail slice fix).
+: Next session should commit this as 1.5.001 or similar patch release before any other work.
 
 Why
-- Prevent lockups when WiFi is configured but unavailable, or when MQTT broker is unreachable.
-- Keep display/controls responsive without requiring power cycle.
-- Make backup heat behavior align with emergency/primary-failure expectations.
-- Improve firmware artifact traceability and rollback handling.
-- "Set Temp" label on big number makes it unambiguous what is being shown during edit mode.
-- Smaller sidebar text frees horizontal space and avoids wrapping at screen edge.
+- Display detection NVS persistence: avoids re-detection overhead on every boot.
+- Unified debugLog(): ensures all runtime messages appear in the web debug console.
+- Debug renderer fix: web console was unusable because all output appeared on one line.
+- /api/debug crash fix: debug console was causing the device to abort() on first page load.
 
 Validation
-- Build command used: pio run -e esp32-s3-wroom-1-n16
-- Build command used: ./build.sh all
-- Organizer command used: ./organize_firmware.sh
-- Status at handoff: successful builds and firmware organization with versioned filenames/folders.
-- Verified latest scripts reference versioned folders/files (example N16):
-: firmware/latest_flash_N16.sh -> N16/build_20260430-171051_v1.4.016
+- Build command: pio run -e esp32-s3-wroom-1-n16
+- Status at handoff: SUCCESS (27.77s) with crash fix applied locally.
+- Crash backtrace decoded against firmware_v1.5.000_20260505-175325.elf (ELF SHA256: 6aca97402e560f77).
+: Crash was at cbuf::resize <- AsyncResponseStream::write <- /api/debug JSON handler.
 
 Open Follow-ups
+- Commit and push /api/debug crash fix as 1.5.001 (src/Main-Thermostat.cpp is dirty).
 - Consider moving reconnectMQTT() into a dedicated task if longer broker outages still impact responsiveness.
 - Consider replacing blocking delays in WiFi credential flow with non-blocking state machine.
 - Consider adding MQTT entities for backup heat status and selected relay for Home Assistant visibility.
@@ -54,6 +49,16 @@ Open Follow-ups
 - Consider adding labels (e.g. "Hum:", "Press:") to sidebar items now that size-1 text leaves room.
 
 Notes For Next Session
+- FIRST TASK: commit src/Main-Thermostat.cpp (the /api/debug 8KB tail fix) and push as 1.5.001.
+  Command: git add src/Main-Thermostat.cpp && git commit -m "Fix /api/debug heap crash: cap JSON response to 8KB tail" && git tag 1.5.001 && git push && git push --tags
+- Debug console architecture:
+: debugBuffer ring buffer, DEBUG_BUFFER_SIZE = 65536 (64KB).
+: /api/debug JSON endpoint: returns last 8KB tail only (heap-safe).
+: /api/debug/plain plain text endpoint: returns full buffer, used by /debug page.
+: /debug HTML page: normalizeLogPayload() JS + <pre> element for rendering.
+- Display detection: dispVariant NVS key in TFT_Setup_ESP32_S3_Thermostat.h.
+: 4-inch: dispW()==480, dispH()==320.
+- AsyncResponseStream is NOT safe for large payloads - do not feed it large strings.
 - If troubleshooting lockups, focus first on reconnectMQTT() and credential-entry loops.
 - For TFT setpoint behavior issues, inspect handleButtonPress() and updateDisplay() in src/Main-Thermostat.cpp.
 : displayShowingSetpoint / setpointDisplayUntil control center big-number mode.

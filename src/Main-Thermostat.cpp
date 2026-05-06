@@ -5257,9 +5257,17 @@ void handleWebRequests()
     // Debug log endpoint - returns JSON with recent serial output
     server.on("/api/debug", HTTP_GET, [](AsyncWebServerRequest *request) {
         String logOutput = getDebugLog();
+            const size_t MAX_JSON_DEBUG_BYTES = 8192;
+            if ((size_t)logOutput.length() > MAX_JSON_DEBUG_BYTES) {
+                logOutput.remove(0, logOutput.length() - MAX_JSON_DEBUG_BYTES);
+                int firstNewline = logOutput.indexOf('\n');
+                if (firstNewline >= 0 && firstNewline + 1 < logOutput.length()) {
+                    logOutput.remove(0, firstNewline + 1);
+                }
+            }
         
-        // Stream JSON directly to avoid malformed responses from large concatenated
-        // strings or partial escape sequences when logs get long.
+            // Keep the legacy JSON endpoint lightweight so stale clients cannot force
+            // a large escaped response allocation and crash the web task.
         AsyncResponseStream *response = request->beginResponseStream("application/json");
         response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
         response->addHeader("Pragma", "no-cache");
