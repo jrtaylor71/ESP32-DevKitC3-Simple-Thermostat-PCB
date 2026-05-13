@@ -2,13 +2,6 @@
 
 A comprehensive, feature-rich simple thermostat system built on the ESP32 platform with professional PCB design. Perfect for DIY smart home automation with full Home Assistant integration.
 
-## Documentation Update - May 2026 (v1.5.001)
-
-- Added US/EU regional HVAC mode support in firmware settings.
-- Added EU humidity dehumidification control with selectable relay output.
-- Added EU dehumidification active indicators in web status and TFT sidebar.
-- Fixed OFF-mode display behavior so current temp and setpoint remain visible in the upper-right display region.
-
 ![Main-Display](img/display.JPG)
 
 ## 🌟 Key Features
@@ -285,7 +278,7 @@ Press and hold the boot button for more than 10 seconds while the thermostat is 
 
 ## 📄 License
 
-This project is released under the GNU General Public License v3.0. Free to use, modify, and distribute.
+This project is released under the GNU General Public License v3.0. Free to use, modify, and distribute. NOT for commercial use.
 
 ## 🤝 Contributing
 
@@ -302,82 +295,8 @@ Contributions welcome! Please:
 - **Documentation**: Comprehensive docs included
 - **Serial Debug**: Detailed logging at 115200 baud
 
-## ⭐ Version
-
-**Current Version**: 1.4.009 (February 2026)
-
-### Latest Features (v1.4.009)
-- **Touch Screen Calibration System**: On-device calibration management via System Info page
-  - Calibrate button: Interactive touch calibration with corner-tap routine
-  - Clear Cal button: Reset calibration data and reboot to defaults
-  - Non-blocking startup: Uses hardware-tested default values when no calibration saved
-  - Debug logging: Calibration values displayed in boot log for troubleshooting
-  - Improved default values: Updated from real hardware calibration (426, 3526, 248, 3417, 7)
-- **Enhanced Fan Control**: Fan forced off during hydronic lockout (prevents cold air circulation)
-- **Dual Hydronic Sensor Support**: Display supply and return temperatures simultaneously
-  - S: (supply) and R: (return) temperature indicators on main screen
-  - Graceful handling of missing sensors with "--" display
-- **Display Optimizations**: 
-  - Tightened sensor spacing for better information density
-  - Relocated status indicators (Heating/Cooling left, Fan center)
-  - Improved settings page layouts for better fit
-- **LDR Dimming Control**: Optional light-sensor-based dimming (default: disabled)
-  - User brightness setting used as maximum ceiling when enabled
-  - Prevents unexpected brightness changes on fresh installs
-- **Debug Buffer Expansion**: Increased from 32KB to 64KB for better boot log retention
-- **Display Sleep Default Changed**: Now defaults to OFF for immediate touch response
-
-### Previous Features (v1.4.001)
-- **Bidirectional MQTT Schedule Sync**: Complete synchronization between thermostat and Home Assistant
-  - 77 outbound automations per thermostat for all schedule parameters
-  - Centralized multi-thermostat inbound automation
-  - Automatic helper generation via script
-  - Full support for unlimited thermostats
-  - Proper hostname normalization (MQTT vs. helper IDs)
-  - Fixed day index mapping (MQTT 0=Monday ↔ Firmware 0=Sunday)
-- **Multi-Thermostat Support**: Manage multiple thermostats with automatic hostname handling
-- **MQTT Helper Auto-Discovery**: 77 helpers per thermostat auto-created from device state
-- **Schedule Automation Pack**: Single command generation for all outbound automations
-
-### Previous Features (v1.3.9)
-- **Shower Mode**: Pause heating for configurable duration (5-120 minutes) with countdown timer
-  - Touch screen toggle on/off
-  - Web interface enable/disable and duration control
-  - MQTT/Home Assistant switch integration with auto-discovery
-  - Visual countdown display with buzzer alert (5 beeps during last 5 seconds)
-  - Heating automatically blocked while shower mode is active
-- **Enhanced Fan Cycle Control**: Skip first fan cycle on boot to prevent immediate fan run
-- **Status Page Reload**: Force page refresh when clicking Status tab to clear stale cache
-- **BME280 Barometric Pressure**: Display atmospheric pressure on main screen when BME280 sensor is used
-- **Weather on Status Tab**: Weather data now appears on main Status page for quick access
-
-### Previous Features
-- **Weather Integration** (v1.3.8): Dual-source weather support (OpenWeatherMap and Home Assistant)
-- **Weather Display**: Color-coded standard OWM icons with temperature, conditions, and high/low display
-- **Weather Web Interface**: Dedicated weather tab with AJAX form submission
-- **Anti-Flicker Display**: Cached redraw optimization for time and weather elements
-- **Enhanced Time Display**: Improved format "HH:MM Weekday Mon D YYYY" with flicker elimination
-- **Weather Settings**: Configurable update intervals (5-60 minutes) with state field for US cities
-- **Enhanced OTA Updates**: Real-time progress tracking for upload and flash write operations
-- **Improved OTA UX**: Integrated OTA interface in System tab with status messages and reboot timing
-- **7-Day Scheduling System**: Complete inline scheduling with day/night periods and editable Heat/Cool/Auto temperatures
-- **LD2410 Motion Sensor Integration**: 24GHz mmWave radar for automatic display wake with robust detection
-- **Modern Tabbed Web Interface**: All features embedded in main page - Status, Settings, Schedule, Weather, and System tabs
-- **Enhanced MQTT Integration**: Motion sensor auto-discovery and status publishing to Home Assistant
-- ESP32-S3-WROM-1-N16 platform with 16MB flash optimization
-- Modern Material Design color scheme with enhanced readability
-- Complete thermostat functionality with Option C display system
-- Enhanced MQTT/Home Assistant integration with temperature precision
-- Professional PCB design
-- Multi-stage HVAC support with intelligent staging
-- Dual-core FreeRTOS architecture for ESP32-S3
-
 ## 🙏 Credits & Acknowledgments
 
 **Firmware**: Jonn Taylor - Enhanced firmware implementation
-
-This project demonstrates the power of open-source collaboration - combining excellent hardware design with advanced firmware capabilities.
-
----
 
 **Created for the DIY smart home community**
