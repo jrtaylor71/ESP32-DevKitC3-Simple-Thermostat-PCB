@@ -63,6 +63,10 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
                          bool reversingValveEnabled,
                          bool backupHeatEnabled, int backupHeatRelaySelection, int backupHeatDelayMinutes,
                          float backupHeatMinTempRise, float backupHeatMaxTempDrop,
+                         String thermostatRegion,
+                         bool euHumidityControlEnabled, int euHumidityRelaySelection,
+                         float euHumiditySetpoint, float euHumidityDeadband,
+                         bool euHumidityDemandActive,
                          float hydronicTempLow, float hydronicTempHigh,
                          String wifiSSID, String wifiPassword, String timeZone,
                          bool use24HourClock, bool mqttEnabled, String mqttServer,
@@ -152,6 +156,22 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "</div>";
     html += "<div style='text-align: center; font-size: 0.9rem; opacity: 0.7;'>Fan: " + fanMode + "</div>";
     html += "</div>";
+
+    // EU dehumidification status card
+    if (thermostatRegion == "EU" && euHumidityControlEnabled) {
+        html += "<div class='status-card'>";
+        html += "<div class='card-header'>";
+        html += ICON_HUMIDITY;
+        html += "<h3 class='card-title'>EU Dehumidification</h3>";
+        html += "</div>";
+        html += "<div style='text-align: center; margin: 16px 0;'>";
+        html += "<span class='status-indicator " + String(euHumidityDemandActive ? "status-on" : "status-off") + "'>";
+        html += String(euHumidityDemandActive ? "Active" : "Standby");
+        html += "</span>";
+        html += "</div>";
+        html += "<div style='text-align: center; font-size: 0.9rem; opacity: 0.7;'>Setpoint: " + String(euHumiditySetpoint, 1) + "%</div>";
+        html += "</div>";
+    }
     
     // Hydronic temperature (if enabled)
     if (hydronicHeatingEnabled) {
@@ -391,6 +411,42 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "</div>";
 
     html += "</div>";
+
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Thermostat Region Mode</label>";
+    html += "<select id='thermostatRegion' name='thermostatRegion' class='form-select'>";
+    html += "<option value='US'" + String(thermostatRegion == "US" ? " selected" : "") + ">US</option>";
+    html += "<option value='EU'" + String(thermostatRegion == "EU" ? " selected" : "") + ">EU</option>";
+    html += "</select>";
+    html += "<small style='opacity: 0.7;'>EU enables humidity-based dehumidification controls.</small>";
+    html += "</div>";
+
+    html += "<div id='euHumiditySettings'>";
+    html += "<div class='form-checkbox'>";
+    html += "<input type='checkbox' id='euHumidityControlEnabled' name='euHumidityControlEnabled' " + String(euHumidityControlEnabled ? "checked" : "") + ">";
+    html += "<label class='form-label'>Enable EU Humidity Dehumidification</label>";
+    html += "</div>";
+
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>EU Dehumidification Relay</label>";
+    html += "<select id='euHumidityRelay' name='euHumidityRelay' class='form-select'>";
+    html += "<option value='0'" + String(euHumidityRelaySelection == 0 ? " selected" : "") + ">Cool Stage 1 Relay (default)</option>";
+    html += "<option value='1'" + String(euHumidityRelaySelection == 1 ? " selected" : "") + ">Cool Stage 2 Relay</option>";
+    html += "<option value='2'" + String(euHumidityRelaySelection == 2 ? " selected" : "") + ">Pump Relay</option>";
+    html += "</select>";
+    html += "</div>";
+
+    html += "<div style='display: grid; grid-template-columns: 1fr 1fr; gap: 16px;'>";
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Humidity Setpoint (%)</label>";
+    html += "<input type='number' name='euHumiditySetpoint' value='" + String(euHumiditySetpoint, 1) + "' min='30' max='90' step='0.5' class='form-input'>";
+    html += "</div>";
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Humidity Deadband (%)</label>";
+    html += "<input type='number' name='euHumidityDeadband' value='" + String(euHumidityDeadband, 1) + "' min='1' max='20' step='0.5' class='form-input'>";
+    html += "</div>";
+    html += "</div>";
+    html += "</div>";
     
     html += "<div class='form-checkbox'>";
     html += "<input type='checkbox' name='hydronicHeatingEnabled' " + String(hydronicHeatingEnabled ? "checked" : "") + ">";
@@ -552,10 +608,16 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "const stage2Cool = document.getElementById('stage2CoolingEnabled');";
     html += "const backupHeat = document.getElementById('backupHeatEnabled');";
     html += "const backupRelay = document.getElementById('backupHeatRelay');";
+    html += "const regionMode = document.getElementById('thermostatRegion');";
+    html += "const euHumidityWrap = document.getElementById('euHumiditySettings');";
+    html += "const euHumidityEn = document.getElementById('euHumidityControlEnabled');";
+    html += "const euHumidityRelay = document.getElementById('euHumidityRelay');";
     html += "function applyConflicts(){";
+    html += "if(regionMode && euHumidityWrap){euHumidityWrap.style.display = (regionMode.value==='EU') ? '' : 'none';}";
     html += "if(stage2Heat && revValve && stage2Heat.checked && revValve.checked){revValve.checked=false;}";
     html += "if(backupHeat && backupRelay && backupHeat.checked && backupRelay.value==='1'){if(stage2Heat)stage2Heat.checked=false;if(revValve)revValve.checked=false;}";
     html += "if(backupHeat && backupRelay && backupHeat.checked && backupRelay.value==='2'){if(stage2Cool)stage2Cool.checked=false;}";
+    html += "if(regionMode && regionMode.value==='EU' && euHumidityEn && euHumidityEn.checked && euHumidityRelay && euHumidityRelay.value==='1'){if(stage2Cool)stage2Cool.checked=false;}";
     html += "}";
     html += "if(stage2Heat && revValve){";
     html += "stage2Heat.addEventListener('change', applyConflicts);";
@@ -564,6 +626,9 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "if(stage2Cool){stage2Cool.addEventListener('change', applyConflicts);}";
     html += "if(backupHeat){backupHeat.addEventListener('change', applyConflicts);}";
     html += "if(backupRelay){backupRelay.addEventListener('change', applyConflicts);}";
+    html += "if(regionMode){regionMode.addEventListener('change', applyConflicts);}";
+    html += "if(euHumidityEn){euHumidityEn.addEventListener('change', applyConflicts);}";
+    html += "if(euHumidityRelay){euHumidityRelay.addEventListener('change', applyConflicts);}";
     html += "applyConflicts();";
     html += "})();";
     html += "</script>";
@@ -927,6 +992,9 @@ String generateSettingsPage(String thermostatMode, String fanMode, float setTemp
                            bool reversingValveEnabled,
                            bool backupHeatEnabled, int backupHeatRelaySelection, int backupHeatDelayMinutes,
                            float backupHeatMinTempRise, float backupHeatMaxTempDrop,
+                           String thermostatRegion,
+                           bool euHumidityControlEnabled, int euHumidityRelaySelection,
+                           float euHumiditySetpoint, float euHumidityDeadband,
                            bool hydronicHeatingEnabled, float hydronicTempLow, 
                            float hydronicTempHigh, int fanMinutesPerHour,
                            bool showerModeEnabled, int showerModeDuration,
@@ -1107,6 +1175,42 @@ String generateSettingsPage(String thermostatMode, String fanMode, float setTemp
     html += "</div>";
 
     html += "</div>";
+
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Thermostat Region Mode</label>";
+    html += "<select id='thermostatRegion' name='thermostatRegion' class='form-select'>";
+    html += "<option value='US'" + String(thermostatRegion == "US" ? " selected" : "") + ">US</option>";
+    html += "<option value='EU'" + String(thermostatRegion == "EU" ? " selected" : "") + ">EU</option>";
+    html += "</select>";
+    html += "<small style='opacity: 0.7;'>EU enables humidity-based dehumidification controls.</small>";
+    html += "</div>";
+
+    html += "<div id='euHumiditySettings'>";
+    html += "<div class='form-checkbox'>";
+    html += "<input type='checkbox' id='euHumidityControlEnabled' name='euHumidityControlEnabled' " + String(euHumidityControlEnabled ? "checked" : "") + ">";
+    html += "<label class='form-label'>Enable EU Humidity Dehumidification</label>";
+    html += "</div>";
+
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>EU Dehumidification Relay</label>";
+    html += "<select id='euHumidityRelay' name='euHumidityRelay' class='form-select'>";
+    html += "<option value='0'" + String(euHumidityRelaySelection == 0 ? " selected" : "") + ">Cool Stage 1 Relay (default)</option>";
+    html += "<option value='1'" + String(euHumidityRelaySelection == 1 ? " selected" : "") + ">Cool Stage 2 Relay</option>";
+    html += "<option value='2'" + String(euHumidityRelaySelection == 2 ? " selected" : "") + ">Pump Relay</option>";
+    html += "</select>";
+    html += "</div>";
+
+    html += "<div style='display: grid; grid-template-columns: 1fr 1fr; gap: 16px;'>";
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Humidity Setpoint (%)</label>";
+    html += "<input type='number' name='euHumiditySetpoint' value='" + String(euHumiditySetpoint, 1) + "' min='30' max='90' step='0.5' class='form-input'>";
+    html += "</div>";
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>Humidity Deadband (%)</label>";
+    html += "<input type='number' name='euHumidityDeadband' value='" + String(euHumidityDeadband, 1) + "' min='1' max='20' step='0.5' class='form-input'>";
+    html += "</div>";
+    html += "</div>";
+    html += "</div>";
     
     html += "<div class='form-checkbox'>";
     html += "<input type='checkbox' name='hydronicHeatingEnabled' " + String(hydronicHeatingEnabled ? "checked" : "") + ">";
@@ -1243,6 +1347,35 @@ String generateSettingsPage(String thermostatMode, String fanMode, float setTemp
     html += "</form>";
     html += "</div>"; // End content
     html += "</div>"; // End container
+    
+    html += "<script>";
+    html += "(function(){";
+    html += "const stage2Heat = document.getElementById('stage2HeatingEnabled');";
+    html += "const revValve = document.getElementById('reversingValveEnabled');";
+    html += "const stage2Cool = document.getElementById('stage2CoolingEnabled');";
+    html += "const backupHeat = document.getElementById('backupHeatEnabled');";
+    html += "const backupRelay = document.getElementById('backupHeatRelay');";
+    html += "const regionMode = document.getElementById('thermostatRegion');";
+    html += "const euHumidityWrap = document.getElementById('euHumiditySettings');";
+    html += "const euHumidityEn = document.getElementById('euHumidityControlEnabled');";
+    html += "const euHumidityRelay = document.getElementById('euHumidityRelay');";
+    html += "function applyConflicts(){";
+    html += "if(regionMode && euHumidityWrap){euHumidityWrap.style.display = (regionMode.value==='EU') ? '' : 'none';}";
+    html += "if(stage2Heat && revValve && stage2Heat.checked && revValve.checked){revValve.checked=false;}";
+    html += "if(backupHeat && backupRelay && backupHeat.checked && backupRelay.value==='1'){if(stage2Heat)stage2Heat.checked=false;if(revValve)revValve.checked=false;}";
+    html += "if(backupHeat && backupRelay && backupHeat.checked && backupRelay.value==='2'){if(stage2Cool)stage2Cool.checked=false;}";
+    html += "if(regionMode && regionMode.value==='EU' && euHumidityEn && euHumidityEn.checked && euHumidityRelay && euHumidityRelay.value==='1'){if(stage2Cool)stage2Cool.checked=false;}";
+    html += "}";
+    html += "if(stage2Heat && revValve){stage2Heat.addEventListener('change', applyConflicts);revValve.addEventListener('change', applyConflicts);}";
+    html += "if(stage2Cool){stage2Cool.addEventListener('change', applyConflicts);}";
+    html += "if(backupHeat){backupHeat.addEventListener('change', applyConflicts);}";
+    html += "if(backupRelay){backupRelay.addEventListener('change', applyConflicts);}";
+    html += "if(regionMode){regionMode.addEventListener('change', applyConflicts);}";
+    html += "if(euHumidityEn){euHumidityEn.addEventListener('change', applyConflicts);}";
+    html += "if(euHumidityRelay){euHumidityRelay.addEventListener('change', applyConflicts);}";
+    html += "applyConflicts();";
+    html += "})();";
+    html += "</script>";
     
     html += JAVASCRIPT_CODE;
     html += "</body></html>";

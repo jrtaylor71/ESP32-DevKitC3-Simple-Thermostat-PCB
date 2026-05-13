@@ -1,67 +1,47 @@
 SESSION HANDOFF
 
 Project: ESP32-DevKitC3-Simple-Thermostat-PCB
-Last Updated: 2026-05-06
+Last Updated: 2026-05-13
 Current Branch: main
 
 What Changed This Session
-- Added runtime display detection with NVS persistence in include/TFT_Setup_ESP32_S3_Thermostat.h.
-: Detects 4-inch (480x320 ILI9488) vs 2.8-inch display at boot.
-: Persists detected variant to NVS key "dispVariant" so next boot skips detection.
-: dispW()==480 / dispH()==320 identifies the 4-inch variant.
-- Unified all debug logging through debugLog() in src/Main-Thermostat.cpp.
-: Last 4 remaining direct Serial.print() debug calls converted to debugLog().
-: debugLog() writes to both Serial and the 64KB ring buffer (debugBuffer).
-- Fixed /debug web console renderer (HTML/JS in src/Main-Thermostat.cpp).
-: Root cause: renderer was displaying literal \n characters instead of line breaks.
-: Added normalizeLogPayload() JS function to handle raw text, JSON {"log":"..."}, escaped string, and literal \n patterns.
-: Changed log container from <div> to <pre> element so whitespace/newlines render natively.
-: /debug page fetches from /api/debug/plain (plain text endpoint), not /api/debug (JSON).
-- Fixed /api/debug crash (heap exhaustion on core 1) in src/Main-Thermostat.cpp.
-: Root cause: /api/debug JSON endpoint was escaping the full 64KB buffer into AsyncResponseStream.
-: AsyncResponseStream::write() resizes its internal cbuf dynamically; the full 64KB escape loop caused new() to throw.
-: Fix: /api/debug now extracts only the last 8KB of the buffer (aligned to newline boundary) before escaping.
-: /api/debug/plain is unaffected and still returns the full buffer as plain text.
-- Released as tag 1.5.000 (commit 7b84991), pushed to origin.
-
-*** IMPORTANT: Post-1.5.000 crash fix in src/Main-Thermostat.cpp is NOT yet committed/pushed ***
-: git diff HEAD -- src/Main-Thermostat.cpp shows 12 lines changed (the /api/debug 8KB tail slice fix).
-: Next session should commit this as 1.5.001 or similar patch release before any other work.
+- Added US/EU thermostat region mode support in `src/Main-Thermostat.cpp`.
+: New persisted settings: region mode, EU humidity control enable, EU relay selection, EU humidity setpoint, EU deadband.
+- Added EU humidity-driven dehumidification behavior to HVAC control logic.
+: EU mode can activate cooling based on humidity thresholds (with deadband hysteresis).
+: EU relay selection is supported for dehumidification output path.
+- Added EU dehumidification active status indicators.
+: Web status card shows `EU Dehumidification` with `Active`/`Standby`.
+: TFT sidebar shows `DEHUM ON` / `DEHUM OFF` when EU humidity control is enabled.
+- Fixed OFF-mode display behavior in `updateDisplay()`.
+: Upper-right readout now continues showing `Cur` and `Set` values while mode is OFF.
+: Sidebar refresh now tracks current temp changes in OFF mode.
+- Refreshed project documentation set for v1.5.001 (May 2026).
+: Updated README, technical docs, developer guide, user manual, sync docs, Windows setup, historical compatibility notes, and session notes.
 
 Why
-- Display detection NVS persistence: avoids re-detection overhead on every boot.
-- Unified debugLog(): ensures all runtime messages appear in the web debug console.
-- Debug renderer fix: web console was unusable because all output appeared on one line.
-- /api/debug crash fix: debug console was causing the device to abort() on first page load.
+- Regional behavior support was requested for US/EU HVAC operation.
+- EU humidity dehumidification needed relay-selection flexibility and visible runtime state.
+- OFF-mode display behavior needed to preserve key live values for user visibility.
+- Documentation needed to match current shipped behavior and settings.
 
 Validation
-- Build command: pio run -e esp32-s3-wroom-1-n16
-- Status at handoff: SUCCESS (27.77s) with crash fix applied locally.
-- Crash backtrace decoded against firmware_v1.5.000_20260505-175325.elf (ELF SHA256: 6aca97402e560f77).
-: Crash was at cbuf::resize <- AsyncResponseStream::write <- /api/debug JSON handler.
+- Task run: `PlatformIO: Build & Organize Firmware`.
+- Status: SUCCESS for firmware environments during this session.
+- No upload/flash operations were performed.
 
 Open Follow-ups
-- Commit and push /api/debug crash fix as 1.5.001 (src/Main-Thermostat.cpp is dirty).
-- Consider moving reconnectMQTT() into a dedicated task if longer broker outages still impact responsiveness.
-- Consider replacing blocking delays in WiFi credential flow with non-blocking state machine.
-- Consider adding MQTT entities for backup heat status and selected relay for Home Assistant visibility.
-- Consider surfacing backup-heat threshold settings via MQTT/Home Assistant entities.
-- Consider adding labels (e.g. "Hum:", "Press:") to sidebar items now that size-1 text leaves room.
+- Consider adding MQTT/Home Assistant entities for EU region mode and EU dehumidification active state.
+- Consider adding concise labels for right-sidebar rows if future layout refinements are made.
+- Consider documenting EU defaults directly in web settings helper text/tooltips.
 
 Notes For Next Session
-- FIRST TASK: commit src/Main-Thermostat.cpp (the /api/debug 8KB tail fix) and push as 1.5.001.
-  Command: git add src/Main-Thermostat.cpp && git commit -m "Fix /api/debug heap crash: cap JSON response to 8KB tail" && git tag 1.5.001 && git push && git push --tags
-- Debug console architecture:
-: debugBuffer ring buffer, DEBUG_BUFFER_SIZE = 65536 (64KB).
-: /api/debug JSON endpoint: returns last 8KB tail only (heap-safe).
-: /api/debug/plain plain text endpoint: returns full buffer, used by /debug page.
-: /debug HTML page: normalizeLogPayload() JS + <pre> element for rendering.
-- Display detection: dispVariant NVS key in TFT_Setup_ESP32_S3_Thermostat.h.
-: 4-inch: dispW()==480, dispH()==320.
-- AsyncResponseStream is NOT safe for large payloads - do not feed it large strings.
-- If troubleshooting lockups, focus first on reconnectMQTT() and credential-entry loops.
-- For TFT setpoint behavior issues, inspect handleButtonPress() and updateDisplay() in src/Main-Thermostat.cpp.
-: displayShowingSetpoint / setpointDisplayUntil control center big-number mode.
-: showSetTempNow drives both the big number and the "Set Temp" label color logic.
-- Right-side sidebar uses setTextSize(1) at x=260, y=30/50/70/90 for Set/Hum/Pressure/AQ.
-- Firmware outputs now live under firmware/[N8|N16|N32]/build_<timestamp>_v<version>.
+- EU humidity defaults currently used:
+: Setpoint = 60%
+: Deadband = 5%
+- OFF mode display now keeps upper-right `Cur` and `Set` visible.
+- Key implementation areas:
+: `controlRelays()` for humidity demand state and hysteresis
+: `activateCooling()` for relay selection behavior
+: `updateDisplay()` for OFF-mode sidebar behavior
+: `include/WebPages.h` for EU status card and settings UI

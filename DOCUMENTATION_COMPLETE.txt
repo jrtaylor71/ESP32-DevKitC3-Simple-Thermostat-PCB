@@ -5,6 +5,32 @@ Date: January 2026
 Status: PRODUCTION READY ✓
 
 ================================================================================
+ADDENDUM - MAY 2026 (v1.5.001)
+================================================================================
+
+Documentation refreshed for current firmware behavior:
+  - Added US/EU regional HVAC mode coverage
+  - Added EU humidity dehumidification + relay selection coverage
+  - Added EU dehumidification active indicator coverage (web + TFT)
+  - Added OFF-mode upper-right Cur/Set display fix coverage
+  - Updated SESSION_HANDOFF.txt for current development state
+
+Primary files updated in this addendum:
+  README.md
+  DOCUMENTATION.md
+  DEVELOPMENT_GUIDE.md
+  USER_MANUAL.md
+  PROJECT_STRUCTURE.md
+  SCHEDULE_SYNC_INDEX.md
+  MQTT_SCHEDULE_SYNC.md
+  MQTT_SCHEDULE_QUICKSTART.md
+  WINDOWS_SETUP.md
+  WEATHER_UPDATES_v1.3.5.md
+  ONEWIRE_ESP32S3_PATCH.md
+  SESSION_NOTES.md
+  SESSION_HANDOFF.txt
+
+================================================================================
 SUMMARY
 ================================================================================
 

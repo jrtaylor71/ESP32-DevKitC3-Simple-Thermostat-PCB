@@ -1,6 +1,11 @@
-# Smart Thermostat Alt Firmware - Project Structure
+# ESP32-DevKitC3-Simple-Thermostat-PCB - Project Structure
 
-This document provides an overview of the project structure and organization for the ESP32-S3 based Smart Thermostat Alt Firmware.
+This document provides an overview of the project structure and organization for the ESP32-S3 based thermostat firmware project.
+
+## Current Documentation Baseline (May 2026)
+- Firmware track: v1.5.001.
+- Includes US/EU regional HVAC mode and EU humidity dehumidification options.
+- Includes OFF-mode display behavior fix for upper-right current/setpoint values.
 
 ## 📁 Project Directory Structure
 

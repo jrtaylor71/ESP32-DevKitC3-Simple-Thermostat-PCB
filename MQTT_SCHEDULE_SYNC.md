@@ -1,6 +1,6 @@
 # MQTT Schedule Synchronization Guide
 
-**Version 1.4.001 | January 2026**
+**Version 1.5.001 | May 2026**
 
 Complete documentation for bidirectional MQTT schedule synchronization between ESP32 thermostats and Home Assistant.
 

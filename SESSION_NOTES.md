@@ -1,5 +1,21 @@
 # Smart Thermostat Session Notes
 
+## Session: May 13, 2026 - Regional HVAC + Documentation Refresh
+
+### Session Summary
+- Added US/EU thermostat region mode and EU humidity dehumidification controls.
+- Added EU dehumidification active indicators in web status and TFT sidebar.
+- Fixed OFF-mode display bug so upper-right display continues showing current temp and setpoint.
+- Updated project documentation set and refreshed session handoff.
+
+### Firmware Notes
+- EU defaults remain aligned to requested standard profile:
+  - Humidity setpoint: 60%
+  - Humidity deadband: 5%
+
+### Validation
+- Build task `PlatformIO: Build & Organize Firmware` completed successfully for active firmware environments.
+
 ## Session: November 29, 2025 - Motion Wake & I2C Crash Fix
 
 ### Session Summary

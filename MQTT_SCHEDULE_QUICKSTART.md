@@ -77,4 +77,4 @@ See [MQTT_SCHEDULE_SYNC.md](MQTT_SCHEDULE_SYNC.md) for detailed troubleshooting.
 
 ---
 
-**Version 1.4.001** | Bidirectional schedule sync - changes update automatically in both directions!
+**Version 1.5.001** | Bidirectional schedule sync - changes update automatically in both directions!

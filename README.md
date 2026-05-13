@@ -2,6 +2,13 @@
 
 A comprehensive, feature-rich simple thermostat system built on the ESP32 platform with professional PCB design. Perfect for DIY smart home automation with full Home Assistant integration.
 
+## Documentation Update - May 2026 (v1.5.001)
+
+- Added US/EU regional HVAC mode support in firmware settings.
+- Added EU humidity dehumidification control with selectable relay output.
+- Added EU dehumidification active indicators in web status and TFT sidebar.
+- Fixed OFF-mode display behavior so current temp and setpoint remain visible in the upper-right display region.
+
 ![Main-Display](img/display.JPG)
 
 ## 🌟 Key Features
@@ -11,6 +18,7 @@ A comprehensive, feature-rich simple thermostat system built on the ESP32 platfo
 - **📅 7-Day Scheduling**: Comprehensive inline scheduling with day/night periods and editable Heat/Cool/Auto temperatures
 - **🌡️ Multiple Sensors**: AHT20/BME280 for ambient conditions + DS18B20 for hydronic systems
 - **⚡ Multi-Stage HVAC**: Support for 2-stage heating and cooling systems
+- **🌍 Regional HVAC Behavior**: US/EU mode switch with EU humidity-driven dehumidification
 - **💨 Advanced Fan Control**: Auto, continuous, and scheduled cycling modes
 - **🚿 Shower Mode**: Pause heating for 5-120 minutes with countdown timer and buzzer alert
 - **🌤️ Weather Integration**: OpenWeatherMap and Home Assistant weather with color-coded icons on display

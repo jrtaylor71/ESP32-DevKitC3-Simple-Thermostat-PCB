@@ -2,6 +2,8 @@
 
 This guide covers the required installs for Windows users to build and flash the ESP32-S3 thermostat firmware.
 
+Last validated with firmware/documentation baseline v1.5.001 (May 2026).
+
 ## Required Installs
 
 1. **Python 3.10+ (64-bit)**

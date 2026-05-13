@@ -1,5 +1,28 @@
 # Documentation Update Summary
 
+## Addendum - May 13, 2026 (v1.5.001)
+
+### New Items Documented
+- US/EU thermostat region mode.
+- EU humidity dehumidification controls with relay selection.
+- EU dehumidification active indicators on web status and TFT sidebar.
+- OFF-mode display fix keeping current temperature and setpoint visible in upper-right display region.
+
+### Files Updated In This Addendum
+- README.md
+- DOCUMENTATION.md
+- DEVELOPMENT_GUIDE.md
+- USER_MANUAL.md
+- PROJECT_STRUCTURE.md
+- SCHEDULE_SYNC_INDEX.md
+- MQTT_SCHEDULE_SYNC.md
+- MQTT_SCHEDULE_QUICKSTART.md
+- WINDOWS_SETUP.md
+- WEATHER_UPDATES_v1.3.5.md
+- ONEWIRE_ESP32S3_PATCH.md
+- SESSION_NOTES.md
+- SESSION_HANDOFF.txt
+
 **Date**: January 24, 2026  
 **Version**: 1.4.001  
 **Topic**: Bidirectional MQTT Schedule Synchronization

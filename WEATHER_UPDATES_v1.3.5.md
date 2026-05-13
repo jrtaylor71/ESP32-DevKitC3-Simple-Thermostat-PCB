@@ -1,5 +1,7 @@
 # Weather Module Updates - v1.3.6
 
+Compatibility note (May 2026): These weather module update details remain applicable through firmware v1.5.001.
+
 ## Overview
 Ported weather improvements from Smart-Thermostat-Alt-Firmware to ESP32-DevKitC3 project. These changes fix the high/low temperature display for negative temperatures and add force update functionality.
 

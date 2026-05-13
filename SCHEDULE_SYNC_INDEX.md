@@ -1,7 +1,9 @@
 # Schedule Sync Documentation Index
 
-**Version 1.4.001** | Complete bidirectional MQTT schedule synchronization  
-**Last Updated**: January 2026
+**Version 1.5.001** | Complete bidirectional MQTT schedule synchronization  
+**Last Updated**: May 2026
+
+Note: Schedule synchronization behavior remains compatible in v1.5.001. New US/EU regional HVAC controls are documented in README.md, DOCUMENTATION.md, and USER_MANUAL.md.
 
 ---
 

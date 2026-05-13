@@ -5,14 +5,20 @@ This guide helps developers understand, modify, and extend the Smart Thermostat 
 ## 🎯 Project Architecture Overview
 
 ### Current Implementation Status
-- **Version**: 1.4.001 (January 2026)
+- **Version**: 1.5.001 (May 2026)
 - **Platform**: ESP32-S3-WROOM-1-N16 (16MB Flash, No PSRAM)
 - **Display**: ILI9341 320x240 TFT with XPT2046 touch controller
 - **Sensors**: AHT20 (I2C temp/humidity), DS18B20 (OneWire hydronic temp), LD2410 (24GHz mmWave motion)
 - **Weather**: Dual-source (OpenWeatherMap/Home Assistant) with color-coded standard icons
 - **Architecture**: Dual-core FreeRTOS with Option C centralized display management
 - **Memory Usage**: ~3.2MB flash (18.5% utilization = 1,210,272 bytes with default_16mb.csv partition)
-- **Key Features**: Bidirectional MQTT schedule sync, weather integration, motion wake on presence, I2C mutex protection, anti-flicker display, multi-thermostat support
+- **Key Features**: Bidirectional MQTT schedule sync, weather integration, motion wake on presence, I2C mutex protection, anti-flicker display, multi-thermostat support, US/EU regional HVAC logic
+
+### Recent Firmware Additions (v1.5.001)
+- US/EU thermostat region mode persisted in Preferences.
+- EU humidity dehumidification settings (enable, relay selection, setpoint, deadband).
+- EU dehumidification active state surfaced to status page and TFT sidebar.
+- OFF-mode display fix in `updateDisplay()` to keep current temp and setpoint visible in upper-right readouts.
 
 ## 🎯 Development Environment Setup
 

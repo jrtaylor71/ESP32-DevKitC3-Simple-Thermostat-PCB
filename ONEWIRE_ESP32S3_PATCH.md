@@ -1,5 +1,7 @@
 # OneWire Library ESP32-S3 GPIO41 Patch
 
+Compatibility note (May 2026): This patch guidance remains applicable for firmware v1.5.001 builds using OneWire on ESP32-S3 GPIO pins above 33.
+
 ## Issue
 
 The OneWire library v2.3.7 has a hard-coded limitation that prevents GPIO pins above 33 from being used as outputs:

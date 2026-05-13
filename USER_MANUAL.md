@@ -1,6 +1,6 @@
 # ESP32-S3 Simple Thermostat - User Manual
 
-**Version 1.4.009 | February 2026**
+**Version 1.5.001 | May 2026**
 
 ---
 
@@ -135,6 +135,10 @@ The touch screen shows real-time information:
 - Cool Stage 2: C2
 - Fan: FAN
 - Reversing Valve: RV (for heat pumps)
+- EU Dehumidification: `DEHUM ON` / `DEHUM OFF` when EU humidity control is enabled
+
+**OFF Mode Display Behavior**:
+- In OFF mode, the upper-right display continues showing current temperature (`Cur`) and setpoint (`Set`).
 
 ---
 
@@ -178,6 +182,15 @@ Access the web interface by navigating to your thermostat's IP address in any br
 - **Reversing Valve**: For heat pump systems (mutually exclusive with Stage 2 Heat)
 - **Stage 1 Runtime**: Minimum time before activating Stage 2 (default 3 minutes)
 - **Stage 2 Delta**: Temperature difference required for Stage 2 (default 2.0°)
+
+**Regional HVAC (US/EU)**:
+- **Thermostat Region Mode**: Select US or EU control behavior.
+- **US Mode**: Temperature-driven cooling behavior.
+- **EU Mode**: Optional humidity-driven dehumidification support.
+- **EU Humidity Dehumidification**:
+   - Enable/disable humidity cooling assist
+   - Relay selection: Cool Stage 1, Cool Stage 2, or Pump relay
+   - Setpoint and deadband configuration
 
 **Fan Settings**:
 - **Fan Relay Needed**: Enable if fan requires separate relay control

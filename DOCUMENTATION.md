@@ -4,10 +4,10 @@
 
 The Firmware is a comprehensive, feature-rich smart thermostat system built on the ESP32-S3 platform with professional PCB design.
 
-**Current Version**: 1.3.6 (December 2025)
+**Current Version**: 1.5.001 (May 2026)
 **Hardware**: ESP32-S3-WROOM-1-N16 (16MB Flash)
 **Architecture**: Dual-core FreeRTOS with Option C display management
-**Status**: Production-ready with comprehensive testing, scheduling, weather integration, and enhanced OTA updates
+**Status**: Production-ready with comprehensive testing, scheduling, weather integration, US/EU regional HVAC options, and enhanced OTA updates
 
 ### Key Features
 
@@ -19,6 +19,7 @@ The Firmware is a comprehensive, feature-rich smart thermostat system built on t
 - **Smart Home Integration**: Full MQTT support with Home Assistant auto-discovery, precision temperature control, and schedule status publishing
 - **Advanced Sensor Suite**: AHT20 I2C sensor for ambient conditions, DS18B20 OneWire for hydronic systems
 - **Intelligent Multi-Stage HVAC**: 2-stage heating/cooling with hybrid time/temperature staging logic
+- **US/EU Regional HVAC Controls**: Region mode switch with EU humidity-driven dehumidification support
 - **Enhanced Hydronic Safety**: Water temperature monitoring with [LOCKOUT] safety interlocks and improved alerts
 - **Flexible Operation Modes**: Heat, Cool, Auto, and Off with configurable temperature swings
 - **Advanced Fan Control**: Auto, On, and Cycle modes with scheduled operation (minutes per hour)
@@ -156,6 +157,14 @@ const int buzzerPin = 17;       // Buzzer (5V through 2N7002 MOSFET)
 2. **Heat**: Heating-only operation with configurable setpoint
 3. **Cool**: Cooling-only operation with configurable setpoint  
 4. **Auto**: Automatic changeover between heating and cooling
+
+### Regional Control Modes
+- **US Mode**: Traditional temperature-driven cooling behavior.
+- **EU Mode**: Optional humidity-driven dehumidification can call cooling based on RH thresholds.
+- **EU Dehumidification Relay Selection**:
+  - Cool Stage 1 relay
+  - Cool Stage 2 relay
+  - Pump relay
 
 ### Fan Modes
 1. **Auto**: Fan runs only when heating/cooling is active

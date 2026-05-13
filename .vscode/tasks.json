@@ -46,6 +46,19 @@
         "reveal": "always",
         "panel": "new"
       }
+    },
+    {
+      "label": "Update Handoff File",
+      "type": "shell",
+      "command": "cd ${workspaceFolder} && sed -i 's/^Last Updated: .*/Last Updated: '$(date +%Y-%m-%d)'/' SESSION_HANDOFF.txt && echo 'Handoff updated.'",
+      "group": {
+        "kind": "none"
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "shared"
+      }
     }
   ]
 }
