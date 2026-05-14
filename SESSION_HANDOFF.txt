@@ -1,47 +1,21 @@
 SESSION HANDOFF
 
 Project: ESP32-DevKitC3-Simple-Thermostat-PCB
-Last Updated: 2026-05-13
+Last Updated: 2026-05-14
 Current Branch: main
 
-What Changed This Session
-- Added US/EU thermostat region mode support in `src/Main-Thermostat.cpp`.
-: New persisted settings: region mode, EU humidity control enable, EU relay selection, EU humidity setpoint, EU deadband.
-- Added EU humidity-driven dehumidification behavior to HVAC control logic.
-: EU mode can activate cooling based on humidity thresholds (with deadband hysteresis).
-: EU relay selection is supported for dehumidification output path.
-- Added EU dehumidification active status indicators.
-: Web status card shows `EU Dehumidification` with `Active`/`Standby`.
-: TFT sidebar shows `DEHUM ON` / `DEHUM OFF` when EU humidity control is enabled.
-- Fixed OFF-mode display behavior in `updateDisplay()`.
-: Upper-right readout now continues showing `Cur` and `Set` values while mode is OFF.
-: Sidebar refresh now tracks current temp changes in OFF mode.
-- Refreshed project documentation set for v1.5.001 (May 2026).
-: Updated README, technical docs, developer guide, user manual, sync docs, Windows setup, historical compatibility notes, and session notes.
+Current State
+- Firmware version in working tree: 1.5.003.
+- Primary release/change history is tracked in CHANGELOG.md.
 
-Why
-- Regional behavior support was requested for US/EU HVAC operation.
-- EU humidity dehumidification needed relay-selection flexibility and visible runtime state.
-- OFF-mode display behavior needed to preserve key live values for user visibility.
-- Documentation needed to match current shipped behavior and settings.
+How To Continue
+- Read CHANGELOG.md first for historical and latest changes.
+- Use this file only for current-state handoff notes and immediate next actions.
 
-Validation
-- Task run: `PlatformIO: Build & Organize Firmware`.
-- Status: SUCCESS for firmware environments during this session.
-- No upload/flash operations were performed.
+Manual Sync Policy
+- Main code sync to Smart-Thermostat-Alt-Firmware remains manual-only via ./copy_main_code.sh.
+- Script now requires explicit approval confirmation before copying.
 
-Open Follow-ups
-- Consider adding MQTT/Home Assistant entities for EU region mode and EU dehumidification active state.
-- Consider adding concise labels for right-sidebar rows if future layout refinements are made.
-- Consider documenting EU defaults directly in web settings helper text/tooltips.
-
-Notes For Next Session
-- EU humidity defaults currently used:
-: Setpoint = 60%
-: Deadband = 5%
-- OFF mode display now keeps upper-right `Cur` and `Set` visible.
-- Key implementation areas:
-: `controlRelays()` for humidity demand state and hysteresis
-: `activateCooling()` for relay selection behavior
-: `updateDisplay()` for OFF-mode sidebar behavior
-: `include/WebPages.h` for EU status card and settings UI
+Immediate Next Actions
+- Keep adding future entries to CHANGELOG.md with each version bump.
+- Keep SESSION_HANDOFF.txt concise and current-state only.

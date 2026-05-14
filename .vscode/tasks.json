@@ -4,7 +4,7 @@
     {
       "label": "PlatformIO: Build & Organize Firmware",
       "type": "shell",
-      "command": "cd ${workspaceFolder} && pio run && ./organize_firmware.sh",
+      "command": "cd ${workspaceFolder} && ./build.sh all",
       "group": {
         "kind": "build",
         "isDefault": true
@@ -21,7 +21,7 @@
     {
       "label": "PlatformIO: Clean & Build & Organize",
       "type": "shell",
-      "command": "cd ${workspaceFolder} && pio run --target clean && pio run && ./organize_firmware.sh",
+      "command": "cd ${workspaceFolder} && ./build.sh clean all",
       "group": {
         "kind": "build"
       },

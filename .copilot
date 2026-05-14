@@ -2,6 +2,28 @@
 
 This file provides context and guidance for GitHub Copilot when working with the Smart Thermostat Alt Firmware project.
 
+## Protected File Directive
+
+- DO NOT modify `copy_main_code.sh` unless the user provides explicit approval in the same request.
+- Explicit approval must include both:
+  - clear permission to edit `copy_main_code.sh`, and
+  - exact directions for what to change and when to change it.
+- If either of the above is missing, treat `copy_main_code.sh` as read-only and do not propose or apply edits.
+
+## Versioning Directive
+
+- Firmware version format is `x.x.xxx`.
+- All version changes require explicit user approval first.
+- Default rule: for fixes, cleanup, tuning, small UI/workflow adjustments, and routine maintenance, increment only the last three digits.
+- Use a middle-digit bump only for larger feature releases or grouped user-facing capability additions, and reset the last three digits to `000`.
+- Use a first-digit bump only for rare major release boundaries.
+- When uncertain, choose the smaller bump and default to incrementing the last three digits.
+- Do not update firmware version strings, changelog version headings, release labels, or versioned filenames unless the user has approved that specific version change.
+- Before pushing to GitHub, always check whether `sw_version` changed in `src/Main-Thermostat.cpp`.
+- If the version changed, require a matching git tag before push.
+- Accept either tag format `X.Y.ZZZ` or `vX.Y.ZZZ` to match historical repo usage.
+- Do not push a new version to GitHub unless its tag already exists or the user explicitly instructs creation of that tag.
+
 ## Project Context
 
 ### Project Type

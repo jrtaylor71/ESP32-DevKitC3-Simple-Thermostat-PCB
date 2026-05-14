@@ -105,17 +105,6 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "<button type='button' class='nav-tab' data-tab='system' onclick='showTab(\"system\")'>System</button>";
     html += "</div>";
 
-    // Tab handler: reload when clicking Status to clear stale cache
-    html += "<script>";
-    html += "function showTab(tab){";
-    html += "  if(tab==='status'){ window.location.href='/?r=' + Date.now(); return; }";
-    html += "  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));";
-    html += "  const target=document.getElementById(tab+'-content'); if(target){target.classList.add('active');}";
-    html += "  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));";
-    html += "  const btn=document.querySelector('.nav-tab[data-tab=\\\"' + tab + '\\\"]'); if(btn){btn.classList.add('active');}";
-    html += "}";
-    html += "</script>";
-    
     // Status tab content
     html += "<div id='status-content' class='tab-content content active'>";
     
@@ -125,7 +114,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += ICON_TEMPERATURE;
     html += "<h2 class='card-title'>Current Temperature</h2>";
     html += "</div>";
-    html += "<div class='temp-display'>" + String(currentTemp, 1) + "<span class='temp-unit'>&deg;" + String(useFahrenheit ? "F" : "C") + "</span></div>";
+    html += "<div id='current-temp-display' class='temp-display'>" + String(currentTemp, 1) + "<span class='temp-unit'>&deg;" + String(useFahrenheit ? "F" : "C") + "</span></div>";
     html += "</div>";
     
     // Status grid
@@ -137,7 +126,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += ICON_HUMIDITY;
     html += "<h3 class='card-title'>Humidity</h3>";
     html += "</div>";
-    html += "<div style='text-align: center; font-size: 2rem; color: var(--secondary-color);'>";
+    html += "<div id='current-humidity-value' style='text-align: center; font-size: 2rem; color: var(--secondary-color);'>";
     html += String(currentHumidity, 1) + "<span style='font-size: 1rem; opacity: 0.7;'>%</span></div>";
     html += "</div>";
     
@@ -152,9 +141,9 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     if (thermostatMode == "off") modeClass += "off";
     else if (thermostatMode == "auto") modeClass += "auto";
     else modeClass += "on";
-    html += "<span class='status-indicator " + modeClass + "'>" + thermostatMode + "</span>";
+    html += "<span id='thermostat-mode-indicator' class='status-indicator " + modeClass + "'>" + thermostatMode + "</span>";
     html += "</div>";
-    html += "<div style='text-align: center; font-size: 0.9rem; opacity: 0.7;'>Fan: " + fanMode + "</div>";
+    html += "<div id='fan-mode-value' style='text-align: center; font-size: 0.9rem; opacity: 0.7;'>Fan: " + fanMode + "</div>";
     html += "</div>";
 
     // EU dehumidification status card
@@ -832,7 +821,8 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "<div style='border:2px dashed #555;padding:20px;text-align:center;border-radius:8px;margin:16px 0;'>";
     html += "<p><strong>Select Firmware File (.bin):</strong></p>";
     html += "<input id='otaFile' type='file' accept='.bin' required style='margin:10px 0;'>";
-    html += "<br><button id='otaStart' type='button' class='btn btn-primary'>📤 Upload Firmware</button>";
+    html += "<div id='otaSelected' style='font-size:0.8rem;color:#aaa;margin:6px 0;'>No file selected</div>";
+    html += "<br><button id='otaStart' type='button' class='btn btn-primary' disabled>📤 Upload Firmware</button>";
     html += "</div>";
     html += "<div id='otaProgress' style='display:none;margin:12px 0;'>";
     html += "<div style='background:#2c2c2c;border:1px solid #444;border-radius:6px;height:28px;overflow:hidden;position:relative;'>";
@@ -843,7 +833,37 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "<div id='otaStatus' style='display:none;padding:10px;border-radius:6px;font-size:0.9rem;'></div>";
     html += "<p style='font-size:0.75em;color:#888;'><em>⚠️ Do not power off during update. Page stays here; progress shown below. After reboot version will be verified automatically.</em></p>";
     html += "<script>";
-    html += "(function(){const file=document.getElementById('otaFile');const btn=document.getElementById('otaStart');const prog=document.getElementById('otaProgress');const bar=document.getElementById('otaBar');const eta=document.getElementById('otaEta');const status=document.getElementById('otaStatus');let poll=null;function setStatus(ok,msg){status.style.display='block';status.style.background=ok?'#1b5e20':'#b71c1c';status.style.color='#fff';status.textContent=msg;}function human(ms){if(ms<1000)return ms+' ms';let s=ms/1000;if(s<60)return s.toFixed(1)+' s';let m=s/60;return m.toFixed(1)+' m';}function otaSuccessText(j){return '✓ Update successful! Version '+j.version+' • '+(j.device_datetime||'Time not set');}btn.addEventListener('click',()=>{if(!file.files.length){alert('Select a .bin file');return;}const f=file.files[0];if(!f.name.endsWith('.bin')){alert('Select a .bin file');return;}btn.disabled=true;prog.style.display='block';status.style.display='none';eta.textContent='Starting...';bar.textContent='0%';bar.style.width='0%';let started=Date.now();let fallbackStarted=false;let lastPct=0;const fallbackTimer=setTimeout(()=>{if(bar.style.width==='0%'&&!fallbackStarted){fallbackStarted=true;eta.textContent='Upload complete, writing to flash...';poll=setInterval(()=>{fetch('/update_status').then(r=>r.json()).then(j=>{if(j.state==='writing'&&j.total>0){let pct=Math.round((j.bytes/j.total)*100);if(pct>100)pct=100;if(pct>lastPct){bar.style.width=pct+'%';bar.textContent=pct+'%';lastPct=pct;eta.textContent='Writing firmware to flash: '+pct+'%';}}else if(j.state==='rebooting'){setStatus(true,'Firmware written. Rebooting...');eta.textContent='Waiting for restart...';if(poll){clearInterval(poll);poll=null;}}}).catch(()=>{});},800);} },2500);const xhr=new XMLHttpRequest();xhr.open('POST','/update');const fd=new FormData();fd.append('firmware',f);xhr.upload.onprogress=(e)=>{if(e.lengthComputable){const p=Math.round(e.loaded/e.total*100);bar.style.width=p+'%';bar.textContent=p+'%';const elapsed=Date.now()-started;const rate=e.loaded/(elapsed/1000);if(rate>0){const remain=(e.total-e.loaded)/rate*1000;eta.textContent='Uploading: '+human(remain)+' remaining';}if(p>=99){eta.textContent='Upload complete, writing to flash...';}if(p>0&&poll){clearInterval(poll);poll=null;}}};xhr.onload=()=>{clearTimeout(fallbackTimer);if(xhr.status==200){setStatus(true,'Flash complete. Device rebooting...');bar.style.width='100%';bar.textContent='100%';eta.textContent='Waiting for reboot and startup (up to 15s)...';if(poll){clearInterval(poll);poll=null;}setTimeout(()=>{const begin=Date.now();const iv=setInterval(()=>{fetch('/version').then(r=>r.json()).then(j=>{setStatus(true,otaSuccessText(j));eta.textContent='Device ready.';clearInterval(iv);}).catch(()=>{if(Date.now()-begin>70000){setStatus(false,'Device did not return in 70s');eta.textContent='Timeout.';clearInterval(iv);}});},2500);},3000);}else{setStatus(false,'Update failed: '+xhr.responseText);eta.textContent='Error.';btn.disabled=false;if(poll){clearInterval(poll);poll=null;}}};xhr.onerror=()=>{clearTimeout(fallbackTimer);if(poll){clearInterval(poll);poll=null;}setStatus(true,'Flash complete. Device rebooting...');bar.style.width='100%';bar.textContent='100%';eta.textContent='Waiting for reboot and startup (up to 15s)...';setTimeout(()=>{const begin=Date.now();const iv=setInterval(()=>{fetch('/version').then(r=>r.json()).then(j=>{setStatus(true,otaSuccessText(j));eta.textContent='Device ready.';clearInterval(iv);}).catch(()=>{if(Date.now()-begin>70000){setStatus(false,'Device did not return in 70s');eta.textContent='Timeout.';clearInterval(iv);}});},2500);},3000);};xhr.send(fd);});})();";
+    html += "(function(){";
+    html += "const file=document.getElementById('otaFile');";
+    html += "const btn=document.getElementById('otaStart');";
+    html += "const selected=document.getElementById('otaSelected');";
+    html += "const prog=document.getElementById('otaProgress');";
+    html += "const bar=document.getElementById('otaBar');";
+    html += "const eta=document.getElementById('otaEta');";
+    html += "const status=document.getElementById('otaStatus');";
+    html += "let poll=null;";
+    html += "let armed=false;";
+    html += "function setStatus(ok,msg){status.style.display='block';status.style.background=ok?'#1b5e20':'#b71c1c';status.style.color='#fff';status.textContent=msg;}";
+    html += "function human(ms){if(ms<1000)return ms+' ms';let s=ms/1000;if(s<60)return s.toFixed(1)+' s';let m=s/60;return m.toFixed(1)+' m';}";
+    html += "function otaSuccessText(j){return '✓ Update successful! Version '+j.version+' • '+(j.device_datetime||'Time not set');}";
+    html += "function resetSelection(msg){file.value='';armed=false;btn.disabled=true;selected.textContent=msg||'No file selected';}";
+    html += "file.addEventListener('change',()=>{if(!file.files.length){resetSelection();return;}const f=file.files[0];if(!f.name.toLowerCase().endsWith('.bin')){resetSelection('Invalid file: select a .bin');alert('Select a .bin file');return;}armed=true;btn.disabled=false;selected.textContent='Selected: '+f.name+' ('+Math.round(f.size/1024)+' KB)';});";
+    html += "btn.addEventListener('click',()=>{";
+    html += "if(!armed||!file.files.length){alert('Select a .bin file');return;}";
+    html += "const f=file.files[0];";
+    html += "if(!f.name.toLowerCase().endsWith('.bin')){alert('Select a .bin file');return;}";
+    html += "armed=false;btn.disabled=true;";
+    html += "prog.style.display='block';status.style.display='none';eta.textContent='Starting...';bar.textContent='0%';bar.style.width='0%';";
+    html += "let started=Date.now();let fallbackStarted=false;let lastPct=0;";
+    html += "const fallbackTimer=setTimeout(()=>{if(bar.style.width==='0%'&&!fallbackStarted){fallbackStarted=true;eta.textContent='Upload complete, writing to flash...';poll=setInterval(()=>{fetch('/update_status').then(r=>r.json()).then(j=>{if(j.state==='writing'&&j.total>0){let pct=Math.round((j.bytes/j.total)*100);if(pct>100)pct=100;if(pct>lastPct){bar.style.width=pct+'%';bar.textContent=pct+'%';lastPct=pct;eta.textContent='Writing firmware to flash: '+pct+'%';}}else if(j.state==='rebooting'){setStatus(true,'Firmware written. Rebooting...');eta.textContent='Waiting for restart...';if(poll){clearInterval(poll);poll=null;}}}).catch(()=>{});},800);}},2500);";
+    html += "const xhr=new XMLHttpRequest();xhr.open('POST','/update');";
+    html += "const fd=new FormData();fd.append('firmware',f);";
+    html += "xhr.upload.onprogress=(e)=>{if(e.lengthComputable){const p=Math.round(e.loaded/e.total*100);bar.style.width=p+'%';bar.textContent=p+'%';const elapsed=Date.now()-started;const rate=e.loaded/(elapsed/1000);if(rate>0){const remain=(e.total-e.loaded)/rate*1000;eta.textContent='Uploading: '+human(remain)+' remaining';}if(p>=99){eta.textContent='Upload complete, writing to flash...';}if(p>0&&poll){clearInterval(poll);poll=null;}}};";
+    html += "xhr.onload=()=>{clearTimeout(fallbackTimer);if(xhr.status==200){setStatus(true,'Flash complete. Device rebooting...');bar.style.width='100%';bar.textContent='100%';eta.textContent='Waiting for reboot and startup (up to 15s)...';if(poll){clearInterval(poll);poll=null;}setTimeout(()=>{const begin=Date.now();const iv=setInterval(()=>{fetch('/version').then(r=>r.json()).then(j=>{setStatus(true,otaSuccessText(j));eta.textContent='Device ready. Redirecting to Status...';clearInterval(iv);resetSelection();setTimeout(()=>{window.location.href='/?tab=status&r='+Date.now();},1200);}).catch(()=>{if(Date.now()-begin>70000){setStatus(false,'Device did not return in 70s');eta.textContent='Timeout.';clearInterval(iv);resetSelection('Select a new .bin file');}});},2500);},3000);}else{setStatus(false,'Update failed: '+xhr.responseText);eta.textContent='Error.';resetSelection('Select a new .bin file');if(poll){clearInterval(poll);poll=null;}}};";
+    html += "xhr.onerror=()=>{clearTimeout(fallbackTimer);if(poll){clearInterval(poll);poll=null;}setStatus(false,'Update upload failed. Please select file again.');eta.textContent='Error.';resetSelection('Select a new .bin file');};";
+    html += "xhr.send(fd);";
+    html += "});";
+    html += "})();";
     html += "</script>";
     html += "</div>";
     html += "</div>";
@@ -1378,75 +1398,6 @@ String generateSettingsPage(String thermostatMode, String fanMode, float setTemp
     html += "</script>";
     
     html += JAVASCRIPT_CODE;
-    html += "</body></html>";
-    
-    return html;
-}
-
-// Generate OTA update page
-String generateOTAPage() {
-    String html = "<!DOCTYPE html><html lang='en'><head>";
-    html += "<meta charset='UTF-8'>";
-    html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
-    html += "<title>"; html += String(PROJECT_NAME_SHORT); html += " - OTA Update</title>";
-    html += CSS_STYLES;
-    html += "</head><body>";
-    
-    html += "<div class='container'>";
-    
-    html += "<div class='header'>";
-    html += "<h1>Over-The-Air Update</h1>";
-    html += "<div class='version'>Upload new firmware</div>";
-    html += "</div>";
-    
-    html += "<div class='content'>";
-    
-    html += "<div class='alert alert-warning'>";
-    html += "<strong>Warning:</strong> Do not power off the device during the update process. ";
-    html += "The update may take several minutes to complete.";
-    html += "</div>";
-    
-    html += "<div class='settings-section'>";
-    html += "<h3>Firmware Upload</h3>";
-    html += "<form method='POST' action='/update' enctype='multipart/form-data'>";
-    html += "<div class='form-group'>";
-    html += "<label class='form-label'>Select Firmware File (.bin)</label>";
-    html += "<input type='file' name='update' accept='.bin' class='form-input' style='padding: 8px;'>";
-    html += "</div>";
-    html += "<div class='button-group'>";
-    html += "<input type='submit' value='Upload & Install' class='btn btn-primary' onclick='showUploadProgress()'>";
-    html += "<a href='/' class='btn btn-secondary'>Cancel</a>";
-    html += "</div>";
-    html += "</form>";
-    html += "</div>";
-    
-    html += "<div id='upload-progress' style='display: none;'>";
-    html += "<div class='settings-section'>";
-    html += "<h3>Uploading...</h3>";
-    html += "<div class='progress-bar'>";
-    html += "<div class='progress-fill' style='width: 0%;'></div>";
-    html += "</div>";
-    html += "<p>Please wait while the firmware is being uploaded and installed.</p>";
-    html += "</div>";
-    html += "</div>";
-    
-    html += "</div>"; // End content
-    html += "</div>"; // End container
-    
-    html += "<script>";
-    html += "function showUploadProgress() {";
-    html += "  document.getElementById('upload-progress').style.display = 'block';";
-    html += "  // Simulate progress (in real implementation, this would be actual progress)";
-    html += "  let progress = 0;";
-    html += "  const progressBar = document.querySelector('.progress-fill');";
-    html += "  const interval = setInterval(() => {";
-    html += "    progress += 2;";
-    html += "    progressBar.style.width = progress + '%';";
-    html += "    if (progress >= 100) clearInterval(interval);";
-    html += "  }, 100);";
-    html += "}";
-    html += "</script>";
-    
     html += "</body></html>";
     
     return html;

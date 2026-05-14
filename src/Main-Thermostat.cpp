@@ -59,7 +59,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.5.002"; // Software version - Display cleanup + lockout/fan stability fixes
+const String sw_version = "1.5.003"; // Software version - Display cleanup + lockout/fan stability fixes
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -4708,26 +4708,21 @@ void handleWebRequests()
                                        weatherSource, owmApiKey, owmCity, owmState, owmCountry,
                                        haUrl, haToken, haEntityId, weatherUpdateInterval,
                                        weather.getData());
-        request->send(200, "text/html", html);
+        AsyncWebServerResponse *response = request->beginResponse(200, "text/html", html);
+        response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        response->addHeader("Pragma", "no-cache");
+        response->addHeader("Expires", "0");
+        request->send(response);
     });
 
     server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-        String html = generateSettingsPage(thermostatMode, fanMode, setTempHeat, setTempCool, setTempAuto, 
-                                          tempSwing, autoTempSwing, fanRelayNeeded, useFahrenheit, mqttEnabled, 
-                                          stage1MinRuntime, stage2TempDelta, stage2HeatingEnabled, stage2CoolingEnabled,
-                                          reversingValveEnabled,
-                                          backupHeatEnabled, backupHeatRelaySelection, backupHeatDelayMinutes,
-                                          backupHeatMinTempRise, backupHeatMaxTempDrop,
-                                          thermostatRegion,
-                                          euHumidityControlEnabled, euHumidityRelaySelection,
-                                          euHumiditySetpoint, euHumidityDeadband,
-                                          hydronicHeatingEnabled, hydronicTempLow, hydronicTempHigh, fanMinutesPerHour,
-                                          showerModeEnabled, showerModeDuration,
-                                          mqttServer, mqttPort, mqttUsername, mqttPassword, wifiSSID, wifiPassword,
-                                          hostname, use24HourClock, timeZone, tempOffset, humidityOffset, displaySleepEnabled,
-                                          displaySleepTimeout);
-        request->send(200, "text/html", html);
+        AsyncWebServerResponse *response = request->beginResponse(302, "text/plain", "Redirecting to embedded settings page...");
+        response->addHeader("Location", "/?tab=settings");
+        response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        response->addHeader("Pragma", "no-cache");
+        response->addHeader("Expires", "0");
+        request->send(response);
     });
 
     server.on("/confirm_restore", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -5091,7 +5086,11 @@ void handleWebRequests()
         response += "\"tempSwing\": \"" + String(tempSwing) + "\",";
         response += "\"thermostatMode\": \"" + thermostatMode + "\",";
         response += "\"fanMode\": \"" + fanMode + "\"}";
-        request->send(200, "application/json", response); });
+        AsyncWebServerResponse *jsonResponse = request->beginResponse(200, "application/json", response);
+        jsonResponse->addHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        jsonResponse->addHeader("Pragma", "no-cache");
+        jsonResponse->addHeader("Expires", "0");
+        request->send(jsonResponse); });
 
     server.on("/version", HTTP_GET, [](AsyncWebServerRequest *request)
               {

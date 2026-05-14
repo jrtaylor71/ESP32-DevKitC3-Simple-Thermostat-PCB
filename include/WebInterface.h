@@ -601,7 +601,7 @@ function showTab(tabName) {
     }
     
     // Add active class to selected tab
-    const selectedTab = document.querySelector("[onclick=\"showTab('" + tabName + "')\"]");
+    const selectedTab = document.querySelector(".nav-tab[data-tab='" + tabName + "']");
     if (selectedTab) {
         selectedTab.classList.add('active');
     }
@@ -632,17 +632,54 @@ function stopAutoRefresh() {
 }
 
 function refreshStatus() {
-    // Add subtle loading indicator
     const statusCards = document.querySelectorAll('.status-card');
     statusCards.forEach(card => card.style.opacity = '0.7');
-    
-    // Reload the page to get fresh data
-    // In a real implementation, this would be an AJAX call
-    setTimeout(() => {
-        if (currentTab === 'status') {
-            location.reload();
-        }
-    }, 500);
+
+  fetch('/status?ts=' + Date.now(), { cache: 'no-store' })
+  .then(response => {
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return response.json();
+  })
+  .then(data => {
+    const tempDisplay = document.getElementById('current-temp-display');
+    if (tempDisplay && data.currentTemp !== undefined) {
+      const unitSpan = tempDisplay.querySelector('.temp-unit');
+      const unitHtml = unitSpan ? unitSpan.outerHTML : '';
+      const temp = Number.parseFloat(data.currentTemp);
+      if (!Number.isNaN(temp)) {
+        tempDisplay.innerHTML = temp.toFixed(1) + unitHtml;
+      }
+    }
+
+    const humidityDisplay = document.getElementById('current-humidity-value');
+    if (humidityDisplay && data.currentHumidity !== undefined) {
+      const hum = Number.parseFloat(data.currentHumidity);
+      if (!Number.isNaN(hum)) {
+        humidityDisplay.innerHTML = hum.toFixed(1) + "<span style='font-size: 1rem; opacity: 0.7;'>%</span>";
+      }
+    }
+
+    const modeIndicator = document.getElementById('thermostat-mode-indicator');
+    if (modeIndicator && data.thermostatMode) {
+      const mode = String(data.thermostatMode).toLowerCase();
+      modeIndicator.textContent = mode;
+      modeIndicator.classList.remove('status-on', 'status-off', 'status-auto');
+      if (mode === 'off') modeIndicator.classList.add('status-off');
+      else if (mode === 'auto') modeIndicator.classList.add('status-auto');
+      else modeIndicator.classList.add('status-on');
+    }
+
+    const fanMode = document.getElementById('fan-mode-value');
+    if (fanMode && data.fanMode) {
+      fanMode.textContent = 'Fan: ' + data.fanMode;
+    }
+  })
+  .catch(error => {
+    console.error('Status refresh error:', error);
+  })
+  .finally(() => {
+    statusCards.forEach(card => card.style.opacity = '1');
+  });
 }
 
 function confirmAction(actionName, actionUrl) {
