@@ -38,7 +38,7 @@
 #include "TFT_Setup_ESP32_S3_Thermostat.h"
 #include <HTTPClient.h>
 #include <PubSubClient.h> // Include the MQTT library
-#include <esp_task_wdt.h> // Include the watchdog timer library
+#include <esp_task_wdt.h> // Watchdog reset API used in main loop
 #include <time.h>
 #include <ArduinoJson.h> // Include the ArduinoJson library
 #include <OneWire.h>
@@ -66,7 +66,6 @@ String version_info = sw_version + " (" + build_date + " " + build_time + ")";
 
 // Constants
 const int SECONDS_PER_HOUR = 3600;
-const int WDT_TIMEOUT = 10; // Watchdog timer timeout in seconds
 
 // Temperature/Humidity Sensor Configuration
 enum SensorType {

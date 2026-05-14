@@ -89,7 +89,6 @@ private:
     bool updateFromOpenWeatherMap();
     bool updateFromHomeAssistant();
     void drawWeatherIcon(LGFX &tft, int x, int y, String condition);
-    String getIconFromCondition(String condition);
 };
 
 #endif // WEATHER_H

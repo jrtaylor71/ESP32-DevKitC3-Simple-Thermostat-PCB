@@ -79,13 +79,6 @@ enum SettingsPage {
     PAGE_SYSINFO     // System information (IP, MAC, uptime, memory, etc)
 };
 
-// Touch button structure
-struct TouchButton {
-    int x, y, w, h;
-    const char* label;
-    uint16_t color;
-};
-
 // Current settings page
 static SettingsPage currentPage = PAGE_MENU;
 
