@@ -59,6 +59,20 @@
         "reveal": "always",
         "panel": "shared"
       }
+    },
+    {
+      "label": "Release: Commit, Tag, and Push",
+      "type": "shell",
+      "command": "cd ${workspaceFolder} && bash ./update_release.sh",
+      "group": {
+        "kind": "none"
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
     }
   ]
 }

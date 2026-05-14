@@ -136,6 +136,17 @@ if [ "$CLEAN_BUILD" = true ]; then
     fi
 fi
 
+# Ensure OneWire is patched for ESP32-S3 GPIO41+ before compiling.
+if [ -f "./patch_onewire_esp32s3.sh" ]; then
+    echo "[BUILD] Applying OneWire ESP32-S3 GPIO patch..."
+    ./patch_onewire_esp32s3.sh >/dev/null || {
+        echo "[BUILD] Failed to apply OneWire patch. Aborting build."
+        exit 1
+    }
+else
+    echo "[BUILD] WARNING: patch_onewire_esp32s3.sh not found; DS18B20 on GPIO41 may fail."
+fi
+
 echo "[BUILD] Building firmware..."
 
 if [ -n "$SPECIFIC_VARIANT" ]; then

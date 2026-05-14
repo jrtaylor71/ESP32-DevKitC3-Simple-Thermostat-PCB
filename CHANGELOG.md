@@ -13,6 +13,11 @@ All notable firmware changes are documented in this file.
 - Do not change `sw_version`, changelog version headers, or release labels unless the user has approved that specific version change.
 
 ## [1.5.003] - 2026-05-14 (working tree)
+## [1.5.004] - 2026-05-14
+- Hardened OTA and manual reboot reconnect logic in web UI to prevent blank page and false failure after update or reboot.
+- Fixed DS18B20 sensor regression by making OneWire GPIO41 patch persistent in build process.
+- Improved process/tooling: enforced version/changelog sync, explicit approval for version changes, and robust release workflow.
+- No functional changes to user-facing features beyond bugfixes and reliability improvements.
 - Web UI status refresh stabilization:
   - Replaced reload-based status updates with in-place `/status` polling updates.
   - Added no-cache headers for `/` and `/status` responses.
