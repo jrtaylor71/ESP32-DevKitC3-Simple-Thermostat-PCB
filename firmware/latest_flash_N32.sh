@@ -1,21 +1,21 @@
 #!/bin/bash
 # Flash script for ESP32-S3 Simple Thermostat - N32 (32MB) - Latest Build
-# Firmware version: 1.5.001
+# Firmware version: 1.5.002
 # Usage: ./latest_flash_N32.sh [port]
 # Default port: /dev/ttyACM0
 
 PORT=${1:-/dev/ttyACM0}
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-LATEST_BUILD="$SCRIPT_DIR/N32/build_20260513-161109_v1.5.001"
+LATEST_BUILD="$SCRIPT_DIR/N32/build_20260513-231613_v1.5.002"
 
 echo "[FLASH] Using port: $PORT"
-echo "[FLASH] Flashing ESP32-S3 N32 (32MB) - Latest Build (20260513-161109), version 1.5.001..."
+echo "[FLASH] Flashing ESP32-S3 N32 (32MB) - Latest Build (20260513-231613), version 1.5.002..."
 
 esptool.py --chip esp32s3 --port "$PORT" --baud 460800 --before default_reset --after hard_reset write_flash -z \
     --flash_mode dio --flash_freq 80m --flash_size 32MB \
-    0x0 "$LATEST_BUILD/bootloader_v1.5.001_20260513-161109.bin" \
-    0x8000 "$LATEST_BUILD/partitions_v1.5.001_20260513-161109.bin" \
-    0x10000 "$LATEST_BUILD/firmware_v1.5.001_20260513-161109.bin"
+    0x0 "$LATEST_BUILD/bootloader_v1.5.002_20260513-231613.bin" \
+    0x8000 "$LATEST_BUILD/partitions_v1.5.002_20260513-231613.bin" \
+    0x10000 "$LATEST_BUILD/firmware_v1.5.002_20260513-231613.bin"
 
 if [ $? -eq 0 ]; then
     echo "[FLASH] Successfully flashed N32!"

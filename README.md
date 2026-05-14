@@ -3,6 +3,10 @@
 A comprehensive, feature-rich simple thermostat system built on the ESP32 platform with professional PCB design. Perfect for DIY smart home automation with full Home Assistant integration.
 
 ![Main-Display](img/display.JPG)
+![Settings1](img/settings1.png)
+![Settings2](img/settings2.png)
+![Settings3](img/settings3.png)
+![Settings4](img/settings4.png)
 
 ## 🌟 Key Features
 

@@ -59,7 +59,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.5.001"; // Software version - Display cleanup + lockout/fan stability fixes
+const String sw_version = "1.5.002"; // Software version - Display cleanup + lockout/fan stability fixes
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -349,6 +349,10 @@ bool tempSwingChanged = false;
 bool thermostatModeChanged = false;
 bool fanModeChanged = false;
 bool handlingMQTTMessage = false; // Add this flag
+
+// Mode switch debounce/delay (prevent rapid mode switching)
+const unsigned long MODE_SWITCH_DELAY_MS = 3000; // 3 second delay between mode switches (except to OFF)
+unsigned long lastModeSwitchTime = 0; // Track when the last mode switch occurred
 
 // Force a full display redraw (clears cached values)
 bool forceFullDisplayRefresh = false;
@@ -2708,25 +2712,38 @@ void handleButtonPress(uint16_t x, uint16_t y)
     else if (x > 125 && x < 195 && y > 195 && y < 245) // Mode button with slightly increased touch area
     {
         String oldMode = thermostatMode;
-        // Change thermostat mode
-        if (thermostatMode == "auto")
-            thermostatMode = "heat";
-        else if (thermostatMode == "heat")
-            thermostatMode = "cool";
-        else if (thermostatMode == "cool")
-            thermostatMode = "off";
-        else
-            thermostatMode = "auto";
+        String newMode = "auto"; // Default next mode
         
-        debugLog("[DEBUG] Mode switched: %s -> %s\n", oldMode.c_str(), thermostatMode.c_str());
-
-        saveSettings();
-        sendMQTTData();
-        // Immediately update relays to reflect mode change
-        controlRelays(currentTemp);
-        // Update display after relays for accurate indicators
-        updateDisplay(currentTemp, currentHumidity);
-        setDisplayUpdateFlag(); // Option C: Request display update
+        // Determine next mode
+        if (thermostatMode == "auto")
+            newMode = "heat";
+        else if (thermostatMode == "heat")
+            newMode = "cool";
+        else if (thermostatMode == "cool")
+            newMode = "off";
+        else
+            newMode = "auto";
+        
+        // Check mode switch delay: allow immediate switch to OFF, delay others
+        unsigned long currentTime = millis();
+        bool isSwitchingToOff = (newMode == "off");
+        bool delayElapsed = (currentTime - lastModeSwitchTime >= MODE_SWITCH_DELAY_MS);
+        
+        if (isSwitchingToOff || delayElapsed) {
+            thermostatMode = newMode;
+            lastModeSwitchTime = currentTime;
+            debugLog("[DEBUG] Mode switched: %s -> %s (delay_ok=%d)\n", oldMode.c_str(), thermostatMode.c_str(), (isSwitchingToOff || delayElapsed));
+            
+            saveSettings();
+            sendMQTTData();
+            // Immediately update relays to reflect mode change
+            controlRelays(currentTemp);
+            // Update display after relays for accurate indicators
+            updateDisplay(currentTemp, currentHumidity);
+            setDisplayUpdateFlag(); // Option C: Request display update
+        } else {
+            debugLog("[DEBUG] Mode switch blocked: %s (too soon, need to wait %lu ms)\n", newMode.c_str(), MODE_SWITCH_DELAY_MS - (currentTime - lastModeSwitchTime));
+        }
     }
     else if (x > 195 && x < 265 && y > 195 && y < 245) // Fan button with slightly increased touch area
     {
@@ -5699,52 +5716,37 @@ void updateDisplay(float currentTemp, float currentHumidity)
     bool showOffModeSidebarTemps = (thermostatMode == "off");
     static float previousSidebarCurrentTemp = NAN;
     if (fullRefreshTriggered) {
-        previousSidebarCurrentTemp = NAN;
+            previousSidebarCurrentTemp = NAN; // Reset previous sidebar current temperature
     }
 
-    if (currentSetTemp != previousSidebarSetTemp || currentHumidity != previousHumidity ||
-        (showOffModeSidebarTemps && currentTemp != previousSidebarCurrentTemp) || fullRefreshTriggered)
+    if (currentSetTemp != previousSidebarSetTemp || currentHumidity != previousHumidity || fullRefreshTriggered)
     {
         // Display setpoint and humidity on the right side with compact spacing
         // Background color in setTextColor will clear as it writes
         tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
         tft.setTextSize(2); // Increase right-side readout visibility
 
-        if (showOffModeSidebarTemps) {
-            // In OFF mode, keep current temp and setpoint visible in the upper-right.
+        if (!showOffModeSidebarTemps) {
+            // Normal mode (heat/cool/auto): show setpoint at top
             tft.fillRect(rightLabelX, sy(30), sx(112), sy(16), COLOR_BACKGROUND);
             tft.setCursor(rightLabelX, sy(30));
-            tft.print("Cur:");
-            char currentTempStr[6];
-            dtostrf(currentTemp, 4, 1, currentTempStr);
-            tft.print(currentTempStr);
-            tft.print(useFahrenheit ? "F" : "C");
-
-            tft.fillRect(rightLabelX, sy(54), sx(112), sy(16), COLOR_BACKGROUND);
-            tft.setCursor(rightLabelX, sy(54));
             tft.print("Set:");
             char setpointStr[6];
             dtostrf(currentSetTemp, 4, 1, setpointStr);
             tft.print(setpointStr);
             tft.print(useFahrenheit ? "F" : "C");
         } else {
-            // Setpoint at y=30 with wider clear area for larger text
-            tft.fillRect(rightLabelX, sy(30), sx(112), sy(16), COLOR_BACKGROUND); // clear full row before redraw
-            tft.setCursor(rightLabelX, sy(30));
-            tft.print("Set:");
-            char setpointStr[6];
-            dtostrf(currentSetTemp, 4, 1, setpointStr); // Convert setpoint to string with 1 decimal place
-            tft.print(setpointStr);
-            tft.print(useFahrenheit ? "F" : "C");
-
-            // Humidity (even spacing from top temperature row)
-            tft.fillRect(rightValueX, sy(54), rightColW, sy(16), COLOR_BACKGROUND);
-            tft.setCursor(rightValueX, sy(54));
-            char humidityStr[6];
-            dtostrf(currentHumidity, 4, 1, humidityStr); // Convert humidity to string with 1 decimal place
-            tft.print(humidityStr);
-            tft.print("%");
+            // OFF mode: clear setpoint line
+            tft.fillRect(rightLabelX, sy(30), sx(112), sy(16), COLOR_BACKGROUND);
         }
+        
+        // Always display humidity below setpoint area
+        tft.fillRect(rightValueX, sy(54), rightColW, sy(16), COLOR_BACKGROUND);
+        tft.setCursor(rightValueX, sy(54));
+        char humidityStr[6];
+        dtostrf(currentHumidity, 4, 1, humidityStr);
+        tft.print(humidityStr);
+        tft.print("%");
         
         // Display pressure if BME280/BME680 sensor is active (convert hPa to inHg: divide by 33.8639)
         if ((activeSensor == SENSOR_BME280 || activeSensor == SENSOR_BME680) && !isnan(currentPressure)) {
@@ -5939,8 +5941,21 @@ void updateDisplay(float currentTemp, float currentHumidity)
     }
     else
     {
-        // Clear the set temperature area if mode is "off" (limit width to not overlap sensor readings at x=230)
-        tft.fillRect(sx(40), sy(100), sx(165), sy(40), COLOR_BACKGROUND);
+        // In OFF mode, show current temp large in center, do not show setpoint
+        if ((currentTemp != previousMainDisplayTemp || fullRefreshTriggered) && !showerModeActive) {
+            tft.fillRect(sx(40), sy(95), sx(165), sy(60), COLOR_BACKGROUND);
+            tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
+            tft.setTextSize((dispW() > 320) ? 5 : 4);
+            tft.setCursor(sx(40), sy(100));
+            char tempStr[6];
+            dtostrf(currentTemp, 4, 1, tempStr);
+            tft.print(tempStr);
+            tft.println(useFahrenheit ? " F" : " C");
+            previousMainDisplayTemp = currentTemp;
+            previousMainShowSetTemp = false;
+        } else if (showerModeActive) {
+            tft.fillRect(sx(40), sy(95), sx(165), sy(50), COLOR_BACKGROUND);
+        }
     }
 
     // Add status indicators for heating, cooling, and fan
