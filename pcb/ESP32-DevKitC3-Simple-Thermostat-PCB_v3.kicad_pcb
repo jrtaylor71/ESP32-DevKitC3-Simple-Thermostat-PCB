@@ -4470,6 +4470,17 @@
 			(uuid "a58ff187-fe7a-4ff4-8546-aa64e594647d")
 		)
 		(embedded_fonts no)
+		(model "${KICAD9_3DMODEL_DIR}/Package_SO.3dshapes/SSOP-18_4.4x6.5mm_P0.65mm.step"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 1.6 1.95 1)
+			)
+			(rotate
+				(xyz -0 -0 -0)
+			)
+		)
 	)
 	(footprint "Connector_PinHeader_2.54mm:PinHeader_1x18_P2.54mm_Vertical"
 		(layer "F.Cu")
@@ -10529,7 +10540,7 @@
 			(net 1 "GND")
 			(pinfunction "GND")
 			(pintype "power_in")
-			(uuid "4e9b15e1-ba1c-4f24-84a8-d487f5ba77f5")
+			(uuid "4bc07192-d345-4f3d-9ebe-df8b123dd209")
 		)
 		(pad "4" smd roundrect
 			(at -7.65 1.7)
@@ -12024,6 +12035,17 @@
 			)
 			(rotate
 				(xyz 0 0 0)
+			)
+		)
+		(model "${KICAD9_3DMODEL_DIR}/Diode_SMD.3dshapes/D_PowerDI-123.step"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 1.8 1.4 1)
+			)
+			(rotate
+				(xyz -0 -0 -0)
 			)
 		)
 	)
@@ -15771,15 +15793,15 @@
 			(uuid "01c59d08-1d6b-4a62-b3dd-1db100356e17")
 		)
 		(embedded_fonts no)
-		(model "${KICAD9_3DMODEL_DIR}/Capacitor_THT.3dshapes/CP_Radial_D16.0mm_P7.50mm.step"
+		(model "/home/jonnt/.local/share/kicad/9.0/3dmodels/CP_Radial_D16.0mm_L25.0mm_P7.50mm_Horizontal_v4.step"
 			(offset
-				(xyz 0 0 0)
+				(xyz 3.75 0 0)
 			)
 			(scale
 				(xyz 1 1 1)
 			)
 			(rotate
-				(xyz 0 0 0)
+				(xyz -0 -0 -0)
 			)
 		)
 	)
@@ -16837,6 +16859,17 @@
 			(uuid "1ab47b44-0269-4971-8bd5-ea628f979d8f")
 		)
 		(embedded_fonts no)
+		(model "/home/jonnt/.local/share/kicad/9.0/3dmodels/ILI9341_3p2_IPS_SPI_14Pin_MSP3223_Touch.step"
+			(offset
+				(xyz -1 0 8)
+			)
+			(scale
+				(xyz 1 1 1)
+			)
+			(rotate
+				(xyz -0 -0 90)
+			)
+		)
 	)
 	(footprint "ILI9341_2p8_240x320:ILI9341_2p8_240x320"
 		(layer "B.Cu")

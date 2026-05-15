@@ -21,6 +21,7 @@ Screw_Terminal_9_P3.50mm,J2,"TerminalBlock_Phoenix_PT-1,5-9-3.5-H_1x09_P3.50mm_H
 G6S-2,K1,Relay_DPDT_Omron_G6S-2,,1
 G6S-2,K5,Relay_DPDT_Omron_G6S-2,,1
 G6S-2,K2,Relay_DPDT_Omron_G6S-2,,1
+ESP32-S3-DevKitC,U1,ESP32-S3-DevKitC,,1
 G6S-2,K4,Relay_DPDT_Omron_G6S-2,,1
 G6S-2,K3,Relay_DPDT_Omron_G6S-2,,1
 G6S-2,K7,Relay_DPDT_Omron_G6S-2,,1

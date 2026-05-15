@@ -1,4 +1,4 @@
-51867267141185221
+51874379246185669
 Audio_Module
 Reverb_BTDR-1H
 Digital Reverberation Unit, http://www.belton.co.kr/inc/downfile.php?seq=17&file=pdf (footprint from http://www.uk-electronic.de/PDF/BTDR-1.pdf)
@@ -63489,6 +63489,20 @@ heatsink
 0
 0
 0
+ILI9341_2p8_240x320
+ILI9341_2p8_240x320
+2.8 inch ILI9341 SPI TFT LCD module, LCDWIKI MSP2807 style 50.00 x 86.00 mm PCB, XPT2046 touch, 14-pin 2.54 mm header on short end
+ILI9341 TFT SPI LCD XPT2046 touch 2.8 inch MSP2807 14 pin short end header
+0
+14
+14
+ILI9341_3p2_320x240
+ILI9341_3p2_320x240
+ILI9341 3.2in SPI TFT LCD module with XPT2046 touch, updated 14-pin 2.54mm header
+
+0
+14
+14
 Inductor_SMD
 L_6.3x6.3_H3
 Choke, SMD, 6.3x6.3mm 3mm height
@@ -192408,6 +192422,13 @@ Potentiometer vertical vishay
 0
 3
 3
+RASPBERRYPI-ZERO
+RASPBERRYPI-ZERO_RPI-ZERO
+Raspberry Pi board model B+, full outline with position of big connectors &amp; drill holes
+
+0
+40
+40
 RF
 Skyworks_SKY13575_639LF
 http://www.skyworksinc.com/uploads/documents/SKY13575_639LF_203270D.pdf
@@ -196027,6 +196048,13 @@ rotary encoder illuminated switch vertical
 0
 9
 8
+ST7796S_4in_Display
+ST7796S_4in_SPI_Touch_Module_14P
+4.0 inch ST7796S SPI TFT module with XPT2046 touch; 60.88 x 108.00 mm PCB; 14-pin 2.54mm header on short end; pin 1 at left when back-side pin labels are readable
+ST7796S TFT SPI LCD XPT2046 touch 4 inch 14 pin short end header
+0
+14
+14
 Sensor
 ASAIR_AM2302_P2.54mm_Lead2.75mm_TabDown
 Temperature and humidity module, http://akizukidenshi.com/download/ds/aosong/AM2302.pdf

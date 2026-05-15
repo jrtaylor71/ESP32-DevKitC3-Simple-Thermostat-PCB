@@ -28,8 +28,13 @@ A comprehensive, feature-rich simple thermostat system built on the ESP32 platfo
 
 ## 🚀 Quick Start
 
+ - PCB V1.x
 ![Hardware-Main-Display](pcb/ESP32-DevKitC3-Simple-Thermostat-PCB_front.png)
 ![Hardware-Main-Display](pcb/ESP32-DevKitC3-Simple-Thermostat-PCB_back.png)
+
+ - PCB V3.x
+![Hardware-Main-Display](img/ESP32-DevKitC3-Simple-Thermostat-PCB_v3_front.png)
+![Hardware-Main-Display](img/ESP32-DevKitC3-Simple-Thermostat-PCB_v3_back.png)
 
 ### Hardware Requirements
 - ESP32-S3-WROOM-1-N16 (16MB Flash, No PSRAM) or N8/N32 variants
