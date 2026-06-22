@@ -59,7 +59,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.5.005"; // Software version - Display cleanup + lockout/fan stability fixes
+const String sw_version = "1.5.006"; // Software version - Display cleanup + lockout/fan stability fixes
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -4132,11 +4132,12 @@ void controlRelays(float currentTemp)
         euHumidityDemandActive = humidityDrivenCooling;
         
         if (shouldCool) {
-            // Only call activateCooling if not already cooling
+            // Call activateCooling every cycle (like HEAT and AUTO modes do)
+            // to ensure relay stays energized and as a safety net against relay getting stuck OFF
             if (!coolingOn) {
                 debugLog("[HVAC] COOL ACTIVATED: temperature or humidity override\n");
-                activateCooling();
             }
+            activateCooling();
         }
         // Only turn off if below setpoint (hysteresis) AND not in EU humidity dehumidification
         else if ((currentTemp < setTempCool) && 
