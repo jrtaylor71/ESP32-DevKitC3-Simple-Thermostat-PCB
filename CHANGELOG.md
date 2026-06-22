@@ -12,6 +12,11 @@ All notable firmware changes are documented in this file.
 - When in doubt, use the smallest possible version bump and default to incrementing the last three digits.
 - Do not change `sw_version`, changelog version headers, or release labels unless the user has approved that specific version change.
 
+## [1.5.006] - 2026-06-22
+- Fixed COOL mode relay control to re-assert `activateCooling()` every control cycle while cooling demand is active.
+- Prevented a stale-state condition where `coolingOn=true` could remain set while the physical cooling relay had been forced LOW.
+- Improved relay-state recovery behavior so toggling modes is no longer required to re-energize cooling after an external relay-off event.
+
 ## [1.5.005] - 2026-06-22
 - Fixed auto-mode HVAC control logic to use dead-zone hold behavior with a single setpoint and swing.
 - Prevented on/off transitions while temperature remains inside the dead zone.
