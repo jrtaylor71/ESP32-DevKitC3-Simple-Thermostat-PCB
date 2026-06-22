@@ -12,6 +12,11 @@ All notable firmware changes are documented in this file.
 - When in doubt, use the smallest possible version bump and default to incrementing the last three digits.
 - Do not change `sw_version`, changelog version headers, or release labels unless the user has approved that specific version change.
 
+## [1.5.005] - 2026-06-22
+- Fixed auto-mode HVAC control logic to use dead-zone hold behavior with a single setpoint and swing.
+- Prevented on/off transitions while temperature remains inside the dead zone.
+- Updated auto-mode transitions so heating/cooling turn off at the setpoint boundary rather than immediately on dead-zone re-entry.
+
 ## [1.5.004] - 2026-05-14
 - Hardened OTA and manual reboot reconnect logic in web UI to prevent blank page and false failure after update or reboot.
 - Fixed DS18B20 sensor regression by making OneWire GPIO41 patch persistent in build process.

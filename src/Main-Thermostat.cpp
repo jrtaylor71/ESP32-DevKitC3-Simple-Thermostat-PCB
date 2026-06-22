@@ -59,7 +59,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.5.004"; // Software version - Display cleanup + lockout/fan stability fixes
+const String sw_version = "1.5.005"; // Software version - Display cleanup + lockout/fan stability fixes
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -4157,61 +4157,64 @@ void controlRelays(float currentTemp)
     {
         debugLog("[DEBUG] In AUTO mode: temp=%.1f, setpoint=%.1f, autoSwing=%.1f\n", 
                      currentTemp, setTempAuto, autoTempSwing);
-        
-        if (currentTemp < (setTempAuto - autoTempSwing))
-        {
-            euHumidityDemandActive = false;
-            debugLog("[DEBUG] Auto heating check: %.1f < %.1f? YES\n", 
-                         currentTemp, (setTempAuto - autoTempSwing));
-            if (!heatingOn) {
-                debugLog("Auto mode activating heating: current %.1f < auto_setpoint-swing %.1f\n", 
-                             currentTemp, (setTempAuto - autoTempSwing));
+
+        float autoHeatOnThreshold = setTempAuto - autoTempSwing;
+        float autoCoolOnThreshold = setTempAuto + autoTempSwing;
+
+        // Single-setpoint auto behavior:
+        // - Dead zone is hold-only (no transitions)
+        // - Start heat/cool only outside swing thresholds
+        // - Stop active heat/cool only at setpoint boundary
+        if (coolingOn) {
+            // EU humidity demand can keep cooling active even after reaching setpoint.
+            bool humidityDemand = (thermostatRegion == "EU" && euHumidityControlEnabled &&
+                                   currentHumidity > (euHumiditySetpoint - euHumidityDeadband));
+            euHumidityDemandActive = (thermostatRegion == "EU" && euHumidityControlEnabled &&
+                                      currentHumidity > euHumiditySetpoint);
+
+            if (currentTemp <= setTempAuto && !humidityDemand) {
+                debugLog("[DEBUG] Auto cooling OFF at setpoint: %.1f <= %.1f\n", currentTemp, setTempAuto);
+                turnOffAllRelays();
+            } else {
+                debugLog("[DEBUG] Auto cooling HOLD: temp=%.1f, setpoint=%.1f, humidityDemand=%d\n",
+                         currentTemp, setTempAuto, humidityDemand ? 1 : 0);
+                activateCooling();
             }
+        }
+        else if (heatingOn) {
+            euHumidityDemandActive = false;
+            if (currentTemp >= setTempAuto) {
+                debugLog("[DEBUG] Auto heating OFF at setpoint: %.1f >= %.1f\n", currentTemp, setTempAuto);
+                turnOffAllRelays();
+            } else {
+                debugLog("[DEBUG] Auto heating HOLD: temp=%.1f, setpoint=%.1f\n", currentTemp, setTempAuto);
+                activateHeating();
+            }
+        }
+        else if (currentTemp > autoCoolOnThreshold) {
+            euHumidityDemandActive = false;
+            debugLog("[DEBUG] Auto cooling ON threshold crossed: %.1f > %.1f\n",
+                     currentTemp, autoCoolOnThreshold);
+            activateCooling();
+        }
+        else if (currentTemp < autoHeatOnThreshold) {
+            euHumidityDemandActive = false;
+            debugLog("[DEBUG] Auto heating ON threshold crossed: %.1f < %.1f\n",
+                     currentTemp, autoHeatOnThreshold);
             activateHeating();
         }
-        else if (currentTemp > (setTempAuto + autoTempSwing))
-        {
-            euHumidityDemandActive = false;
-            debugLog("[DEBUG] Auto cooling check: %.1f > %.1f? YES\n", 
-                         currentTemp, (setTempAuto + autoTempSwing));
-            if (!coolingOn) {
-                debugLog("Auto mode activating cooling: current %.1f > auto_setpoint+swing %.1f\n", 
-                             currentTemp, (setTempAuto + autoTempSwing));
-            }
-            activateCooling();
-        }
-        // EU Humidity-based dehumidification (supplementary in auto mode)
-        else if (thermostatRegion == "EU" && euHumidityControlEnabled && currentHumidity > euHumiditySetpoint)
-        {
+        // EU Humidity-based dehumidification (supplementary in auto mode while idle)
+        else if (thermostatRegion == "EU" && euHumidityControlEnabled && currentHumidity > euHumiditySetpoint) {
             euHumidityDemandActive = true;
-            if (!coolingOn) {
-                debugLog("[DEBUG] Auto mode EU humidity dehumidification: %.1f%% > %.1f%%\n", 
-                         currentHumidity, euHumiditySetpoint);
-            }
+            debugLog("[DEBUG] Auto mode EU humidity dehumidification: %.1f%% > %.1f%%\n",
+                     currentHumidity, euHumiditySetpoint);
             activateCooling();
         }
-        else
-        {
+        else {
             euHumidityDemandActive = false;
-            // Deactivate cooling if:
-            // 1. Temperature is back in deadband AND
-            // 2. Either not in EU mode OR humidity is back below setpoint with deadband
-            bool tempInDeadband = currentTemp >= (setTempAuto - autoTempSwing) && 
-                                  currentTemp <= (setTempAuto + autoTempSwing);
-            bool humidityOK = !(thermostatRegion == "EU" && euHumidityControlEnabled && 
-                                currentHumidity > (euHumiditySetpoint - euHumidityDeadband));
-            
-            if (tempInDeadband && humidityOK) {
-                debugLog("[DEBUG] Auto deadband check: %.1f between %.1f and %.1f\n", 
-                             currentTemp, (setTempAuto - autoTempSwing), (setTempAuto + autoTempSwing));
-                if (heatingOn || coolingOn) {
-                    debugLog("Auto mode temperature in deadband, turning off: %.1f is between %.1f and %.1f\n", 
-                                 currentTemp, (setTempAuto - autoTempSwing), (setTempAuto + autoTempSwing));
-                }
-                // Called unconditionally even if already off — re-asserts relay pin states
-                // every cycle as a safety net to prevent relays from getting stuck ON
-                turnOffAllRelays();
-            }
+            debugLog("[DEBUG] Auto dead zone HOLD: %.1f between %.1f and %.1f\n",
+                     currentTemp, autoHeatOnThreshold, autoCoolOnThreshold);
+            // No transition in dead zone while idle.
         }
     }
 
