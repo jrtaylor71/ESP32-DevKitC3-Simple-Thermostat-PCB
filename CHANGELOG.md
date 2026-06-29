@@ -12,6 +12,12 @@ All notable firmware changes are documented in this file.
 - When in doubt, use the smallest possible version bump and default to incrementing the last three digits.
 - Do not change `sw_version`, changelog version headers, or release labels unless the user has approved that specific version change.
 
+## [1.5.007] - 2026-06-29
+- Fixed MQTT `target_temperature` publishing to always republish on HVAC mode change, preventing stale heat setpoints from being shown in cool mode.
+- Hardened MQTT command handling by validating incoming HVAC mode values and constraining MQTT target temperature commands to valid bounds.
+- Corrected MQTT HVAC `action` reporting to detect cooling when any configured cooling relay path is active (including EU relay selections).
+- Updated MQTT schedule override state publishing to send explicit `active`/`inactive` values to avoid stale override status.
+
 ## [1.5.006] - 2026-06-22
 - Fixed COOL mode relay control to re-assert `activateCooling()` every control cycle while cooling demand is active.
 - Prevented a stale-state condition where `coolingOn=true` could remain set while the physical cooling relay had been forced LOW.

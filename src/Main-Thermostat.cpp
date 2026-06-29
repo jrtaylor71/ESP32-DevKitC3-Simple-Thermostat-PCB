@@ -59,7 +59,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.5.006"; // Software version - Display cleanup + lockout/fan stability fixes
+const String sw_version = "1.5.007"; // Software version - MQTT state/setpoint consistency fixes
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
