@@ -3282,7 +3282,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
 
     if (String(topic) == modeSetTopic)
     {
-        if (message != thermostatMode)
+        // Accept only supported HVAC modes from MQTT command topic.
+        bool validMode = (message == "off" || message == "heat" || message == "cool" || message == "auto");
+        if (!validMode) {
+            debugLog("Ignored invalid thermostat mode from MQTT: %s\n", message.c_str());
+        }
+        else if (message != thermostatMode)
         {
             thermostatMode = message;
             debugLog("Updated thermostat mode to: %s\n", thermostatMode.c_str());
@@ -3303,7 +3308,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
     }
     else if (String(topic) == tempSetTopic)
     {
-        float newTargetTemp = message.toFloat();
+        float newTargetTemp = constrain(message.toFloat(), 50.0f, 95.0f);
         bool tempChanged = false;
         if (thermostatMode == "heat" && newTargetTemp != setTempHeat)
         {
@@ -3588,19 +3593,20 @@ void sendMQTTData()
         }
 
         // Publish target temperature (set temperature for heating, cooling, or auto)
-        if (thermostatMode == "heat" && setTempHeat != mqttLastSetTempHeat)
+        bool modeChanged = (thermostatMode != mqttLastThermostatMode);
+        if (thermostatMode == "heat" && (modeChanged || setTempHeat != mqttLastSetTempHeat))
         {
             String targetTempTopic = hostname + "/target_temperature";
             mqttClient.publish(targetTempTopic.c_str(), String(setTempHeat, 1).c_str(), true);
             mqttLastSetTempHeat = setTempHeat;
         }
-        else if (thermostatMode == "cool" && setTempCool != mqttLastSetTempCool)
+        else if (thermostatMode == "cool" && (modeChanged || setTempCool != mqttLastSetTempCool))
         {
             String targetTempTopic = hostname + "/target_temperature";
             mqttClient.publish(targetTempTopic.c_str(), String(setTempCool, 1).c_str(), true);
             mqttLastSetTempCool = setTempCool;
         }
-        else if (thermostatMode == "auto" && setTempAuto != mqttLastSetTempAuto)
+        else if (thermostatMode == "auto" && (modeChanged || setTempAuto != mqttLastSetTempAuto))
         {
             String targetTempTopic = hostname + "/target_temperature";
             mqttClient.publish(targetTempTopic.c_str(), String(setTempAuto, 1).c_str(), true);
@@ -3626,9 +3632,12 @@ void sendMQTTData()
         // Publish HVAC action (heating, cooling, idle, off)
         String currentAction = "off";
         if (thermostatMode != "off") {
+            bool anyCoolingRelayOn = (digitalRead(COOL_RELAY_1_PIN) == HIGH ||
+                                      digitalRead(COOL_RELAY_2_PIN) == HIGH ||
+                                      digitalRead(PUMP_RELAY_PIN) == HIGH);
             if (digitalRead(HEAT_RELAY_1_PIN) == HIGH || digitalRead(HEAT_RELAY_2_PIN) == HIGH) {
                 currentAction = "heating";
-            } else if (digitalRead(COOL_RELAY_1_PIN) == HIGH) {
+            } else if (anyCoolingRelayOn) {
                 currentAction = "cooling";
             } else {
                 currentAction = "idle";
@@ -3761,11 +3770,9 @@ void sendMQTTData()
         
         String activePeriodTopic = hostname + "/active_period";
         mqttClient.publish(activePeriodTopic.c_str(), activePeriod.c_str(), false);
-        
-        if (scheduleOverride) {
-            String overrideTopic = hostname + "/schedule_override";
-            mqttClient.publish(overrideTopic.c_str(), "active", false);
-        }
+
+        String overrideTopic = hostname + "/schedule_override";
+        mqttClient.publish(overrideTopic.c_str(), scheduleOverride ? "active" : "inactive", false);
         
         // Publish detailed schedule data for all 7 days (for monitoring/debugging)
         // Format: JSON for each day of the week
