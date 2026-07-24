@@ -59,7 +59,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.5.007"; // Software version - MQTT state/setpoint consistency fixes
+const String sw_version = "1.5.008"; // Software version - split heat/cool fan relay requirements + hydronic guard fix
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -262,7 +262,8 @@ float setTempCool = 76.0; // Default set temperature for cooling in Fahrenheit
 float setTempAuto = 74.0; // Default set temperature for auto mode
 float tempSwing = 1.0;
 float autoTempSwing = 3.0;
-bool fanRelayNeeded = false;
+bool fanRelayNeededHeat = false;
+bool fanRelayNeededCool = false;
 bool useFahrenheit = true; // Default to Fahrenheit
 bool mqttEnabled = false; // Default to MQTT disabled
 String wifiSSID = "";
@@ -3997,7 +3998,7 @@ void controlRelays(float currentTemp)
     }
     
     // Fan safety interlock: block fan when hydronic lockout conditions are active
-    bool fanBlockedByHydronicSafety = hydronicHeatingEnabled && !fanRelayNeeded &&
+    bool fanBlockedByHydronicSafety = hydronicHeatingEnabled && !fanRelayNeededHeat &&
         (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout);
 
     // Store current states before any changes
@@ -4294,7 +4295,8 @@ void controlRelays(float currentTemp)
 void turnOffAllRelays()
 {
     debugLog("[DEBUG] turnOffAllRelays() - Turning off heating/cooling relays\n");
-    bool fanBlockedByHydronicSafety = hydronicHeatingEnabled && !fanRelayNeeded &&
+    bool anyFanRelayNeeded = fanRelayNeededHeat || fanRelayNeededCool;
+    bool fanBlockedByHydronicSafety = hydronicHeatingEnabled && !fanRelayNeededHeat &&
         (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout);
 
     digitalWrite(HEAT_RELAY_1_PIN, LOW);
@@ -4319,8 +4321,8 @@ void turnOffAllRelays()
         }
     } else if (fanMode == "auto") {
         // Turn off fan in auto mode when heating/cooling stops
-        if (fanRelayNeeded) {
-            // Only control fan if fanRelayNeeded is true
+        if (anyFanRelayNeeded) {
+            // Only control fan if at least one demand mode needs fan relay control.
             digitalWrite(FAN_RELAY_PIN, LOW);
             fanOn = false;
             debugLog("[DEBUG] turnOffAllRelays() - Turning fan OFF (fanMode=auto)\n");
@@ -4369,7 +4371,7 @@ void activateHeating() {
             stage2Active = false;
             
             // Keep user-selected fan relay behavior during lockout when Use Fan is enabled.
-            if (fanOn && !fanRelayNeeded) {
+            if (fanOn && !fanRelayNeededHeat) {
                 digitalWrite(FAN_RELAY_PIN, LOW);
                 fanOn = false;
                 debugLog("[LOCKOUT] Fan forced OFF during hydronic lockout\n");
@@ -4436,7 +4438,7 @@ void activateHeating() {
         stage2Active = false;
     }
     
-    // Control fan based on fanRelayNeeded setting
+    // Control fan based on heating fan relay requirement
     // BUT: Never override manual "on" mode - user takes priority
     if (fanMode == "on" && !(hydronicHeatingEnabled &&
         (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout))) {
@@ -4447,7 +4449,7 @@ void activateHeating() {
             fanOn = true;
             debugLog("Fan activated with heat (manual 'on' mode)\n");
         }
-    } else if (fanRelayNeeded) {
+    } else if (fanRelayNeededHeat) {
         if (!fanOn) {
             digitalWrite(FAN_RELAY_PIN, HIGH);
             fanOn = true;
@@ -4538,7 +4540,7 @@ void activateCooling()
         stage2Active = false;
     }
     
-    // Control fan based on fanRelayNeeded setting
+    // Control fan based on cooling fan relay requirement
     // BUT: Never override manual "on" mode - user takes priority
     if (fanMode == "on" && !(hydronicHeatingEnabled &&
         (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout))) {
@@ -4548,7 +4550,7 @@ void activateCooling()
             fanOn = true;
             debugLog("Fan activated with cooling (manual 'on' mode)\n");
         }
-    } else if (fanRelayNeeded) {
+    } else if (fanRelayNeededCool) {
         if (!fanOn) {
             digitalWrite(FAN_RELAY_PIN, HIGH);
             fanOn = true;
@@ -4569,7 +4571,7 @@ void activateCooling()
 void handleFanControl()
 {
     // Block fan when hydronic heating is enabled and sensor is missing/invalid or below cutoff
-    if (hydronicHeatingEnabled && !fanRelayNeeded &&
+    if (hydronicHeatingEnabled && !fanRelayNeededHeat &&
         (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout)) {
         if (fanOn) {
             digitalWrite(FAN_RELAY_PIN, LOW);
@@ -4588,13 +4590,8 @@ void handleFanControl()
     }
     else if (fanMode == "auto")
     {
-        // Auto mode: fan only runs with heating/cooling if fanRelayNeeded is true
-        // If fanRelayNeeded is false, HVAC controls the fan
-        if (fanRelayNeeded) {
-            newFanState = (heatingOn || coolingOn);
-        } else {
-            newFanState = false;  // Don't control fan - HVAC system controls it
-        }
+        // Auto mode: run fan only for demand types that require fan relay.
+        newFanState = ((heatingOn && fanRelayNeededHeat) || (coolingOn && fanRelayNeededCool));
     }
     else if (fanMode == "cycle")
     {
@@ -4618,7 +4615,7 @@ void controlFanSchedule()
 
     if (fanMode == "cycle")
     {
-        if (hydronicHeatingEnabled && !fanRelayNeeded &&
+        if (hydronicHeatingEnabled && !fanRelayNeededHeat &&
             (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout)) {
             if (fanOn) {
                 digitalWrite(FAN_RELAY_PIN, LOW);
@@ -4630,10 +4627,11 @@ void controlFanSchedule()
 
         // Don't run cycle schedule if heating or cooling is active
         if (heatingOn || coolingOn) {
-            if (!fanRelayNeeded && fanOn) {
+            bool shouldStopForDemand = (heatingOn && !fanRelayNeededHeat) || (coolingOn && !fanRelayNeededCool);
+            if (shouldStopForDemand && fanOn) {
                 digitalWrite(FAN_RELAY_PIN, LOW);
                 fanOn = false;
-                debugLog("[FAN SCHEDULE] Stopping fan - heating/cooling active, fanRelayNeeded=false\n");
+                debugLog("[FAN SCHEDULE] Stopping fan - active demand does not require fan relay\n");
             }
             return;
         }
@@ -4697,7 +4695,7 @@ void handleWebRequests()
                                        COOL_RELAY_2_PIN, FAN_RELAY_PIN,
                                        setTempHeat, setTempCool, setTempAuto,
                                        tempSwing, autoTempSwing,
-                                       fanRelayNeeded, stage1MinRuntime, 
+                                       fanRelayNeededHeat, fanRelayNeededCool, stage1MinRuntime, 
                                        stage2TempDelta, fanMinutesPerHour,
                                        showerModeEnabled, showerModeDuration,
                                        stage2HeatingEnabled, stage2CoolingEnabled,
@@ -4782,10 +4780,19 @@ void handleWebRequests()
         if (request->hasParam("autoTempSwing", true)) {
             autoTempSwing = request->getParam("autoTempSwing", true)->value().toFloat();
         }
-        if (request->hasParam("fanRelayNeeded", true)) {
-            fanRelayNeeded = request->getParam("fanRelayNeeded", true)->value() == "on";
+        bool hasFanRelayHeat = request->hasParam("fanRelayNeededHeat", true);
+        bool hasFanRelayCool = request->hasParam("fanRelayNeededCool", true);
+        if (hasFanRelayHeat || hasFanRelayCool) {
+            fanRelayNeededHeat = hasFanRelayHeat;
+            fanRelayNeededCool = hasFanRelayCool;
+        } else if (request->hasParam("fanRelayNeeded", true)) {
+            // Backward compatibility for older single fan relay setting clients.
+            bool legacyFanRelayNeeded = request->getParam("fanRelayNeeded", true)->value() == "on";
+            fanRelayNeededHeat = legacyFanRelayNeeded;
+            fanRelayNeededCool = legacyFanRelayNeeded;
         } else {
-            fanRelayNeeded = false; // Ensure fanRelayNeeded is set to false if not present in the form
+            fanRelayNeededHeat = false;
+            fanRelayNeededCool = false;
         }
         if (request->hasParam("useFahrenheit", true)) {
             useFahrenheit = request->getParam("useFahrenheit", true)->value() == "on";
@@ -6052,7 +6059,9 @@ void saveSettings()
     preferences.putFloat("setAuto", setTempAuto);
     preferences.putFloat("swing", tempSwing);
     preferences.putFloat("autoSwing", autoTempSwing);
-    preferences.putBool("fanRelay", fanRelayNeeded);
+    preferences.putBool("fanRelay", fanRelayNeededHeat || fanRelayNeededCool);
+    preferences.putBool("fanRelayH", fanRelayNeededHeat);
+    preferences.putBool("fanRelayC", fanRelayNeededCool);
     preferences.putBool("useF", useFahrenheit);
     preferences.putBool("mqttEn", mqttEnabled);
     preferences.putInt("fanMinHr", fanMinutesPerHour);
@@ -6215,7 +6224,9 @@ void loadSettings()
     setTempAuto = getOrInitFloat("setAuto", 74.0);
     tempSwing = getOrInitFloat("swing", 1.0);
     autoTempSwing = getOrInitFloat("autoSwing", 1.5);
-    fanRelayNeeded = getOrInitBool("fanRelay", false);
+    bool legacyFanRelayNeeded = getOrInitBool("fanRelay", false);
+    fanRelayNeededHeat = getOrInitBool("fanRelayH", legacyFanRelayNeeded);
+    fanRelayNeededCool = getOrInitBool("fanRelayC", legacyFanRelayNeeded);
     useFahrenheit = getOrInitBool("useF", true);
     mqttEnabled = getOrInitBool("mqttEn", false);
     fanMinutesPerHour = getOrInitInt("fanMinHr", 15);
@@ -6286,7 +6297,8 @@ void loadSettings()
     debugLog("setTempAuto: %.2f\n", setTempAuto);
     debugLog("tempSwing: %.2f\n", tempSwing);
     debugLog("autoTempSwing: %.2f\n", autoTempSwing);
-    debugLog("fanRelayNeeded: %d\n", fanRelayNeeded);
+    debugLog("fanRelayNeededHeat: %d\n", fanRelayNeededHeat);
+    debugLog("fanRelayNeededCool: %d\n", fanRelayNeededCool);
     debugLog("useFahrenheit: %d\n", useFahrenheit);
     debugLog("mqttEnabled: %d\n", mqttEnabled);
     debugLog("fanMinutesPerHour: %d\n", fanMinutesPerHour);
@@ -6519,7 +6531,8 @@ void restoreDefaultSettings()
     setTempAuto = 74.0;
     tempSwing = 1.0;
     autoTempSwing = 1.5;
-    fanRelayNeeded = false;
+    fanRelayNeededHeat = false;
+    fanRelayNeededCool = false;
     useFahrenheit = true;
     mqttEnabled = false;
     wifiSSID = "";

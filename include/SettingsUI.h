@@ -28,7 +28,8 @@ extern Preferences preferences;
 // External references to global settings (updated via UI)
 extern float tempSwing;
 extern float autoTempSwing;
-extern bool fanRelayNeeded;
+extern bool fanRelayNeededHeat;
+extern bool fanRelayNeededCool;
 extern bool useFahrenheit;
 extern unsigned long stage1MinRuntime;
 extern float stage2TempDelta;
@@ -85,7 +86,8 @@ static SettingsPage currentPage = PAGE_MENU;
 // Temporary edit buffer for numeric values
 static float editTempSwing = 1.0;
 static float editAutoTempSwing = 3.0;
-static bool editFanRelayNeeded = false;
+static bool editFanRelayNeededHeat = false;
+static bool editFanRelayNeededCool = false;
 static bool editUseFahrenheit = true;
 static unsigned long editStage1MinRuntime = 300;
 static float editStage2TempDelta = 2.0;
@@ -183,7 +185,8 @@ void enterSettingsMenu() {
     // Load current values into edit buffers
     editTempSwing = tempSwing;
     editAutoTempSwing = autoTempSwing;
-    editFanRelayNeeded = fanRelayNeeded;
+    editFanRelayNeededHeat = fanRelayNeededHeat;
+    editFanRelayNeededCool = fanRelayNeededCool;
     editUseFahrenheit = useFahrenheit;
     editStage1MinRuntime = stage1MinRuntime;
     editStage2TempDelta = stage2TempDelta;
@@ -249,12 +252,18 @@ void drawComfortSettings() {
     drawNumericControl(20, yPos, "Auto Swing:", editAutoTempSwing, 2);
     yPos += 60;
     
-    // Fan Relay Required toggle (compact layout)
+    // Fan Relay Required for Heating toggle
     tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
     tft.setTextSize((dispW() > 320) ? 2 : 1);
     tft.setCursor(settingsScaleX(20), settingsScaleY(yPos));
-    tft.print("Fan Relay Required:");
-    drawToggle(220, yPos + 5, editFanRelayNeeded);
+    tft.print("Fan Relay Heat:");
+    drawToggle(220, yPos + 5, editFanRelayNeededHeat);
+    yPos += 18;
+
+    // Fan Relay Required for Cooling toggle
+    tft.setCursor(settingsScaleX(20), settingsScaleY(yPos));
+    tft.print("Fan Relay Cool:");
+    drawToggle(220, yPos + 5, editFanRelayNeededCool);
     yPos += 18;
     
     // Use Fahrenheit toggle
@@ -531,9 +540,17 @@ bool settingsHandleTouch(uint16_t x, uint16_t y) {
         }
         yPos += 60;
         
-        // Fan Relay Required toggle
+        // Fan Relay Heat toggle
         if (x >= 200 && x <= 240 && y >= yPos && y <= yPos + 20) {
-            editFanRelayNeeded = !editFanRelayNeeded;
+            editFanRelayNeededHeat = !editFanRelayNeededHeat;
+            drawComfortSettings();
+            return true;
+        }
+        yPos += 20;
+
+        // Fan Relay Cool toggle
+        if (x >= 200 && x <= 240 && y >= yPos && y <= yPos + 20) {
+            editFanRelayNeededCool = !editFanRelayNeededCool;
             drawComfortSettings();
             return true;
         }
@@ -550,7 +567,8 @@ bool settingsHandleTouch(uint16_t x, uint16_t y) {
         if (x >= 20 && x <= 140 && y >= 200 && y <= 235) {
             tempSwing = editTempSwing;
             autoTempSwing = editAutoTempSwing;
-            fanRelayNeeded = editFanRelayNeeded;
+            fanRelayNeededHeat = editFanRelayNeededHeat;
+            fanRelayNeededCool = editFanRelayNeededCool;
             useFahrenheit = editUseFahrenheit;
             saveSettings();
             setDisplayUpdateFlag();

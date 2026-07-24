@@ -56,7 +56,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
                          // Settings variables for embedded settings tab
                          float setTempHeat, float setTempCool, float setTempAuto,
                          float tempSwing, float autoTempSwing,
-                         bool fanRelayNeeded, unsigned long stage1MinRuntime, 
+                         bool fanRelayNeededHeat, bool fanRelayNeededCool, unsigned long stage1MinRuntime, 
                          float stage2TempDelta, int fanMinutesPerHour,
                          bool showerModeEnabled, int showerModeDuration,
                          bool stage2HeatingEnabled, bool stage2CoolingEnabled,
@@ -306,8 +306,13 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "</div>"; // End grid
     
     html += "<div class='form-checkbox'>";
-    html += "<input type='checkbox' name='fanRelayNeeded' " + String(fanRelayNeeded ? "checked" : "") + ">";
-    html += "<label class='form-label'>Fan Relay Required</label>";
+    html += "<input type='checkbox' name='fanRelayNeededHeat' " + String(fanRelayNeededHeat ? "checked" : "") + ">";
+    html += "<label class='form-label'>Fan Relay Required For Heating</label>";
+    html += "</div>";
+
+    html += "<div class='form-checkbox'>";
+    html += "<input type='checkbox' name='fanRelayNeededCool' " + String(fanRelayNeededCool ? "checked" : "") + ">";
+    html += "<label class='form-label'>Fan Relay Required For Cooling</label>";
     html += "</div>";
     
     html += "<div class='form-checkbox'>";
@@ -1010,7 +1015,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
 // Generate modern settings page HTML
 String generateSettingsPage(String thermostatMode, String fanMode, float setTempHeat, 
                            float setTempCool, float setTempAuto, float tempSwing, 
-                           float autoTempSwing, bool fanRelayNeeded, bool useFahrenheit,
+                           float autoTempSwing, bool fanRelayNeededHeat, bool fanRelayNeededCool, bool useFahrenheit,
                            bool mqttEnabled, int stage1MinRuntime, float stage2TempDelta,
                            bool stage2HeatingEnabled, bool stage2CoolingEnabled,
                            bool reversingValveEnabled,
@@ -1105,8 +1110,13 @@ String generateSettingsPage(String thermostatMode, String fanMode, float setTemp
     html += "</div>"; // End grid
     
     html += "<div class='form-checkbox'>";
-    html += "<input type='checkbox' name='fanRelayNeeded' " + String(fanRelayNeeded ? "checked" : "") + ">";
-    html += "<label class='form-label'>Fan Relay Required</label>";
+    html += "<input type='checkbox' name='fanRelayNeededHeat' " + String(fanRelayNeededHeat ? "checked" : "") + ">";
+    html += "<label class='form-label'>Fan Relay Required For Heating</label>";
+    html += "</div>";
+
+    html += "<div class='form-checkbox'>";
+    html += "<input type='checkbox' name='fanRelayNeededCool' " + String(fanRelayNeededCool ? "checked" : "") + ">";
+    html += "<label class='form-label'>Fan Relay Required For Cooling</label>";
     html += "</div>";
     
     html += "<div class='form-checkbox'>";

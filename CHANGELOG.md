@@ -12,6 +12,12 @@ All notable firmware changes are documented in this file.
 - When in doubt, use the smallest possible version bump and default to incrementing the last three digits.
 - Do not change `sw_version`, changelog version headers, or release labels unless the user has approved that specific version change.
 
+## [1.5.008] - 2026-07-23
+- Split fan relay requirement into separate settings for heating and cooling.
+- Updated web settings and TFT settings UI to expose independent fan relay toggles for heat and cool.
+- Added backward compatibility for legacy single `fanRelayNeeded` clients by mapping to both new flags.
+- Fixed hydronic fan safety guard regression by keying hydronic lockout fan blocking to the heating fan requirement only.
+
 ## [1.5.007] - 2026-06-29
 - Fixed MQTT `target_temperature` publishing to always republish on HVAC mode change, preventing stale heat setpoints from being shown in cool mode.
 - Hardened MQTT command handling by validating incoming HVAC mode values and constraining MQTT target temperature commands to valid bounds.
