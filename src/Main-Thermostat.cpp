@@ -3997,7 +3997,7 @@ void controlRelays(float currentTemp)
     }
     
     // Fan safety interlock: block fan when hydronic lockout conditions are active
-    bool fanBlockedByHydronicSafety = hydronicHeatingEnabled &&
+    bool fanBlockedByHydronicSafety = hydronicHeatingEnabled && !fanRelayNeeded &&
         (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout);
 
     // Store current states before any changes
@@ -4294,7 +4294,7 @@ void controlRelays(float currentTemp)
 void turnOffAllRelays()
 {
     debugLog("[DEBUG] turnOffAllRelays() - Turning off heating/cooling relays\n");
-    bool fanBlockedByHydronicSafety = hydronicHeatingEnabled &&
+    bool fanBlockedByHydronicSafety = hydronicHeatingEnabled && !fanRelayNeeded &&
         (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout);
 
     digitalWrite(HEAT_RELAY_1_PIN, LOW);
@@ -4368,8 +4368,8 @@ void activateHeating() {
             stage1Active = false;
             stage2Active = false;
             
-            // Force fan off during hydronic lockout
-            if (fanOn) {
+            // Keep user-selected fan relay behavior during lockout when Use Fan is enabled.
+            if (fanOn && !fanRelayNeeded) {
                 digitalWrite(FAN_RELAY_PIN, LOW);
                 fanOn = false;
                 debugLog("[LOCKOUT] Fan forced OFF during hydronic lockout\n");
@@ -4569,7 +4569,7 @@ void activateCooling()
 void handleFanControl()
 {
     // Block fan when hydronic heating is enabled and sensor is missing/invalid or below cutoff
-    if (hydronicHeatingEnabled &&
+    if (hydronicHeatingEnabled && !fanRelayNeeded &&
         (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout)) {
         if (fanOn) {
             digitalWrite(FAN_RELAY_PIN, LOW);
@@ -4618,7 +4618,7 @@ void controlFanSchedule()
 
     if (fanMode == "cycle")
     {
-        if (hydronicHeatingEnabled &&
+        if (hydronicHeatingEnabled && !fanRelayNeeded &&
             (!ds18b20SensorPresent || isnan(hydronicTemp) || hydronicTemp < hydronicTempLow || hydronicLockout)) {
             if (fanOn) {
                 digitalWrite(FAN_RELAY_PIN, LOW);
