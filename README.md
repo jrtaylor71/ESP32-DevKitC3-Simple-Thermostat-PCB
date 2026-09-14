@@ -11,22 +11,57 @@ A comprehensive, feature-rich simple thermostat system built on the ESP32 platfo
 ## 🌟 Key Features
 
 - **📱 Local Touch Control**: ILI9341 TFT LCD with intuitive touch interface
-- **🏠 Smart Home Ready**: Full MQTT integration with Home Assistant auto-discovery
-- **📅 7-Day Scheduling**: Comprehensive inline scheduling with day/night periods and editable Heat/Cool/Auto temperatures
-- **🌡️ Multiple Sensors**: AHT20/BME280 for ambient conditions + DS18B20 for hydronic systems
-- **⚡ Multi-Stage HVAC**: Support for 2-stage heating and cooling systems
-- **🌍 Regional HVAC Behavior**: US/EU mode switch with EU humidity-driven dehumidification
-- **💨 Advanced Fan Control**: Auto, continuous, and scheduled cycling modes
+- **🏠 Smart Home Ready**: Full MQTT integration with Home Assistant auto-discovery and climate entity support
+- **📅 Bidirectional Schedule Sync**: 7-day schedules with day/night periods, HA helper automation, and live two-way update flow
+- **🌡️ Multiple Sensors**: AHT20/BME280 ambient temperature and humidity plus DS18B20 hydronic water sensing
+- **⚡ Multi-Stage HVAC**: Support for 2-stage heating and cooling, stage timing, delta thresholds, and stage 2 runtime logic
+- **🌍 Regional HVAC Behavior**: Switchable US mode (standard temperature-driven cooling) or EU mode (adds optional humidity-driven dehumidification support alongside temperature control)
+- **🔄 Heat Pump Ready**: Reversing valve support and heat-pump-compatible staging logic
+- **🔥 Backup Heat Monitoring**: Auxiliary heat fallback logic with delay windows and temperature-drop detection
+- **💨 Advanced Fan Control**: Auto, continuous, and scheduled cycling modes with independent heat/cool fan relay requirements
+- **🔥 Separate Heat/Cool Fan Logic**: Configure whether the fan relay is needed for heating, cooling, or both for legacy HVAC systems
+- **🧯 Hydronic Safety Protection**: DS18B20 water monitoring with lockout logic that blocks unsafe fan/heating operation and protects radiant systems
 - **🚿 Shower Mode**: Pause heating for 5-120 minutes with countdown timer and buzzer alert
-- **🌤️ Weather Integration**: OpenWeatherMap and Home Assistant weather with color-coded icons on display
-- **🌐 Modern Web Interface**: Complete tabbed interface with embedded scheduling - no separate pages
-- **📡 Offline Operation**: Full functionality without WiFi connection
-- **🔧 Professional PCB**: Custom PCB design for clean, permanent installation
-- **🔄 OTA Updates**: Over-the-air firmware updates with real-time progress tracking
-- **🔒 Factory Reset**: Built-in reset capability via boot button
-- **🎭 Motion Detection**: LD2410 24GHz mmWave sensor for automatic display wake
+- **🌤️ Weather Integration**: OpenWeatherMap and Home Assistant weather with color-coded icons, current conditions, and display updates
+- **🏢 Multi-Thermostat Support**: Scale from single-device installs to multi-device Home Assistant automation setups
+- **🌐 Modern Web Interface**: Complete tabbed interface with embedded scheduling, status monitoring, OTA upload, and settings management
+- **📡 Offline Operation**: Full functionality without WiFi connection or internet access
+- **🔧 Professional PCB**: Custom PCB design for clean, permanent installation and compact integration
+- **🔄 OTA Updates**: Over-the-air firmware updates with real-time progress tracking and reboot recovery
+- **🔒 Factory Reset**: Built-in reset capability via boot button for clean default recovery
+- **🎭 Motion Detection**: LD2410 24GHz mmWave sensor for automatic display wake and occupancy-aware screen behavior
+- **🔊 Audible Alerts**: Buzzer feedback for shower mode, relay events, and user interaction cues
+- **🧠 Reliability Features**: Watchdog reset, anti-flicker display refresh, I2C protection, and graceful sensor recovery
 
-## 🚀 Quick Start
+## �️ Operating Modes
+
+### Thermostat Modes
+- **Off**: All heating, cooling, and fan demand relays are disabled
+- **Heat**: Single heat setpoint with configurable swing (hysteresis) to prevent short-cycling
+- **Cool**: Single cool setpoint with configurable swing (hysteresis) to prevent short-cycling
+- **Auto**: Single setpoint with a wider dead-zone swing; heating and cooling only activate once the temperature moves outside the dead-zone and turn off at the setpoint boundary rather than immediately on dead-zone re-entry
+
+### Fan Modes
+- **Auto**: Fan runs only when heating or cooling demand is active, based on the independent heat/cool fan relay requirement settings
+- **On**: Fan runs continuously regardless of HVAC demand
+- **Cycle**: Fan runs on a repeating schedule (configurable minutes per hour) even without active heating or cooling demand
+
+### Regional HVAC Modes
+- **US Mode**: Standard temperature-driven heating and cooling control
+- **EU Mode**: Adds an optional humidity-driven dehumidification assist that runs alongside temperature control, using a configurable humidity setpoint, deadband, and dedicated relay selection
+
+### Schedule Modes
+- **Scheduled**: Setpoints automatically follow the active day/night period for the current day of week
+- **Manual Override**: Adjusting a setpoint while a schedule is active temporarily overrides the schedule for a fixed duration before resuming normal scheduled behavior
+- **Disabled**: Schedule following can be turned off entirely in favor of fixed manual setpoints
+
+### Shower Mode
+- Temporarily pauses heating for a configurable duration (5-120 minutes)
+- Displays a live countdown timer on the touch screen while active
+- Buzzer alert signals when the countdown is about to end
+- Can be toggled directly from the touch screen setpoint control when enabled in settings
+
+## �🚀 Quick Start
 
  - PCB V1.x
 ![Hardware-Main-Display](pcb/ESP32-DevKitC3-Simple-Thermostat-PCB_front.png)
@@ -140,14 +175,19 @@ Access the thermostat's web interface by navigating to its IP address:
 **Settings Tab**: Complete configuration interface for:
 
 - Temperature setpoints and control modes
-- MQTT/Home Assistant integration
-- WiFi network settings
-- Multi-stage HVAC parameters
-- Hydronic heating controls
-- Fan scheduling options
+- MQTT/Home Assistant integration and broker settings
+- WiFi network settings and reboot recovery
+- Multi-stage HVAC parameters including stage 2 runtime and delta thresholds
+- Reversing valve configuration for heat-pump systems
+- Backup heat enablement, relay selection, delay timing, and temperature-drop logic
+- Hydronic heating controls with low/high water protection thresholds
+- Fan scheduling options and independent heat/cool fan relay toggles
+- Regional HVAC mode selection for US or EU behavior
+- EU humidity dehumidification controls, relay selection, setpoint, and deadband
 - Shower mode enable/disable and duration (5-120 minutes)
-- Display brightness and sleep settings
-- Temperature/humidity sensor calibration
+- Display brightness, sleep, and clock settings
+- Temperature/humidity sensor calibration and offsets
+- OTA update management and firmware details
 
 **Schedule Tab**: Comprehensive 7-day scheduling:
 - Day and night periods for each day of the week
@@ -177,16 +217,17 @@ Automatic discovery and integration with Home Assistant:
 
 1. Enable MQTT in thermostat settings
 2. Configure MQTT broker details
-3. Thermostat appears automatically in Home Assistant (91 entities per thermostat)
+3. Thermostat appears automatically in Home Assistant with a full climate entity and status payloads
 4. Full control via Home Assistant interface
-5. Supports climate entity with heating/cooling modes
+5. Supports climate entity with heating, cooling, auto, and off modes
+6. Publishes relay, mode, target, schedule override, and hydronic state for automation use
 
 ### Bidirectional Schedule Sync 🔄
 Full synchronization between thermostat and Home Assistant:
 
 **Device → HA (Inbound)**: 
 - Thermostat publishes complete schedule on boot and config changes
-- HA automations automatically update 77 helper entities (per device)
+- HA automations automatically update helper entities for each day and period
 - Changes made on device instantly visible in HA
 
 **HA → Device (Outbound)**:
@@ -213,20 +254,55 @@ Full synchronization between thermostat and Home Assistant:
 
 ### Multi-Stage Operation
 - Intelligent staging based on time and temperature
-- Configurable stage 2 activation parameters
-- Prevents system short-cycling
-- Optimizes energy efficiency
+- Configurable stage 2 activation parameters and runtime thresholds
+- Prevents system short-cycling and optimizes energy efficiency
+- Supports separate heating and cooling stage logic for multi-stage HVAC systems
+- Includes runtime gating and dead-zone control behavior for stable operation
+
+### US/EU Regional HVAC Behavior
+- Thermostat region mode can be configured for US or EU control behavior
+- **US Mode**: Standard temperature-driven heating and cooling control
+- **EU Mode**: Adds optional humidity-driven dehumidification assist that runs alongside temperature control, with configurable setpoint and deadband
+- Standalone dehumidification state is surfaced to web status and TFT display
+- Works with relay selection modes for cooling stage 1, stage 2, or pump relay output
+
+### Heat Pump and Backup Heat Support
+- Reversing valve support for heat-pump systems with mode-aware valve control
+- Backup heat logic can monitor a primary heat source and automatically add auxiliary heat when recovery stalls or temperature falls too quickly
+- Relay conflicts are automatically managed so backup heat does not overlap with reserved stage 2 or reversing valve outputs
+- Works alongside standard heating and cooling staging without forcing a single control strategy
 
 ### Hydronic Heating Support
 - DS18B20 water temperature monitoring
 - Safety interlocks prevent operation when water is too cold
 - Configurable high/low temperature thresholds
-- Perfect for radiant floor heating systems
+- Hydronic lockout logic blocks unsafe heating/fan behavior when the loop is below the configured minimum
+- Perfect for radiant floor heating systems and hydronic boiler setups
 
 ### Fan Control Options
 - **Auto**: Fan runs only with heating/cooling
 - **On**: Continuous fan operation
 - **Cycle**: Scheduled fan operation (configurable minutes per hour)
+- **Independent Heat/Cool Relay Settings**: Choose whether a fan relay is required while heating, while cooling, or for both modes
+- **Legacy HVAC Compatibility**: Supports systems where the fan is required for cooling only, heating only, or both without forcing a single global setting
+
+### Display, Sensor, and Safety Enhancements
+- Motion-based wake on LD2410 radar occupancy detection
+- Display sleep and dimming support with activity sensing
+- Buzzer feedback for alerts, boot tones, and mode transitions
+- Watchdog protection, OTA recovery, and factory reset support
+- AHT20/BME280 temperature/humidity calibration offsets and sensor error recovery
+- I2C mutex protection to prevent bus contention between sensors and display logic
+- Anti-flicker display refresh logic and stable UI updates
+- Hydronic low-temp alert publishing and lockout recovery monitoring for radiant systems
+
+### Included Hardware and Support Features
+- 5 relay outputs for heating, cooling, and fan control
+- Optional DS18B20 hydronic sensor and LD2410 motion sensor
+- Local TFT UI with touch controls and embedded settings
+- Web interface for complete configuration and status polling
+- OTA firmware upload through the device’s system tab
+- Compatibility with both single-device and multi-thermostat Home Assistant installations
 
 ## 🖨️ 3D Printable Case
 
