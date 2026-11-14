@@ -59,7 +59,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.5.008"; // Software version - split heat/cool fan relay requirements + hydronic guard fix
+const String sw_version = "1.5.009";
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -5890,7 +5890,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
         float mainDisplayTemp = showSetTempNow ? currentSetTemp : currentTemp;
 
         if ((mainDisplayTemp != previousMainDisplayTemp || showSetTempNow != previousMainShowSetTemp || fullRefreshTriggered) && !showerModeActive) {
-            tft.fillRect(sx(40), sy(95), sx(165), sy(60), COLOR_BACKGROUND);
+            tft.fillRect(sx(40), sy(95), sx(165), sy(145) - sy(95), COLOR_BACKGROUND);
             tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
             tft.setTextSize((dispW() > 320) ? 5 : 4);
             tft.setCursor(sx(40), sy(100));
@@ -5959,7 +5959,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
     {
         // In OFF mode, show current temp large in center, do not show setpoint
         if ((currentTemp != previousMainDisplayTemp || fullRefreshTriggered) && !showerModeActive) {
-            tft.fillRect(sx(40), sy(95), sx(165), sy(60), COLOR_BACKGROUND);
+            tft.fillRect(sx(40), sy(95), sx(165), sy(145) - sy(95), COLOR_BACKGROUND);
             tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
             tft.setTextSize((dispW() > 320) ? 5 : 4);
             tft.setCursor(sx(40), sy(100));
@@ -5988,7 +5988,7 @@ void updateDisplay(float currentTemp, float currentHumidity)
     bool backupHeatDisplayActive = heatActive && backupHeatActive;
     
     // Check if status has changed and update only when necessary
-    if (heatActive != prevHeatingStatus || coolActive != prevCoolingStatus || fanActive != prevFanStatus || backupHeatDisplayActive != prevBackupHeatStatus)
+    if (fullRefreshTriggered || heatActive != prevHeatingStatus || coolActive != prevCoolingStatus || fanActive != prevFanStatus || backupHeatDisplayActive != prevBackupHeatStatus)
     {
         // Clear the status indicator area - make sure to clear the full area where indicators are drawn
         tft.fillRect(sx(0), sy(145), sx(320), sy(35), COLOR_BACKGROUND);

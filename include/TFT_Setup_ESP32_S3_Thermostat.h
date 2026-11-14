@@ -327,7 +327,6 @@ private:
 		cfg.bus_shared   = true;
 		_panel_ili9341.config(cfg);
 		_panel_ili9341.setBus(&_bus);
-		_panel_ili9341.setLight(&_light);
 		_panel_ili9341.setTouch(&_touch);
 		setPanel(&_panel_ili9341);
 	}
@@ -346,7 +345,6 @@ private:
 		cfg.bus_shared   = true;
 		_panel_st7789.config(cfg);
 		_panel_st7789.setBus(&_bus);
-		_panel_st7789.setLight(&_light);
 		_panel_st7789.setTouch(&_touch);
 		setPanel(&_panel_st7789);
 	}
@@ -368,7 +366,6 @@ private:
 		cfg.bus_shared     = true;
 		_panel_st7796.config(cfg);
 		_panel_st7796.setBus(&_bus);
-		_panel_st7796.setLight(&_light);
 		_panel_st7796.setTouch(&_touch);
 		setPanel(&_panel_st7796);
 	}
@@ -390,7 +387,6 @@ private:
 		cfg.bus_shared      = true;
 		_panel_ili9488.config(cfg);
 		_panel_ili9488.setBus(&_bus);
-		_panel_ili9488.setLight(&_light);
 		_panel_ili9488.setTouch(&_touch);
 		setPanel(&_panel_ili9488);
 	}
