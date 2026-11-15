@@ -12,6 +12,10 @@ All notable firmware changes are documented in this file.
 - When in doubt, use the smallest possible version bump and default to incrementing the last three digits.
 - Do not change `sw_version`, changelog version headers, or release labels unless the user has approved that specific version change.
 
+## [Unreleased]
+- Reduced home-page memory usage by avoiding a second page copy and serving shared CSS and JavaScript separately.
+- Redacted WiFi and MQTT passwords from startup logs and the OpenWeatherMap API key from serial output.
+
 ## [1.5.010] - 2026-11-14
 - Added a pinned startup diagnostic summary and persistent current and previous boot logs with one-time filesystem initialization.
 - Limited debug log copies to the most recent 8 KB and added home-page allocation diagnostics to investigate memory pressure.

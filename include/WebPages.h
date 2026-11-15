@@ -85,7 +85,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "<meta charset='UTF-8'>";
     html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
     html += "<title>"; html += String(PROJECT_NAME_SHORT); html += " - Status</title>";
-    html += CSS_STYLES;
+    html += "<link rel='stylesheet' href='/assets/thermostat.css'>";
     html += "</head><body>";
     
     html += "<div class='container'>";
@@ -1006,7 +1006,7 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "</div>"; // End weather-content tab
     
     html += "</div>"; // End container
-    html += JAVASCRIPT_CODE;
+    html += "<script src='/assets/thermostat.js'></script>";
     html += "</body></html>";
     
     return html;

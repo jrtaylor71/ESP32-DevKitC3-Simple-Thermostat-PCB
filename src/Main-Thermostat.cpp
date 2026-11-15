@@ -41,6 +41,8 @@
 #include <PubSubClient.h> // Include the MQTT library
 #include <esp_task_wdt.h> // Watchdog reset API used in main loop
 #include <esp_system.h>
+#include <memory>
+#include <utility>
 #include <time.h>
 #include <ArduinoJson.h> // Include the ArduinoJson library
 #include <OneWire.h>
@@ -4810,6 +4812,29 @@ void controlFanSchedule()
 
 void handleWebRequests()
 {
+    auto sendStaticAsset = [](AsyncWebServerRequest *request, const char *content,
+                              const char *openingTag, const char *closingTag, const char *contentType) {
+        const char *start = strstr(content, openingTag);
+        if (start) {
+            start += strlen(openingTag);
+        }
+        const char *end = start ? strstr(start, closingTag) : nullptr;
+        if (!end) {
+            request->send(500, "text/plain", "Asset unavailable");
+            return;
+        }
+        AsyncWebServerResponse *response = request->beginResponse_P(
+            200, contentType, reinterpret_cast<const uint8_t *>(start), end - start);
+        response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        request->send(response);
+    };
+    server.on("/assets/thermostat.css", HTTP_GET, [sendStaticAsset](AsyncWebServerRequest *request) {
+        sendStaticAsset(request, CSS_STYLES, "<style>", "</style>", "text/css");
+    });
+    server.on("/assets/thermostat.js", HTTP_GET, [sendStaticAsset](AsyncWebServerRequest *request) {
+        sendStaticAsset(request, JAVASCRIPT_CODE, "<script>", "</script>", "application/javascript");
+    });
+
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
     {
         debugLog("[WEB PAGE] Before generation: free=%u largest=%u\n",
@@ -4847,7 +4872,17 @@ void handleWebRequests()
                         debugLog("[WEB PAGE] Generated: bytes=%u free=%u largest=%u\n", (unsigned int)html.length(),
                              (unsigned int)heap_caps_get_free_size(MALLOC_CAP_8BIT),
                              (unsigned int)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
-        AsyncWebServerResponse *response = request->beginResponse(200, "text/html", html);
+        auto page = std::make_shared<String>(std::move(html));
+        AsyncWebServerResponse *response = request->beginResponse("text/html", page->length(),
+            [page](uint8_t *buffer, size_t maxLength, size_t index) -> size_t {
+                if (index >= page->length()) {
+                    return 0;
+                }
+                size_t remaining = page->length() - index;
+                size_t length = remaining < maxLength ? remaining : maxLength;
+                memcpy(buffer, page->c_str() + index, length);
+                return length;
+            });
         debugLog("[WEB PAGE] After response allocation: free=%u largest=%u\n",
                              (unsigned int)heap_caps_get_free_size(MALLOC_CAP_8BIT),
                              (unsigned int)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
@@ -6449,9 +6484,9 @@ void loadSettings()
     debugLog("mqttServer: %s\n", mqttServer.c_str());
     debugLog("mqttPort: %d\n", mqttPort);
     debugLog("mqttUsername: %s\n", mqttUsername.c_str());
-    debugLog("mqttPassword: %s\n", mqttPassword.c_str());
+    debugLog("mqttPassword: %s\n", mqttPassword.isEmpty() ? "[NOT SET]" : "[SET]");
     debugLog("wifiSSID: %s\n", wifiSSID.c_str());
-    debugLog("wifiPassword: %s\n", wifiPassword.c_str());
+    debugLog("wifiPassword: %s\n", wifiPassword.isEmpty() ? "[NOT SET]" : "[SET]");
     debugLog("thermostatMode: %s\n", thermostatMode.c_str());
     debugLog("fanMode: %s\n", fanMode.c_str());
     debugLog("timeZone: %s\n", timeZone.c_str());

@@ -135,9 +135,8 @@ bool Weather::updateFromOpenWeatherMap() {
         url += "," + _owmCountryCode;
     }
     
+    Serial.println("[Weather] OWM - URL: " + url + "&appid=[REDACTED]&units=" + units);
     url += "&appid=" + _owmApiKey + "&units=" + units;
-    
-    Serial.println("[Weather] OWM - URL: " + url);
     
     http.begin(url);
     http.setTimeout(5000);
