@@ -28,6 +28,7 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <Preferences.h>
+#include <SPIFFS.h>
 #include <esp_netif.h>
 #include <Wire.h>
 #include <Adafruit_AHTX0.h>
@@ -39,6 +40,7 @@
 #include <HTTPClient.h>
 #include <PubSubClient.h> // Include the MQTT library
 #include <esp_task_wdt.h> // Watchdog reset API used in main loop
+#include <esp_system.h>
 #include <time.h>
 #include <ArduinoJson.h> // Include the ArduinoJson library
 #include <OneWire.h>
@@ -59,7 +61,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "1.5.009";
+const String sw_version = "1.5.010";
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -1205,10 +1207,66 @@ void loadScheduleSettings() {
 // DEBUG LOG BUFFER - For web-based serial output viewing
 // =============================================================================
 const int DEBUG_BUFFER_SIZE = 65536;  // 64KB circular buffer for more history
+const int MAX_DEBUG_LOG_BYTES = 8192;
 char debugBuffer[DEBUG_BUFFER_SIZE];
 int debugBufferIndex = 0;
 bool debugBufferWrapped = false;  // Track if buffer has wrapped around
 SemaphoreHandle_t debugBufferMutex = NULL;
+char bootSummary[1536] = "=== Boot diagnostics pending ===\n";
+bool bootLogFilesystemReady = false;
+
+void saveBootLog() {
+    if (!bootLogFilesystemReady) {
+        debugLog("[BOOT LOG] Filesystem unavailable; boot log not saved\n");
+        return;
+    }
+
+    File file = SPIFFS.open("/boot-tmp.log", FILE_WRITE);
+    if (!file) {
+        debugLog("[BOOT LOG] Could not open temporary boot log\n");
+        return;
+    }
+
+    bool haveLock = debugBufferMutex && xSemaphoreTake(debugBufferMutex, portMAX_DELAY) == pdTRUE;
+    size_t count = debugBufferWrapped ? DEBUG_BUFFER_SIZE : debugBufferIndex;
+    size_t start = debugBufferWrapped ? debugBufferIndex : 0;
+    size_t firstLength = min(count, (size_t)DEBUG_BUFFER_SIZE - start);
+    size_t written = file.write((const uint8_t *)debugBuffer + start, firstLength);
+    if (written == firstLength && count > firstLength) {
+        written += file.write((const uint8_t *)debugBuffer, count - firstLength);
+    }
+    if (haveLock) {
+        xSemaphoreGive(debugBufferMutex);
+    }
+    file.flush();
+    file.close();
+
+    if (written != count) {
+        debugLog("[BOOT LOG] Incomplete write; existing logs preserved\n");
+        return;
+    }
+    if (SPIFFS.exists("/boot-current.log")) {
+        if ((SPIFFS.exists("/boot-previous.log") && !SPIFFS.remove("/boot-previous.log")) ||
+            !SPIFFS.rename("/boot-current.log", "/boot-previous.log")) {
+            debugLog("[BOOT LOG] Could not rotate existing boot log\n");
+            return;
+        }
+    }
+    if (!SPIFFS.rename("/boot-tmp.log", "/boot-current.log")) {
+        debugLog("[BOOT LOG] Could not publish boot log; temporary file retained\n");
+        return;
+    }
+    debugLog("[BOOT LOG] Saved %u bytes\n", (unsigned int)written);
+}
+
+String getBootSummary() {
+    bool haveLock = debugBufferMutex && xSemaphoreTake(debugBufferMutex, portMAX_DELAY) == pdTRUE;
+    String result(bootSummary);
+    if (haveLock) {
+        xSemaphoreGive(debugBufferMutex);
+    }
+    return result;
+}
 
 void addToDebugBuffer(const char* message) {
     bool haveLock = false;
@@ -1243,10 +1301,16 @@ String getDebugLog() {
     // Return only valid bytes in chronological order.
     int count = debugBufferWrapped ? DEBUG_BUFFER_SIZE : debugBufferIndex;
     int startIdx = debugBufferWrapped ? debugBufferIndex : 0;
+    bool truncated = count > MAX_DEBUG_LOG_BYTES;
+    if (truncated) {
+        startIdx = (startIdx + count - MAX_DEBUG_LOG_BYTES) % DEBUG_BUFFER_SIZE;
+        count = MAX_DEBUG_LOG_BYTES;
+    }
 
     // When the circular buffer has wrapped, the oldest byte may be in the middle
     // of a log line. Advance to the next newline so the served log starts cleanly.
-    if (debugBufferWrapped && count > 0) {
+    if ((debugBufferWrapped || truncated) && count > 0 &&
+        debugBuffer[(startIdx + DEBUG_BUFFER_SIZE - 1) % DEBUG_BUFFER_SIZE] != '\n') {
         int trim = 0;
         while (trim < count && debugBuffer[(startIdx + trim) % DEBUG_BUFFER_SIZE] != '\n') {
             trim++;
@@ -1323,6 +1387,29 @@ void setup()
         // Add initial message to buffer
         addToDebugBuffer("=== DEBUG BUFFER INITIALIZED ===\n");
     }
+
+    Preferences bootLogPreferences;
+    bool bootLogPreferencesReady = bootLogPreferences.begin("bootlog", false);
+    bool initializeBootLogFilesystem = false;
+    if (bootLogPreferencesReady && !bootLogPreferences.getBool("initAttempted", false)) {
+        initializeBootLogFilesystem = bootLogPreferences.putBool("initAttempted", true) > 0;
+        if (!initializeBootLogFilesystem) {
+            debugLog("[BOOT LOG] Could not record initialization attempt; formatting disabled\n");
+        }
+    } else if (!bootLogPreferencesReady) {
+        debugLog("[BOOT LOG] Preferences unavailable; formatting disabled\n");
+    }
+    bootLogFilesystemReady = SPIFFS.begin(false);
+    if (!bootLogFilesystemReady && initializeBootLogFilesystem) {
+        debugLog("[BOOT LOG] Initializing filesystem for first use\n");
+        if (SPIFFS.format()) {
+            bootLogFilesystemReady = SPIFFS.begin(false);
+        }
+    }
+    if (bootLogPreferencesReady) {
+        bootLogPreferences.end();
+    }
+    debugLog("[BOOT LOG] Filesystem mount: %s\n", bootLogFilesystemReady ? "ready" : "failed (no further automatic formatting)");
 
     // Initialize Preferences
     preferences.begin("thermostat", false);
@@ -1633,6 +1720,7 @@ void setup()
     debugLog("Performing manual OneWire device search...\n");
     uint8_t addr[8];
     int manualDeviceCount = 0;
+    int oneWireResetResults[5] = {-1, -1, -1, -1, -1};
     oneWire->reset_search();
     delay(50);
     
@@ -1642,6 +1730,7 @@ void setup()
         
         // Test reset before each search
         uint8_t resetResult = oneWire->reset();
+        oneWireResetResults[attempt] = resetResult;
         debugLog("    Reset result: %d (should be 1 for device present)\n", resetResult);
         if (resetResult == 0) {
             debugLog("    No devices detected on bus (reset failed)\n");
@@ -1696,6 +1785,40 @@ void setup()
     debugLog("DS18B20 readings: Supply=%.1f°C, Return=%.1f°C\n", tempC, returnTempC);
     ds18b20SensorPresent = (ds18b20Count >= 1) && (tempC != DEVICE_DISCONNECTED_C && tempC != -127.0);
     ds18b20ReturnSensorPresent = (ds18b20Count >= 2) && (returnTempC != DEVICE_DISCONNECTED_C && returnTempC != -127.0);
+
+    char summary[sizeof(bootSummary)];
+    snprintf(summary, sizeof(summary),
+             "=== Boot diagnostics (at sensor initialization) ===\n"
+             "Version: %s; build: %s %s; reset reason: %d\n"
+             "Heap: free=%u, largest=%u, minimum=%u bytes\n"
+             "Display: %s (%dx%d); ambient sensor: %s; initial temperature=%.1f, humidity=%.1f%%\n"
+             "LD2410 detected: %d; WiFi status: %d; MQTT enabled=%d connected=%d; weather source=%d data valid=%d\n"
+             "GPIO%d levels: initial=%d, after OneWire init=%d\n"
+             "OneWire presence: %d (0=present); resets: %d %d %d %d %d (1=present, -1=not attempted)\n"
+             "Manual search devices: %d; DS18B20 count: %d\n"
+             "Supply: %.1f C (present=%d); return: %.1f C (present=%d)\n"
+             "DS18B20 address 1: %02X%02X%02X%02X%02X%02X%02X%02X (valid=%d)\n"
+             "DS18B20 address 2: %02X%02X%02X%02X%02X%02X%02X%02X (valid=%d)\n\n",
+             sw_version.c_str(), build_date.c_str(), build_time.c_str(), (int)esp_reset_reason(),
+             (unsigned int)heap_caps_get_free_size(MALLOC_CAP_8BIT),
+             (unsigned int)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT),
+             (unsigned int)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
+             activeDisplay == DISPLAY_ST7789 ? "ST7789" : activeDisplay == DISPLAY_ST7796 ? "ST7796" :
+                 activeDisplay == DISPLAY_ILI9488 ? "ILI9488" : "ILI9341",
+             dispW(), dispH(), sensorName.c_str(), currentTemp, currentHumidity,
+             ld2410Connected, (int)WiFi.status(), mqttEnabled, mqttClient.connected(), weatherSource, weather.isDataValid(),
+             ONEWIRE_PIN, pinStateAfterConfig, pinStateAfterOneWire, presence,
+             oneWireResetResults[0], oneWireResetResults[1], oneWireResetResults[2], oneWireResetResults[3], oneWireResetResults[4],
+             manualDeviceCount, ds18b20Count, tempC, ds18b20SensorPresent, returnTempC, ds18b20ReturnSensorPresent,
+             ds18b20Address1[0], ds18b20Address1[1], ds18b20Address1[2], ds18b20Address1[3],
+             ds18b20Address1[4], ds18b20Address1[5], ds18b20Address1[6], ds18b20Address1[7], ds18b20Address1Valid,
+             ds18b20Address2[0], ds18b20Address2[1], ds18b20Address2[2], ds18b20Address2[3],
+             ds18b20Address2[4], ds18b20Address2[5], ds18b20Address2[6], ds18b20Address2[7], ds18b20Address2Valid);
+    bool haveBootLock = debugBufferMutex && xSemaphoreTake(debugBufferMutex, portMAX_DELAY) == pdTRUE;
+    strlcpy(bootSummary, summary, sizeof(bootSummary));
+    if (haveBootLock) {
+        xSemaphoreGive(debugBufferMutex);
+    }
     
     if (ds18b20SensorPresent) {
         debugLog("DS18B20 supply sensor detected\n");
@@ -1769,6 +1892,7 @@ void setup()
     debugLog("[BOOT] Debug console available at /debug\n");
     debugLog("[BOOT] System Version %s\n", sw_version.c_str());
     debugLog("[BOOT] Hostname: %s\n", hostname.c_str());
+    saveBootLog();
     
     // Play startup tone to indicate setup is complete
     buzzerStartupTone();
@@ -4688,6 +4812,9 @@ void handleWebRequests()
 {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
     {
+        debugLog("[WEB PAGE] Before generation: free=%u largest=%u\n",
+                 (unsigned int)heap_caps_get_free_size(MALLOC_CAP_8BIT),
+                 (unsigned int)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
         String html = generateStatusPage(currentTemp, currentHumidity, hydronicTemp, hydronicReturnTemp,
                                        thermostatMode, fanMode, version_info, hostname, 
                                        useFahrenheit, hydronicHeatingEnabled,
@@ -4717,7 +4844,13 @@ void handleWebRequests()
                                        weatherSource, owmApiKey, owmCity, owmState, owmCountry,
                                        haUrl, haToken, haEntityId, weatherUpdateInterval,
                                        weather.getData());
+                        debugLog("[WEB PAGE] Generated: bytes=%u free=%u largest=%u\n", (unsigned int)html.length(),
+                             (unsigned int)heap_caps_get_free_size(MALLOC_CAP_8BIT),
+                             (unsigned int)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
         AsyncWebServerResponse *response = request->beginResponse(200, "text/html", html);
+        debugLog("[WEB PAGE] After response allocation: free=%u largest=%u\n",
+                             (unsigned int)heap_caps_get_free_size(MALLOC_CAP_8BIT),
+                             (unsigned int)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
         response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
         response->addHeader("Pragma", "no-cache");
         response->addHeader("Expires", "0");
@@ -5407,17 +5540,26 @@ void handleWebRequests()
         request->send(200, "text/plain", "Weather update forced");
     });
     
+    server.on("/bootlog-current", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (!bootLogFilesystemReady || !SPIFFS.exists("/boot-current.log")) {
+            request->send(404, "text/plain", "Current boot log unavailable");
+            return;
+        }
+        request->send(SPIFFS, "/boot-current.log", "text/plain");
+    });
+
+    server.on("/bootlog-previous", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (!bootLogFilesystemReady || !SPIFFS.exists("/boot-previous.log")) {
+            request->send(404, "text/plain", "Previous boot log unavailable");
+            return;
+        }
+        request->send(SPIFFS, "/boot-previous.log", "text/plain");
+    });
+
     // Debug log endpoint - returns JSON with recent serial output
     server.on("/api/debug", HTTP_GET, [](AsyncWebServerRequest *request) {
         String logOutput = getDebugLog();
-            const size_t MAX_JSON_DEBUG_BYTES = 8192;
-            if ((size_t)logOutput.length() > MAX_JSON_DEBUG_BYTES) {
-                logOutput.remove(0, logOutput.length() - MAX_JSON_DEBUG_BYTES);
-                int firstNewline = logOutput.indexOf('\n');
-                if (firstNewline >= 0 && firstNewline + 1 < logOutput.length()) {
-                    logOutput.remove(0, firstNewline + 1);
-                }
-            }
+        logOutput = getBootSummary() + logOutput;
         
             // Keep the legacy JSON endpoint lightweight so stale clients cannot force
             // a large escaped response allocation and crash the web task.
@@ -5448,10 +5590,12 @@ void handleWebRequests()
     // Debug plain text endpoint (simpler, easier to debug)
     server.on("/api/debug/plain", HTTP_GET, [](AsyncWebServerRequest *request) {
         String logOutput = getDebugLog();
-        AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", logOutput);
+        AsyncResponseStream *response = request->beginResponseStream("text/plain");
         response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
         response->addHeader("Pragma", "no-cache");
         response->addHeader("Expires", "0");
+        response->print(getBootSummary());
+        response->print(logOutput);
         request->send(response);
     });
     
