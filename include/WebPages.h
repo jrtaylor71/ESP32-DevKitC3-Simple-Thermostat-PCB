@@ -47,6 +47,36 @@ String formatUptime(unsigned long milliseconds) {
     return uptime;
 }
 
+// Home Assistant local API state (defined in HomeAssistantApi.h)
+extern bool haApiEnabled;
+extern char haApiToken[];
+
+String generateHaApiSettingsSection(bool mqttEnabled) {
+    String html = "<div class='settings-section'>";
+    html += "<h3>Home Assistant API</h3>";
+    html += "<p style='margin: 0 0 12px 0; opacity: 0.8;'>Native local API for the ESP32 Thermostat Home Assistant integration. "
+            "When enabled the thermostat is auto-discovered by Home Assistant; enter the token below when adding it.</p>";
+    html += "<input type='hidden' name='haApiPresent' value='1'>";
+    html += "<div class='form-checkbox'>";
+    html += "<input type='checkbox' name='haApiEnabled' " + String(haApiEnabled ? "checked" : "") + ">";
+    html += "<label class='form-label'>Enable Home Assistant API</label>";
+    html += "</div>";
+    html += "<div class='form-group'>";
+    html += "<label class='form-label'>API Token</label>";
+    html += "<div style='display: flex; gap: 8px;'>";
+    html += "<input type='text' id='haApiToken' value='" + String(haApiToken) +
+            "' placeholder='Generated when the API is enabled' readonly class='form-input' style='font-family: monospace;'>";
+    html += "<button type='button' class='btn btn-secondary' onclick='regenerateHaToken()'>Regenerate</button>";
+    html += "</div>";
+    html += "</div>";
+    if (mqttEnabled) {
+        html += "<p style='margin: 8px 0 0 0; color: #ff9800;'>MQTT is also enabled. Using both MQTT discovery and the native "
+                "integration creates duplicate entities in Home Assistant; disable one of them.</p>";
+    }
+    html += "</div>"; // End Home Assistant API section
+    return html;
+}
+
 // Generate modern status page HTML
 String generateStatusPage(float currentTemp, float currentHumidity, float hydronicTemp, float hydronicReturnTemp,
                          String thermostatMode, String fanMode, String version_info, 
@@ -543,6 +573,8 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "</div>"; // End grid
     
     html += "</div>"; // End MQTT settings section
+    
+    html += generateHaApiSettingsSection(mqttEnabled);
     
     // Sensor & Display Settings
     html += "<div class='settings-section'>";

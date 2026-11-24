@@ -60,6 +60,12 @@ extern void calibrateTouchScreen();
 extern void runInteractiveCalibration();
 extern void clearTouchCalibration();
 
+// Home Assistant local API (defined in HomeAssistantApi.h)
+extern bool haApiEnabled;
+extern char haApiToken[];
+extern void haApiSetEnabled(bool enabled);
+extern void haApiGenerateToken();
+
 // Color scheme (defined in main, redeclare for clarity)
 #define COLOR_BACKGROUND   0x1082
 #define COLOR_PRIMARY      0x1976
@@ -77,7 +83,8 @@ enum SettingsPage {
     PAGE_COMFORT,    // Temp swing, auto swing, fan relay, use F
     PAGE_HVAC_ADV,   // stage2 enable (heat/cool), stage1 min runtime, stage2 delta
     PAGE_HOSTNAME,   // Hostname entry (uses keyboard)
-    PAGE_SYSINFO     // System information (IP, MAC, uptime, memory, etc)
+    PAGE_SYSINFO,    // System information (IP, MAC, uptime, memory, etc)
+    PAGE_HA_API      // Home Assistant local API enable + token
 };
 
 // Current settings page
@@ -99,6 +106,7 @@ void drawSettingsMenu();
 void drawComfortSettings();
 void drawHVACAdvancedSettings();
 void drawSystemInfo();
+void drawHaApiPage();
 bool settingsHandleTouch(uint16_t x, uint16_t y);
 void enterSettingsMenu();
 void exitSettingsToMain();
@@ -405,10 +413,54 @@ void drawSystemInfo() {
     tft.print(ESP.getFlashChipSize() / (1024 * 1024));
     tft.print(" MB");
     
-    // Calibrate, Clear Cal, and Back buttons (right side)
+    // HA API, Calibrate, Clear Cal, and Back buttons (right side)
+    drawSettingsButton(213, 35, 95, 35, "HA API", COLOR_SECONDARY);
     drawSettingsButton(213, 80, 95, 35, "Calibrate", COLOR_PRIMARY);
     drawSettingsButton(213, 125, 95, 35, "Clear Cal", TFT_RED);
     drawSettingsButton(213, 170, 95, 35, "Back", COLOR_WARNING);
+}
+
+// Second tap on "New Token" confirms regeneration
+static bool haApiConfirmRegenerate = false;
+
+// Draw Home Assistant API page
+void drawHaApiPage() {
+    tft.fillScreen(COLOR_BACKGROUND);
+    tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
+    tft.setTextSize(2);
+    tft.setCursor(settingsScaleX(10), settingsScaleY(10));
+    tft.print("Home Assistant API");
+
+    tft.setCursor(settingsScaleX(10), settingsScaleY(45));
+    tft.print("Status: ");
+    tft.setTextColor(haApiEnabled ? COLOR_SUCCESS : COLOR_WARNING, COLOR_BACKGROUND);
+    tft.print(haApiEnabled ? "Enabled" : "Disabled");
+    tft.setTextColor(COLOR_TEXT, COLOR_BACKGROUND);
+
+    tft.setCursor(settingsScaleX(10), settingsScaleY(75));
+    tft.print("Token:");
+    if (haApiToken[0] == '\0') {
+        tft.setCursor(settingsScaleX(20), settingsScaleY(100));
+        tft.print("(none)");
+    } else {
+        char line[17];
+        for (int i = 0; i < 2; i++) {
+            strlcpy(line, haApiToken + i * 16, sizeof(line));
+            tft.setCursor(settingsScaleX(20), settingsScaleY(100 + i * 22));
+            tft.print(line);
+        }
+    }
+
+    tft.setTextSize(1);
+    tft.setCursor(settingsScaleX(10), settingsScaleY(155));
+    tft.print("Enter this token in Home Assistant when");
+    tft.setCursor(settingsScaleX(10), settingsScaleY(167));
+    tft.print("adding the ESP32 Thermostat integration.");
+
+    drawSettingsButton(10, 190, 95, 35, haApiEnabled ? "Disable" : "Enable",
+                       haApiEnabled ? COLOR_WARNING : COLOR_SUCCESS);
+    drawSettingsButton(113, 190, 95, 35, haApiConfirmRegenerate ? "Confirm?" : "New Token", TFT_RED);
+    drawSettingsButton(216, 190, 95, 35, "Back", COLOR_PRIMARY);
 }
 
 // Launch WiFi setup (reuse existing keyboard flow)
@@ -659,8 +711,15 @@ bool settingsHandleTouch(uint16_t x, uint16_t y) {
     
     // System Info page
     else if (currentPage == PAGE_SYSINFO) {
-        // Calibrate button (top right)
-        if (x >= 213 && x <= 308 && y >= 80 && y <= 115) {
+        // HA API button (top right)
+        if (x >= 213 && x <= 308 && y >= 35 && y <= 70) {
+            haApiConfirmRegenerate = false;
+            currentPage = PAGE_HA_API;
+            drawHaApiPage();
+            return true;
+        }
+        // Calibrate button
+        else if (x >= 213 && x <= 308 && y >= 80 && y <= 115) {
             runInteractiveCalibration();
             // After calibration completes, redraw the system info page
             drawSystemInfo();
@@ -677,6 +736,36 @@ bool settingsHandleTouch(uint16_t x, uint16_t y) {
             currentPage = PAGE_MENU;
             drawSettingsMenu();
             return true;
+        }
+    }
+
+    // Home Assistant API page
+    else if (currentPage == PAGE_HA_API) {
+        if (y >= 190 && y <= 225) {
+            if (x >= 10 && x <= 105) {
+                haApiConfirmRegenerate = false;
+                haApiSetEnabled(!haApiEnabled);
+                saveSettings();
+                drawHaApiPage();
+                return true;
+            }
+            if (x >= 113 && x <= 208) {
+                if (haApiConfirmRegenerate) {
+                    haApiConfirmRegenerate = false;
+                    haApiGenerateToken();
+                    saveSettings();
+                } else {
+                    haApiConfirmRegenerate = true;
+                }
+                drawHaApiPage();
+                return true;
+            }
+            if (x >= 216 && x <= 311) {
+                haApiConfirmRegenerate = false;
+                currentPage = PAGE_SYSINFO;
+                drawSystemInfo();
+                return true;
+            }
         }
     }
     

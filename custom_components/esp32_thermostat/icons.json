@@ -1,0 +1,226 @@
+{
+  "entity": {
+    "climate": {
+      "thermostat": {
+        "state_attributes": {
+          "preset_mode": {
+            "default": "mdi:calendar-clock",
+            "state": {
+              "none": "mdi:hand-back-right",
+              "schedule": "mdi:calendar-clock",
+              "temporary_hold": "mdi:timer-pause-outline",
+              "permanent_hold": "mdi:pause-circle-outline"
+            }
+          },
+          "fan_mode": {
+            "default": "mdi:fan",
+            "state": {
+              "auto": "mdi:fan-auto",
+              "on": "mdi:fan",
+              "cycle": "mdi:fan-clock"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "air_quality": {
+        "default": "mdi:air-filter"
+      },
+      "gas_resistance": {
+        "default": "mdi:omega"
+      },
+      "hydronic_supply_temperature": {
+        "default": "mdi:water-thermometer"
+      },
+      "hydronic_return_temperature": {
+        "default": "mdi:water-thermometer-outline"
+      },
+      "shower_remaining": {
+        "default": "mdi:shower-head"
+      },
+      "free_heap": {
+        "default": "mdi:memory"
+      },
+      "uptime": {
+        "default": "mdi:timer-outline"
+      },
+      "active_period": {
+        "default": "mdi:calendar-clock",
+        "state": {
+          "day": "mdi:weather-sunny",
+          "night": "mdi:weather-night",
+          "manual": "mdi:hand-back-right",
+          "override": "mdi:timer-pause-outline"
+        }
+      },
+      "hvac_action": {
+        "default": "mdi:hvac",
+        "state": {
+          "off": "mdi:power",
+          "idle": "mdi:sleep",
+          "heating": "mdi:fire",
+          "cooling": "mdi:snowflake",
+          "fan": "mdi:fan"
+        }
+      }
+    },
+    "binary_sensor": {
+      "schedule_override": {
+        "default": "mdi:calendar-remove",
+        "state": {
+          "on": "mdi:timer-pause-outline"
+        }
+      },
+      "backup_heat_active": {
+        "default": "mdi:fire-alert"
+      },
+      "hydronic_lockout": {
+        "default": "mdi:water-boiler-alert"
+      },
+      "relay_heat1": {
+        "default": "mdi:electric-switch",
+        "state": {
+          "on": "mdi:electric-switch-closed"
+        }
+      },
+      "relay_heat2": {
+        "default": "mdi:electric-switch",
+        "state": {
+          "on": "mdi:electric-switch-closed"
+        }
+      },
+      "relay_cool1": {
+        "default": "mdi:electric-switch",
+        "state": {
+          "on": "mdi:electric-switch-closed"
+        }
+      },
+      "relay_cool2": {
+        "default": "mdi:electric-switch",
+        "state": {
+          "on": "mdi:electric-switch-closed"
+        }
+      },
+      "relay_fan": {
+        "default": "mdi:electric-switch",
+        "state": {
+          "on": "mdi:electric-switch-closed"
+        }
+      },
+      "relay_pump": {
+        "default": "mdi:electric-switch",
+        "state": {
+          "on": "mdi:electric-switch-closed"
+        }
+      }
+    },
+    "switch": {
+      "schedule_enabled": {
+        "default": "mdi:calendar-clock",
+        "state": {
+          "off": "mdi:calendar-remove"
+        }
+      },
+      "shower_mode": {
+        "default": "mdi:shower-head",
+        "state": {
+          "off": "mdi:shower"
+        }
+      },
+      "schedule_sunday": {
+        "default": "mdi:calendar-check",
+        "state": {
+          "off": "mdi:calendar-blank"
+        }
+      },
+      "schedule_monday": {
+        "default": "mdi:calendar-check",
+        "state": {
+          "off": "mdi:calendar-blank"
+        }
+      },
+      "schedule_tuesday": {
+        "default": "mdi:calendar-check",
+        "state": {
+          "off": "mdi:calendar-blank"
+        }
+      },
+      "schedule_wednesday": {
+        "default": "mdi:calendar-check",
+        "state": {
+          "off": "mdi:calendar-blank"
+        }
+      },
+      "schedule_thursday": {
+        "default": "mdi:calendar-check",
+        "state": {
+          "off": "mdi:calendar-blank"
+        }
+      },
+      "schedule_friday": {
+        "default": "mdi:calendar-check",
+        "state": {
+          "off": "mdi:calendar-blank"
+        }
+      },
+      "schedule_saturday": {
+        "default": "mdi:calendar-check",
+        "state": {
+          "off": "mdi:calendar-blank"
+        }
+      }
+    },
+    "number": {
+      "temp_swing": {
+        "default": "mdi:thermometer-lines"
+      },
+      "auto_temp_swing": {
+        "default": "mdi:thermometer-auto"
+      },
+      "stage1_min_runtime": {
+        "default": "mdi:timer-cog-outline"
+      },
+      "stage2_temp_delta": {
+        "default": "mdi:thermometer-chevron-up"
+      },
+      "fan_minutes_per_hour": {
+        "default": "mdi:fan-clock"
+      },
+      "shower_duration": {
+        "default": "mdi:shower-head"
+      },
+      "display_brightness": {
+        "default": "mdi:brightness-6"
+      },
+      "hydronic_temp_low": {
+        "default": "mdi:thermometer-low"
+      },
+      "hydronic_temp_high": {
+        "default": "mdi:thermometer-high"
+      },
+      "eu_humidity_setpoint": {
+        "default": "mdi:water-percent"
+      }
+    },
+    "button": {
+      "refresh_weather": {
+        "default": "mdi:weather-cloudy-clock"
+      },
+      "cancel_override": {
+        "default": "mdi:calendar-sync"
+      }
+    }
+  },
+  "services": {
+    "set_schedule": {
+      "service": "mdi:calendar-edit"
+    },
+    "get_schedule": {
+      "service": "mdi:calendar-search"
+    },
+    "set_override": {
+      "service": "mdi:timer-pause-outline"
+    }
+  }
+}

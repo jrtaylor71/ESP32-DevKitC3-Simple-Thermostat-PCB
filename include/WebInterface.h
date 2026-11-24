@@ -702,6 +702,22 @@ function showAlert(message, type) {
     }, 5000);
 }
 
+function regenerateHaToken() {
+    if (!confirm('Generate a new Home Assistant API token? The Home Assistant integration will need to be re-authenticated with the new token.')) {
+        return;
+    }
+    fetch('/ha_api/regenerate_token', { method: 'POST' })
+    .then(response => response.json())
+    .then(data => {
+        const field = document.getElementById('haApiToken');
+        if (field && data.token) field.value = data.token;
+        showAlert('New API token generated', 'success');
+    })
+    .catch(error => {
+        showAlert('Error generating token: ' + error.message, 'error');
+    });
+}
+
 function handleSettingsSubmit(event) {
     event.preventDefault();
     

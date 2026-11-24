@@ -1,0 +1,327 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Connect to ESP32 thermostat",
+        "description": "Enable the Home Assistant API on the thermostat first, then enter its address and API token.",
+        "data": {
+          "host": "Host",
+          "token": "API token"
+        },
+        "data_description": {
+          "host": "Hostname or IP address of the thermostat.",
+          "token": "API token shown on the thermostat under System Info > HA API, or in the web UI Settings tab."
+        }
+      },
+      "zeroconf_confirm": {
+        "title": "Discovered ESP32 thermostat",
+        "description": "Set up {name} ({host})? Enter the API token shown on the thermostat.",
+        "data": {
+          "token": "API token"
+        },
+        "data_description": {
+          "token": "API token shown on the thermostat under System Info > HA API, or in the web UI Settings tab."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate {name}",
+        "description": "The API token for {name} was rejected. Enter the current token shown on the thermostat.",
+        "data": {
+          "token": "API token"
+        },
+        "data_description": {
+          "token": "API token shown on the thermostat under System Info > HA API, or in the web UI Settings tab."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure {name}",
+        "description": "Change the address of the thermostat.",
+        "data": {
+          "host": "Host"
+        },
+        "data_description": {
+          "host": "Hostname or IP address of the thermostat."
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid API token.",
+      "api_disabled": "The Home Assistant API is disabled on the thermostat. Enable it in the thermostat settings.",
+      "cannot_connect": "Failed to connect to the thermostat.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This thermostat is already configured.",
+      "reauth_successful": "Re-authentication was successful.",
+      "reconfigure_successful": "Reconfiguration was successful.",
+      "wrong_device": "The address belongs to a different thermostat.",
+      "not_ipv4_address": "Only IPv4 addresses are supported.",
+      "invalid_discovery_info": "The discovered device did not provide a device id.",
+      "unsupported_api_version": "The discovered thermostat uses an unsupported API version."
+    }
+  },
+  "entity": {
+    "climate": {
+      "thermostat": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "none": "Manual",
+              "schedule": "Schedule",
+              "temporary_hold": "Temporary hold",
+              "permanent_hold": "Permanent hold"
+            }
+          },
+          "fan_mode": {
+            "state": {
+              "auto": "Auto",
+              "on": "On",
+              "cycle": "Cycle"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "current_temperature": {
+        "name": "Temperature"
+      },
+      "humidity": {
+        "name": "Humidity"
+      },
+      "pressure": {
+        "name": "Pressure"
+      },
+      "air_quality": {
+        "name": "Air quality index"
+      },
+      "gas_resistance": {
+        "name": "Gas resistance"
+      },
+      "hydronic_supply_temperature": {
+        "name": "Hydronic supply temperature"
+      },
+      "hydronic_return_temperature": {
+        "name": "Hydronic return temperature"
+      },
+      "shower_remaining": {
+        "name": "Shower mode remaining"
+      },
+      "active_period": {
+        "name": "Active schedule period",
+        "state": {
+          "day": "Day",
+          "night": "Night",
+          "manual": "Manual",
+          "override": "Override"
+        }
+      },
+      "hvac_action": {
+        "name": "HVAC action",
+        "state": {
+          "off": "Off",
+          "idle": "Idle",
+          "heating": "Heating",
+          "cooling": "Cooling",
+          "fan": "Fan"
+        }
+      },
+      "wifi_rssi": {
+        "name": "Wi-Fi signal"
+      },
+      "uptime": {
+        "name": "Uptime"
+      },
+      "free_heap": {
+        "name": "Free memory"
+      }
+    },
+    "binary_sensor": {
+      "motion": {
+        "name": "Motion"
+      },
+      "schedule_override": {
+        "name": "Schedule override"
+      },
+      "backup_heat_active": {
+        "name": "Backup heat"
+      },
+      "hydronic_lockout": {
+        "name": "Hydronic lockout"
+      },
+      "relay_heat1": {
+        "name": "Heat stage 1 relay"
+      },
+      "relay_heat2": {
+        "name": "Heat stage 2 relay"
+      },
+      "relay_cool1": {
+        "name": "Cool stage 1 relay"
+      },
+      "relay_cool2": {
+        "name": "Cool stage 2 relay"
+      },
+      "relay_fan": {
+        "name": "Fan relay"
+      },
+      "relay_pump": {
+        "name": "Pump relay"
+      }
+    },
+    "switch": {
+      "schedule_enabled": {
+        "name": "Schedule"
+      },
+      "shower_mode": {
+        "name": "Shower mode"
+      },
+      "schedule_sunday": {
+        "name": "Schedule Sunday"
+      },
+      "schedule_monday": {
+        "name": "Schedule Monday"
+      },
+      "schedule_tuesday": {
+        "name": "Schedule Tuesday"
+      },
+      "schedule_wednesday": {
+        "name": "Schedule Wednesday"
+      },
+      "schedule_thursday": {
+        "name": "Schedule Thursday"
+      },
+      "schedule_friday": {
+        "name": "Schedule Friday"
+      },
+      "schedule_saturday": {
+        "name": "Schedule Saturday"
+      }
+    },
+    "number": {
+      "temp_swing": {
+        "name": "Temperature swing"
+      },
+      "auto_temp_swing": {
+        "name": "Auto mode temperature swing"
+      },
+      "stage1_min_runtime": {
+        "name": "Stage 1 minimum runtime"
+      },
+      "stage2_temp_delta": {
+        "name": "Stage 2 temperature delta"
+      },
+      "fan_minutes_per_hour": {
+        "name": "Fan minutes per hour"
+      },
+      "shower_duration": {
+        "name": "Shower mode duration"
+      },
+      "display_brightness": {
+        "name": "Display brightness"
+      },
+      "hydronic_temp_low": {
+        "name": "Hydronic low temperature"
+      },
+      "hydronic_temp_high": {
+        "name": "Hydronic high temperature"
+      },
+      "eu_humidity_setpoint": {
+        "name": "Humidity setpoint"
+      }
+    },
+    "button": {
+      "reboot": {
+        "name": "Restart"
+      },
+      "refresh_weather": {
+        "name": "Refresh weather"
+      },
+      "cancel_override": {
+        "name": "Resume schedule"
+      }
+    }
+  },
+  "exceptions": {
+    "command_rejected": {
+      "message": "The thermostat rejected the request ({field}): {message}"
+    },
+    "communication_error": {
+      "message": "Error communicating with the thermostat: {error}"
+    },
+    "auth_failed": {
+      "message": "The thermostat rejected the API token. Re-authenticate the integration."
+    },
+    "wrong_device": {
+      "message": "The device at {host} reports device id {device_id}, which does not match this entry."
+    },
+    "temperature_mode_off": {
+      "message": "Cannot set a target temperature while the thermostat is off."
+    },
+    "invalid_device_id": {
+      "message": "Device {device_id} is not an ESP32 thermostat."
+    },
+    "device_not_loaded": {
+      "message": "The thermostat for device {device_id} is not loaded."
+    },
+    "invalid_days": {
+      "message": "Invalid schedule days: {detail}"
+    },
+    "nothing_to_set": {
+      "message": "Provide schedule_enabled and/or days."
+    }
+  },
+  "selector": {
+    "override_mode": {
+      "options": {
+        "resume": "Resume schedule",
+        "temporary": "Temporary hold",
+        "permanent": "Permanent hold"
+      }
+    }
+  },
+  "services": {
+    "set_schedule": {
+      "name": "Set schedule",
+      "description": "Partially updates the thermostat's weekly schedule.",
+      "fields": {
+        "device_id": {
+          "name": "Thermostat",
+          "description": "The thermostat to update."
+        },
+        "schedule_enabled": {
+          "name": "Schedule enabled",
+          "description": "Enable or disable the schedule."
+        },
+        "days": {
+          "name": "Days",
+          "description": "List of day entries identified by `day` (sunday..saturday) or `index` (0 = Sunday) with any of `enabled`, `day_period`, `night_period` (periods: `hour`, `minute`, `heat`, `cool`, `auto`, `active`). The `days` list returned by Get schedule can be passed directly."
+        }
+      }
+    },
+    "get_schedule": {
+      "name": "Get schedule",
+      "description": "Returns the thermostat's full weekly schedule.",
+      "fields": {
+        "device_id": {
+          "name": "Thermostat",
+          "description": "The thermostat to read."
+        }
+      }
+    },
+    "set_override": {
+      "name": "Set schedule override",
+      "description": "Resumes the schedule or places a temporary or permanent hold.",
+      "fields": {
+        "device_id": {
+          "name": "Thermostat",
+          "description": "The thermostat to control."
+        },
+        "mode": {
+          "name": "Mode",
+          "description": "Override mode."
+        }
+      }
+    }
+  }
+}

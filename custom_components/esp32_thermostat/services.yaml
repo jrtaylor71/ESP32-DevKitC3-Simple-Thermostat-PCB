@@ -1,0 +1,41 @@
+set_schedule:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: esp32_thermostat
+    schedule_enabled:
+      required: false
+      selector:
+        boolean:
+    days:
+      required: false
+      example: '[{"day": "monday", "enabled": true, "day_period": {"hour": 6, "minute": 30, "heat": 70}}]'
+      selector:
+        object:
+
+get_schedule:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: esp32_thermostat
+
+set_override:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: esp32_thermostat
+    mode:
+      required: true
+      selector:
+        select:
+          translation_key: override_mode
+          options:
+            - resume
+            - temporary
+            - permanent

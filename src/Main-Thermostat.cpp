@@ -1347,6 +1347,10 @@ void debugLog(const char* format, ...) {
     addToDebugBuffer(buffer);
 }
 
+// Shared control functions and local Home Assistant API (need the globals above)
+#include "ThermostatControl.h"
+#include "HomeAssistantApi.h"
+
 void setup()
 {
     // CRITICAL: GPIO41 is USB Serial JTAG D+ pin - must completely disable USB peripheral
@@ -1582,6 +1586,7 @@ void setup()
 
     // Initialize web server/routes at boot so services are ready when WiFi appears later
     handleWebRequests();
+    haApiBegin();
     server.begin();
 
     // Initialize MQTT client configuration regardless of initial WiFi state
@@ -2039,14 +2044,19 @@ void loop()
     // If in WiFi setup mode, skip the normal display updates and sensor readings
     if (inWiFiSetupMode) {
         // Only minimal processing in WiFi setup mode - no delays for maximum touch responsiveness
+        haApiServiceTick();
         return;
     }
 
     // If in Settings UI, pause normal loop to keep touch responsive
     if (inSettingsMenu) {
         settingsLoopTick();
+        haApiServiceTick();
         return;
     }
+
+    // Apply queued Home Assistant API / web control requests
+    haApiLoop();
 
     // The rest of the loop function only runs when NOT in WiFi/setup/settings modes
     // Sensor reading now handled by background task on core 1
@@ -2703,13 +2713,7 @@ void handleButtonPress(uint16_t x, uint16_t y)
     // Shower mode toggle - touch the set temp area (center display)
     debugLog("[DEBUG] Touch: x=%d, y=%d, showerModeEnabled=%d\n", x, y, showerModeEnabled);
     if (showerModeEnabled && x > 60 && x < 260 && y > 100 && y < 140) {
-        showerModeActive = !showerModeActive;
-        if (showerModeActive) {
-            showerModeStartTime = millis();
-            debugLog("[SHOWER MODE] Activated - duration %d minutes\n", showerModeDuration);
-        } else {
-            debugLog("[SHOWER MODE] Deactivated\n");
-        }
+        applyShowerMode(!showerModeActive);
         updateDisplay(currentTemp, currentHumidity);
         sendMQTTData();
         return;
@@ -2736,47 +2740,14 @@ void handleButtonPress(uint16_t x, uint16_t y)
 
         showSetTempUntil = millis() + SETPOINT_DISPLAY_TIMEOUT_MS;
 
-        // Enable and persist schedule override when manually adjusting temperature while schedule is active
-        if (scheduleEnabled && !scheduleOverride) {
-            scheduleOverride = true;
-            overrideEndTime = millis() + (scheduleOverrideDuration * 60000UL);
-            debugLog("SCHEDULE: Override enabled due to manual temperature adjustment\n");
+        SetpointTarget target;
+        if (setpointTargetForMode(thermostatMode, target) &&
+            applySetpoint(target, setpointRef(target) + 0.5f)) {
+            publishLegacySetpointTopic(target);
+            // Single atomic save of all settings (including any schedule override)
+            saveSettings();
+            sendMQTTData();
         }
-        
-        if (thermostatMode == "heat")
-        {
-            setTempHeat += 0.5;
-            if (setTempHeat > 95) setTempHeat = 95;
-            if (setTempHeat < 50) setTempHeat = 50;
-            if (thermostatMode == "auto" && setTempCool - setTempHeat < tempDifferential)
-            {
-                setTempCool = setTempHeat + tempDifferential;
-                if (!handlingMQTTMessage) mqttClient.publish("thermostat/setTempCool", String(setTempCool).c_str(), true);
-            }
-            if (!handlingMQTTMessage) mqttClient.publish("thermostat/setTempHeat", String(setTempHeat).c_str(), true);
-        }
-        else if (thermostatMode == "cool")
-        {
-            setTempCool += 0.5;
-            if (setTempCool > 95) setTempCool = 95;
-            if (setTempCool < 50) setTempCool = 50;
-            if (thermostatMode == "auto" && setTempCool - setTempHeat < tempDifferential)
-            {
-                setTempHeat = setTempCool - tempDifferential;
-                if (!handlingMQTTMessage) mqttClient.publish("thermostat/setTempHeat", String(setTempHeat).c_str(), true);
-            }
-            if (!handlingMQTTMessage) mqttClient.publish("thermostat/setTempCool", String(setTempCool).c_str(), true);
-        }
-        else if (thermostatMode == "auto")
-        {
-            setTempAuto += 0.5;
-            if (setTempAuto > 95) setTempAuto = 95;
-            if (setTempAuto < 50) setTempAuto = 50;
-            if (!handlingMQTTMessage) mqttClient.publish("thermostat/setTempAuto", String(setTempAuto).c_str(), true);
-        }
-        // Single atomic save of all settings (including schedule override if set above)
-        saveSettings();
-        sendMQTTData();
         // Update display immediately for better responsiveness
         updateDisplay(currentTemp, currentHumidity);
     }
@@ -2791,53 +2762,19 @@ void handleButtonPress(uint16_t x, uint16_t y)
 
         showSetTempUntil = millis() + SETPOINT_DISPLAY_TIMEOUT_MS;
 
-        // Enable and persist schedule override when manually adjusting temperature while schedule is active
-        if (scheduleEnabled && !scheduleOverride) {
-            scheduleOverride = true;
-            overrideEndTime = millis() + (scheduleOverrideDuration * 60000UL);
-            debugLog("SCHEDULE: Override enabled due to manual temperature adjustment\n");
+        SetpointTarget target;
+        if (setpointTargetForMode(thermostatMode, target) &&
+            applySetpoint(target, setpointRef(target) - 0.5f)) {
+            publishLegacySetpointTopic(target);
+            // Single atomic save of all settings (including any schedule override)
+            saveSettings();
+            sendMQTTData();
         }
-        
-        if (thermostatMode == "heat")
-        {
-            setTempHeat -= 0.5;
-            if (setTempHeat > 95) setTempHeat = 95;
-            if (setTempHeat < 50) setTempHeat = 50;
-            if (thermostatMode == "auto" && setTempCool - setTempHeat < tempDifferential)
-            {
-                setTempCool = setTempHeat + tempDifferential;
-                if (!handlingMQTTMessage) mqttClient.publish("thermostat/setTempCool", String(setTempCool).c_str(), true);
-            }
-            if (!handlingMQTTMessage) mqttClient.publish("thermostat/setTempHeat", String(setTempHeat).c_str(), true);
-        }
-        else if (thermostatMode == "cool")
-        {
-            setTempCool -= 0.5;
-            if (setTempCool > 95) setTempCool = 95;
-            if (setTempCool < 50) setTempCool = 50;
-            if (thermostatMode == "auto" && setTempCool - setTempHeat < tempDifferential)
-            {
-                setTempHeat = setTempCool - tempDifferential;
-                if (!handlingMQTTMessage) mqttClient.publish("thermostat/setTempHeat", String(setTempHeat).c_str(), true);
-            }
-            if (!handlingMQTTMessage) mqttClient.publish("thermostat/setTempCool", String(setTempCool).c_str(), true);
-        }
-        else if (thermostatMode == "auto")
-        {
-            setTempAuto -= 0.5;
-            if (setTempAuto > 95) setTempAuto = 95;
-            if (setTempAuto < 50) setTempAuto = 50;
-            if (!handlingMQTTMessage) mqttClient.publish("thermostat/setTempAuto", String(setTempAuto).c_str(), true);
-        }
-        // Single atomic save of all settings (including schedule override if set above)
-        saveSettings();
-        sendMQTTData();
         // Update display immediately for better responsiveness
         updateDisplay(currentTemp, currentHumidity);
     }
     else if (x > 125 && x < 195 && y > 195 && y < 245) // Mode button with slightly increased touch area
     {
-        String oldMode = thermostatMode;
         String newMode = "auto"; // Default next mode
         
         // Determine next mode
@@ -2856,37 +2793,26 @@ void handleButtonPress(uint16_t x, uint16_t y)
         bool delayElapsed = (currentTime - lastModeSwitchTime >= MODE_SWITCH_DELAY_MS);
         
         if (isSwitchingToOff || delayElapsed) {
-            thermostatMode = newMode;
-            lastModeSwitchTime = currentTime;
-            debugLog("[DEBUG] Mode switched: %s -> %s (delay_ok=%d)\n", oldMode.c_str(), thermostatMode.c_str(), (isSwitchingToOff || delayElapsed));
-            
+            applyThermostatMode(newMode);
             saveSettings();
             sendMQTTData();
-            // Immediately update relays to reflect mode change
-            controlRelays(currentTemp);
             // Update display after relays for accurate indicators
             updateDisplay(currentTemp, currentHumidity);
-            setDisplayUpdateFlag(); // Option C: Request display update
         } else {
             debugLog("[DEBUG] Mode switch blocked: %s (too soon, need to wait %lu ms)\n", newMode.c_str(), MODE_SWITCH_DELAY_MS - (currentTime - lastModeSwitchTime));
         }
     }
     else if (x > 195 && x < 265 && y > 195 && y < 245) // Fan button with slightly increased touch area
     {
-        // Change fan mode
-        String oldMode = fanMode;
+        String newFanMode = "auto";
         if (fanMode == "auto")
-            fanMode = "on";
+            newFanMode = "on";
         else if (fanMode == "on")
-            fanMode = "cycle";
-        else
-            fanMode = "auto";
+            newFanMode = "cycle";
 
-        debugLog("[FAN] Fan mode changed: %s -> %s\n", oldMode.c_str(), fanMode.c_str());
+        applyFanMode(newFanMode);
         saveSettings();
         sendMQTTData();
-        // Immediately update relays to reflect fan mode change
-        controlRelays(currentTemp);
         // Update display after relays for accurate indicators
         updateDisplay(currentTemp, currentHumidity);
     }
@@ -3409,131 +3335,52 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
 
     if (String(topic) == modeSetTopic)
     {
-        // Accept only supported HVAC modes from MQTT command topic.
-        bool validMode = (message == "off" || message == "heat" || message == "cool" || message == "auto");
-        if (!validMode) {
+        if (!isValidThermostatMode(message)) {
             debugLog("Ignored invalid thermostat mode from MQTT: %s\n", message.c_str());
         }
-        else if (message != thermostatMode)
+        else if (applyThermostatMode(message))
         {
-            thermostatMode = message;
-            debugLog("Updated thermostat mode to: %s\n", thermostatMode.c_str());
             settingsNeedSaving = true;
-            controlRelays(currentTemp); // Apply changes to relays
-            setDisplayUpdateFlag(); // Option C: Request display update
         }
     }
     else if (String(topic) == fanModeSetTopic)
     {
-        if (message != fanMode)
+        if (!isValidFanMode(message)) {
+            debugLog("Ignored invalid fan mode from MQTT: %s\n", message.c_str());
+        }
+        else if (applyFanMode(message))
         {
-            fanMode = message;
-            debugLog("Updated fan mode to: %s\n", fanMode.c_str());
             settingsNeedSaving = true;
-            controlRelays(currentTemp); // Apply changes to relays
         }
     }
     else if (String(topic) == tempSetTopic)
     {
-        float newTargetTemp = constrain(message.toFloat(), 50.0f, 95.0f);
-        bool tempChanged = false;
-        if (thermostatMode == "heat" && newTargetTemp != setTempHeat)
+        if (applyActiveSetpoint(message.toFloat()))
         {
-            setTempHeat = newTargetTemp;
-            debugLog("Updated heating target temperature to: %.1f\n", setTempHeat);
             settingsNeedSaving = true;
-            tempChanged = true;
         }
-        else if (thermostatMode == "cool" && newTargetTemp != setTempCool)
-        {
-            setTempCool = newTargetTemp;
-            debugLog("Updated cooling target temperature to: %.1f\n", setTempCool);
-            settingsNeedSaving = true;
-            tempChanged = true;
-        }
-        else if (thermostatMode == "auto" && newTargetTemp != setTempAuto)
-        {
-            setTempAuto = newTargetTemp;
-            debugLog("Updated auto target temperature to: %.1f\n", setTempAuto);
-            settingsNeedSaving = true;
-            tempChanged = true;
-        }
-        
-        // If schedule is enabled and not overridden, trigger a temporary override and persist it
-        if (tempChanged && scheduleEnabled && !scheduleOverride) {
-            scheduleOverride = true;
-            overrideEndTime = millis() + (scheduleOverrideDuration * 60000UL);
-            debugLog("SCHEDULE: MQTT temperature change triggered override\n");
-            scheduleNeedsSaving = true;
-        }
-        controlRelays(currentTemp); // Apply changes to relays
     }
     else if (String(topic) == showerModeSetTopic)
     {
-        if (showerModeEnabled) {
-            // Only allow toggle if shower mode is enabled
-            if (message == "ON" || message == "on") {
-                if (!showerModeActive) {
-                    showerModeActive = true;
-                    showerModeStartTime = millis();
-                    debugLog("[SHOWER MODE] Activated via MQTT\n");
-                    updateDisplay(currentTemp, currentHumidity);
-                    sendMQTTData(); // Publish state back to HA
-                }
-            } else if (message == "OFF" || message == "off") {
-                if (showerModeActive) {
-                    showerModeActive = false;
-                    debugLog("[SHOWER MODE] Deactivated via MQTT\n");
-                    updateDisplay(currentTemp, currentHumidity);
-                    sendMQTTData(); // Publish state back to HA
-                }
-            }
+        bool requested = (message == "ON" || message == "on");
+        if ((requested || message == "OFF" || message == "off") && applyShowerMode(requested)) {
+            updateDisplay(currentTemp, currentHumidity);
+            sendMQTTData(); // Publish state back to HA
         }
     }
     else if (String(topic) == scheduleEnabledSetTopic)
     {
         bool newScheduleEnabled = (message == "ON" || message == "on" || message == "1");
-        if (newScheduleEnabled != scheduleEnabled) {
-            scheduleEnabled = newScheduleEnabled;
-            debugLog("SCHEDULE: Via MQTT, enabled=%s\n", scheduleEnabled ? "true" : "false");
-            if (!scheduleEnabled) {
-                // Disable override when schedule is disabled
-                scheduleOverride = false;
-                overrideEndTime = 0;
-                activePeriod = "manual";
-            }
+        if (applyScheduleEnabled(newScheduleEnabled)) {
             scheduleNeedsSaving = true;
             sendMQTTData(); // Publish updated state back to HA
         }
     }
     else if (String(topic) == scheduleOverrideSetTopic)
     {
-        if (scheduleEnabled) {
-            if (message == "resume") {
-                if (scheduleOverride) {
-                    scheduleOverride = false;
-                    overrideEndTime = 0;
-                    debugLog("SCHEDULE: Via MQTT, override resumed (schedule active)\n");
-                    scheduleNeedsSaving = true;
-                    sendMQTTData();
-                }
-            } else if (message == "temporary") {
-                if (!scheduleOverride) {
-                    scheduleOverride = true;
-                    overrideEndTime = millis() + (scheduleOverrideDuration * 60000UL);
-                    debugLog("SCHEDULE: Via MQTT, override activated (temporary - 2 hours)\n");
-                    scheduleNeedsSaving = true;
-                    sendMQTTData();
-                }
-            } else if (message == "permanent") {
-                if (!scheduleOverride) {
-                    scheduleOverride = true;
-                    overrideEndTime = 0; // Permanent until manually disabled
-                    debugLog("SCHEDULE: Via MQTT, override activated (permanent)\n");
-                    scheduleNeedsSaving = true;
-                    sendMQTTData();
-                }
-            }
+        if (applyScheduleOverride(message)) {
+            scheduleNeedsSaving = true;
+            sendMQTTData();
         }
     }
     else if (String(topic) == scheduleSetTopic)
@@ -3574,7 +3421,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
                 }
                 
                 if (doc.containsKey("heat")) {
-                    float newHeat = doc["heat"];
+                    float newHeat = clampSetpoint(doc["heat"].as<float>());
                     if (newHeat != targetPeriod->heatTemp) {
                         targetPeriod->heatTemp = newHeat;
                         changed = true;
@@ -3582,7 +3429,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
                 }
                 
                 if (doc.containsKey("cool")) {
-                    float newCool = doc["cool"];
+                    float newCool = clampSetpoint(doc["cool"].as<float>());
                     if (newCool != targetPeriod->coolTemp) {
                         targetPeriod->coolTemp = newCool;
                         changed = true;
@@ -3590,7 +3437,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
                 }
                 
                 if (doc.containsKey("auto")) {
-                    float newAuto = doc["auto"];
+                    float newAuto = clampSetpoint(doc["auto"].as<float>());
                     if (newAuto != targetPeriod->autoTemp) {
                         targetPeriod->autoTemp = newAuto;
                         changed = true;
@@ -3617,20 +3464,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
                     scheduleNeedsSaving = true;
                     debugLog("SCHEDULE: Via MQTT, updated day %d (array index %d) %s period\n", mqttDay, day, period.c_str());
                     
-                    // If schedule is enabled and not overridden, reapply to take effect immediately
-                    if (scheduleEnabled && !scheduleOverride) {
-                        time_t now;
-                        struct tm timeinfo;
-                        time(&now);
-                        localtime_r(&now, &timeinfo);
-                        int currentDay = (timeinfo.tm_wday + 6) % 7; // Convert Sunday=0 to Monday=0
-                        
-                        if (currentDay == day) {
-                            // Current day was modified, reapply schedule
-                            bool isDayPeriod = (period == "day");
-                            applySchedule(day, isDayPeriod);
-                            updateDisplay(currentTemp, currentHumidity);
-                        }
+                    // Re-evaluate so edits to the running period take effect immediately
+                    if (day == getCurrentDayOfWeek()) {
+                        reapplyCurrentSchedulePeriod();
                     }
                     
                     sendMQTTData(); // Publish updated schedule state
@@ -4917,21 +4753,15 @@ void handleWebRequests()
               {
         bool tempChanged = false;
         if (request->hasParam("setTempHeat", true)) {
-            setTempHeat = request->getParam("setTempHeat", true)->value().toFloat();
-            if (setTempHeat < 50) setTempHeat = 50;
-            if (setTempHeat > 95) setTempHeat = 95;
+            setTempHeat = clampSetpoint(request->getParam("setTempHeat", true)->value().toFloat());
             tempChanged = true;
         }
         if (request->hasParam("setTempCool", true)) {
-            setTempCool = request->getParam("setTempCool", true)->value().toFloat();
-            if (setTempCool < 50) setTempCool = 50;
-            if (setTempCool > 95) setTempCool = 95;
+            setTempCool = clampSetpoint(request->getParam("setTempCool", true)->value().toFloat());
             tempChanged = true;
         }
         if (request->hasParam("setTempAuto", true)) {
-            setTempAuto = request->getParam("setTempAuto", true)->value().toFloat();
-            if (setTempAuto < 50) setTempAuto = 50;
-            if (setTempAuto > 95) setTempAuto = 95;
+            setTempAuto = clampSetpoint(request->getParam("setTempAuto", true)->value().toFloat());
             tempChanged = true;
         }
         
@@ -5016,7 +4846,12 @@ void handleWebRequests()
             }
         }
         if (request->hasParam("hostname", true)) {
-            hostname = request->getParam("hostname", true)->value(); // Ensure hostname is updated correctly
+            String newHostname = request->getParam("hostname", true)->value();
+            if (newHostname != hostname) haApiRequestMdnsRestart();
+            hostname = newHostname; // Ensure hostname is updated correctly
+        }
+        if (request->hasParam("haApiPresent", true)) {
+            haApiSetEnabled(request->hasParam("haApiEnabled", true));
         }
         if (request->hasParam("clockFormat", true)) {
             use24HourClock = request->getParam("clockFormat", true)->value() == "24";
@@ -5295,47 +5130,30 @@ void handleWebRequests()
         response += "\"hostname\": \"" + hostname + "\"}";
         request->send(200, "application/json", response); });
 
+    // Legacy form-encoded control endpoint. Applied on the main loop via the command queue.
     server.on("/control", HTTP_POST, [](AsyncWebServerRequest *request)
               {
-        bool tempChanged = false;
-        if (request->hasParam("setTempHeat", true)) {
-            setTempHeat = request->getParam("setTempHeat", true)->value().toFloat();
-            if (setTempHeat < 50) setTempHeat = 50;
-            if (setTempHeat > 95) setTempHeat = 95;
-            tempChanged = true;
-        }
-        if (request->hasParam("setTempCool", true)) {
-            setTempCool = request->getParam("setTempCool", true)->value().toFloat();
-            if (setTempCool < 50) setTempCool = 50;
-            if (setTempCool > 95) setTempCool = 95;
-            tempChanged = true;
-        }
-        if (request->hasParam("setTempAuto", true)) {
-            setTempAuto = request->getParam("setTempAuto", true)->value().toFloat();
-            if (setTempAuto < 50) setTempAuto = 50;
-            if (setTempAuto > 95) setTempAuto = 95;
-            tempChanged = true;
-        }
-        
-        // If schedule is enabled and not overridden, trigger and persist a temporary override
-        if (tempChanged && scheduleEnabled && !scheduleOverride) {
-            scheduleOverride = true;
-            overrideEndTime = millis() + (scheduleOverrideDuration * 60000UL);
-            debugLog("SCHEDULE: Web /control temperature change triggered override\n");
-            saveScheduleSettings();
+        JsonDocument doc;
+        const char* tempParams[][2] = {
+            {"setTempHeat", "target_temp_heat"}, {"setTempCool", "target_temp_cool"}, {"setTempAuto", "target_temp_auto"}};
+        for (auto& param : tempParams) {
+            if (request->hasParam(param[0], true)) {
+                doc[param[1]] = request->getParam(param[0], true)->value().toFloat();
+            }
         }
         if (request->hasParam("tempSwing", true)) {
-            tempSwing = request->getParam("tempSwing", true)->value().toFloat();
+            doc["temp_swing"] = request->getParam("tempSwing", true)->value().toFloat();
         }
         if (request->hasParam("thermostatMode", true)) {
-            thermostatMode = request->getParam("thermostatMode", true)->value();
+            doc["mode"] = request->getParam("thermostatMode", true)->value();
         }
         if (request->hasParam("fanMode", true)) {
-            fanMode = request->getParam("fanMode", true)->value();
+            doc["fan_mode"] = request->getParam("fanMode", true)->value();
         }
-
-        saveSettings();
-        sendMQTTData();
+        if (!haApiEnqueueJson(HA_QUEUE_LEGACY_CONTROL, doc)) {
+            request->send(503, "application/json", "{\"status\": \"busy\"}");
+            return;
+        }
         request->send(200, "application/json", "{\"status\": \"success\"}");
     });
 
@@ -6243,6 +6061,8 @@ void saveSettings()
     preferences.putBool("fanRelayC", fanRelayNeededCool);
     preferences.putBool("useF", useFahrenheit);
     preferences.putBool("mqttEn", mqttEnabled);
+    preferences.putBool("haApiEn", haApiEnabled);
+    preferences.putString("haApiTok", haApiToken);
     preferences.putInt("fanMinHr", fanMinutesPerHour);
     preferences.putString("mqttSrv", mqttServer);
     preferences.putInt("mqttPrt", mqttPort);
@@ -6408,6 +6228,17 @@ void loadSettings()
     fanRelayNeededCool = getOrInitBool("fanRelayC", legacyFanRelayNeeded);
     useFahrenheit = getOrInitBool("useF", true);
     mqttEnabled = getOrInitBool("mqttEn", false);
+    {
+        String token = getOrInitString("haApiTok", "");
+        if (token.length() == HA_API_TOKEN_LENGTH) {
+            strlcpy(haApiToken, token.c_str(), sizeof(haApiToken));
+        } else {
+            haApiToken[0] = '\0';
+        }
+        haApiEnabled = false;
+        haApiSetEnabled(getOrInitBool("haApiEn", false));
+        if (token != haApiToken) preferences.putString("haApiTok", haApiToken); // persist a freshly generated token
+    }
     fanMinutesPerHour = getOrInitInt("fanMinHr", 15);
     mqttServer = getOrInitString("mqttSrv", "0.0.0.0");
     mqttPort = getOrInitInt("mqttPrt", 1883);
@@ -6714,6 +6545,8 @@ void restoreDefaultSettings()
     fanRelayNeededCool = false;
     useFahrenheit = true;
     mqttEnabled = false;
+    haApiSetEnabled(false);
+    haApiToken[0] = '\0';
     wifiSSID = "";
     wifiPassword = "";
     fanMinutesPerHour = 15;

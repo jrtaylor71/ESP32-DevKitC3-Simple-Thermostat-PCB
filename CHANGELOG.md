@@ -16,6 +16,12 @@ All notable firmware changes are documented in this file.
 
 ## [2.0.000] - In Development
 - Started native Home Assistant integration (local JSON API, mDNS discovery, and custom integration) as an alternative to MQTT.
+- Added a token-protected local API (`/api/v1`) with live Server-Sent Events updates and `_esp32thermostat._tcp` mDNS discovery, disabled by default and controlled from the web settings page or the touch screen (System Info > HA API).
+- Added the `esp32_thermostat` Home Assistant custom integration (HACS-installable) with climate, sensor, switch, number, and button entities plus schedule services.
+- Unified mode, fan, setpoint, schedule, and shower-mode changes from touch, web, MQTT, and the local API through shared control functions.
+- Fixed setpoint limits so Celsius uses 10–35 °C instead of the Fahrenheit 50–95 range.
+- Fixed MQTT schedule edits comparing the wrong day index, MQTT fan mode not being validated, and schedule resume not restoring scheduled temperatures.
+- Changed the web `/control` endpoint to validate modes and apply changes on the main loop.
 - Reduced home-page memory usage by avoiding a second page copy and serving shared CSS and JavaScript separately.
 - Redacted WiFi and MQTT passwords from startup logs and the OpenWeatherMap API key from serial output.
 
