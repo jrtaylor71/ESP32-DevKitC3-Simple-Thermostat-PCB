@@ -13,6 +13,9 @@ All notable firmware changes are documented in this file.
 - Do not change `sw_version`, changelog version headers, or release labels unless the user has approved that specific version change.
 
 ## [Unreleased]
+
+## [2.0.000] - In Development
+- Started native Home Assistant integration (local JSON API, mDNS discovery, and custom integration) as an alternative to MQTT.
 - Reduced home-page memory usage by avoiding a second page copy and serving shared CSS and JavaScript separately.
 - Redacted WiFi and MQTT passwords from startup logs and the OpenWeatherMap API key from serial output.
 
