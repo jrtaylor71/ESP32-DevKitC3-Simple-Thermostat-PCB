@@ -60,10 +60,14 @@ sensors are added (unavailable until the thermostat has weather data).
 
 ## Lovelace card
 
-The integration ships its own dashboard card; it is loaded automatically (no HACS
-frontend resource or manual resource entry needed — refresh the browser once after
-installing/updating). Add it from the dashboard editor (*Add card → ESP32 Thermostat*)
-and pick the thermostat, or in YAML:
+The integration ships its own dashboard card and automatically registers it as a
+Lovelace resource in storage mode. Refresh the browser once after installing/updating,
+then add it from the dashboard editor (*Add card → ESP32 Thermostat*) and pick the
+thermostat, or in YAML:
+
+If Lovelace resources are configured in YAML mode, add
+`/esp32_thermostat_static/esp32-thermostat-card.js` as a JavaScript module in that
+configuration.
 
 ```yaml
 type: custom:esp32-thermostat-card

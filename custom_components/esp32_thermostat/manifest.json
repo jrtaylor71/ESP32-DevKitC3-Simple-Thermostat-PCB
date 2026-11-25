@@ -3,7 +3,7 @@
   "name": "ESP32 Simple Thermostat",
   "codeowners": ["@jrtaylor71"],
   "config_flow": true,
-  "dependencies": ["frontend", "http"],
+  "dependencies": ["frontend", "http", "lovelace"],
   "documentation": "https://github.com/jrtaylor71/ESP32-DevKitC3-Simple-Thermostat-PCB",
   "integration_type": "device",
   "iot_class": "local_push",
