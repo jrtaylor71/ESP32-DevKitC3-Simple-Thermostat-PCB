@@ -33,6 +33,61 @@ Entities are created based on the hardware features the thermostat reports
 (humidity, pressure, air quality, hydronic, stage 2, shower mode, …). Diagnostic
 entities (relays, Wi-Fi signal, uptime, free memory) are disabled by default.
 
+When the thermostat's configuration changes on the device (features, unit, hostname, …)
+the integration notices it (`info_rev`) and reloads itself automatically after ~5 s, so
+entities and units follow the device.
+
+### Device settings (configuration entities)
+
+All of these are always created under the device's *Configuration* section and are
+written to the thermostat immediately. Conflicting combinations (e.g. stage 2 heat
+together with a heat pump, or a relay already used by another stage) are rejected by
+the thermostat and shown as an error.
+
+| Type | Entities |
+|---|---|
+| Switch | Stage 2 heating, Stage 2 cooling, Heat pump, Fan with heat, Fan with cool, Backup heat, Hydronic heat, EU humidity control, Shower mode feature |
+| Select | Backup heat relay (pump / heat stage 2 / cool stage 2), EU humidity relay, Temperature unit (°F/°C), Region (US/EU), Time zone (US, UK, Central Europe, Japan, Australia East presets) |
+| Number | Backup heat delay (min), Backup heat minimum rise, Backup heat maximum drop, EU humidity deadband (%), Temperature offset (always °C), Humidity offset (%) |
+
+Temperature-difference settings (swing, stage 2 delta, backup heat rise/drop) are in
+the thermostat's own unit and are not converted by Home Assistant. If the thermostat
+uses a time zone that is not one of the presets, the *Time zone* select shows *unknown*.
+
+With weather enabled on the thermostat, *Outdoor temperature* and *Outdoor condition*
+sensors are added (unavailable until the thermostat has weather data).
+
+## Lovelace card
+
+The integration ships its own dashboard card; it is loaded automatically (no HACS
+frontend resource or manual resource entry needed — refresh the browser once after
+installing/updating). Add it from the dashboard editor (*Add card → ESP32 Thermostat*)
+and pick the thermostat, or in YAML:
+
+```yaml
+type: custom:esp32-thermostat-card
+entity: climate.shop_thermostat
+# optional
+name: Shop
+show_status: true    # action, active stage, hydronic supply/return
+show_schedule: true  # schedule state, hold, Resume, weekly editor
+show_sensors: true   # humidity, air quality, pressure chips
+show_weather: true   # outdoor temperature/condition chip
+```
+
+Features:
+- Dial with current and target temperature; drag the arc or use **−/+** (sent ~1 s after
+  the last change). Colour follows the HVAC action (heating, cooling, fan, idle).
+- Mode buttons (off/heat/cool/auto), fan mode buttons and a shower-mode button.
+- Status row with HVAC action, active stage (stage 1/2, backup heat) and hydronic temps.
+- Schedule strip: enable/disable, active period, hold type and remaining time, *Resume*,
+  and **Edit** which opens a weekly schedule editor (7 days, day/night start time,
+  heat/cool/auto temperatures, active flags, copy a day to all days).
+- Chips for humidity, air quality, pressure and outdoor weather when available.
+
+The card finds the thermostat's other entities through the device, so renaming
+entity IDs does not break it.
+
 ## Services
 
 ```yaml

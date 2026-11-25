@@ -45,6 +45,9 @@
       "uptime": {
         "default": "mdi:timer-outline"
       },
+      "outdoor_condition": {
+        "default": "mdi:weather-partly-cloudy"
+      },
       "active_period": {
         "default": "mdi:calendar-clock",
         "state": {
@@ -169,6 +172,50 @@
         "state": {
           "off": "mdi:calendar-blank"
         }
+      },
+      "stage2_heat_enabled": {
+        "default": "mdi:fire-circle"
+      },
+      "stage2_cool_enabled": {
+        "default": "mdi:snowflake-variant"
+      },
+      "heat_pump_enabled": {
+        "default": "mdi:heat-pump-outline"
+      },
+      "fan_with_heat": {
+        "default": "mdi:fan-plus"
+      },
+      "fan_with_cool": {
+        "default": "mdi:fan-plus"
+      },
+      "backup_heat_enabled": {
+        "default": "mdi:fire-alert"
+      },
+      "hydronic_heat_enabled": {
+        "default": "mdi:water-boiler"
+      },
+      "eu_humidity_enabled": {
+        "default": "mdi:water-percent"
+      },
+      "shower_mode_enabled": {
+        "default": "mdi:shower-head"
+      }
+    },
+    "select": {
+      "backup_heat_relay": {
+        "default": "mdi:electric-switch"
+      },
+      "eu_humidity_relay": {
+        "default": "mdi:electric-switch"
+      },
+      "temperature_unit": {
+        "default": "mdi:thermometer"
+      },
+      "region": {
+        "default": "mdi:earth"
+      },
+      "time_zone": {
+        "default": "mdi:map-clock-outline"
       }
     },
     "number": {
@@ -201,6 +248,24 @@
       },
       "eu_humidity_setpoint": {
         "default": "mdi:water-percent"
+      },
+      "backup_heat_delay_min": {
+        "default": "mdi:timer-sand"
+      },
+      "backup_heat_min_rise": {
+        "default": "mdi:thermometer-chevron-up"
+      },
+      "backup_heat_max_drop": {
+        "default": "mdi:thermometer-chevron-down"
+      },
+      "eu_humidity_deadband": {
+        "default": "mdi:arrow-expand-vertical"
+      },
+      "temp_offset": {
+        "default": "mdi:thermometer-plus"
+      },
+      "humidity_offset": {
+        "default": "mdi:water-plus"
       }
     },
     "button": {

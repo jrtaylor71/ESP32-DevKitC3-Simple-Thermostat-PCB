@@ -19,6 +19,10 @@ SSE_BACKOFF_INITIAL: Final = 5
 SSE_BACKOFF_MAX: Final = 60
 
 UPDATE_INTERVAL: Final = timedelta(seconds=30)
+INFO_REV_RELOAD_DELAY: Final = 5
+
+CARD_URL: Final = "/esp32_thermostat_static/esp32-thermostat-card.js"
+CARD_FILENAME: Final = "esp32-thermostat-card.js"
 
 DAYS: Final = (
     "sunday",

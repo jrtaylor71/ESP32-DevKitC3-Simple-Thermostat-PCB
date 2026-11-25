@@ -89,6 +89,7 @@ class ThermostatClimate(ThermostatEntity, ClimateEntity):
         | ClimateEntityFeature.TURN_OFF
     )
     _enable_turn_on_off_backwards_compatibility = False
+    _unrecorded_attributes = frozenset({"override_remaining_min"})
 
     def __init__(self, coordinator: ThermostatCoordinator) -> None:
         """Initialize the climate entity."""
@@ -156,6 +157,21 @@ class ThermostatClimate(ThermostatEntity, ClimateEntity):
         if override_type == OVERRIDE_PERMANENT:
             return PRESET_PERMANENT_HOLD
         return PRESET_SCHEDULE
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return stage and schedule details (used by the Lovelace card)."""
+        data = self.state_data
+        schedule = data.get("schedule") or {}
+        return {
+            "stage1_active": data.get("stage1_active"),
+            "stage2_active": data.get("stage2_active"),
+            "backup_heat_active": data.get("backup_heat_active"),
+            "schedule_enabled": schedule.get("enabled"),
+            "active_period": schedule.get("active_period"),
+            "override_type": schedule.get("override_type"),
+            "override_remaining_min": schedule.get("override_remaining_min"),
+        }
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set the target temperature (optionally with an HVAC mode)."""

@@ -332,10 +332,47 @@ static HaValidation haValidateCommand(JsonObjectConst cmd) {
     return result;
 }
 
+static bool haCheckEnum(HaValidation& result, JsonVariantConst v, const char* field,
+                        const char* const* values, size_t count, int* index = nullptr) {
+    if (v.is<const char*>()) {
+        const char* text = v.as<const char*>();
+        for (size_t i = 0; i < count; i++) {
+            if (strcmp(text, values[i]) == 0) {
+                if (index) *index = (int)i;
+                return true;
+            }
+        }
+    }
+    String message = "must be one of";
+    for (size_t i = 0; i < count; i++) message += String(i ? ", " : " ") + values[i];
+    result.fail(400, field, message);
+    return false;
+}
+
+// Effective boolean: request value if valid, otherwise the current setting.
+static bool haEffectiveBool(HaValidation& result, JsonObjectConst s, const char* field, bool current) {
+    if (s[field].isNull()) return current;
+    return haCheckBool(result, s[field], field) ? s[field].as<bool>() : current;
+}
+
+static const char* haFirstPresent(JsonObjectConst s, std::initializer_list<const char*> fields) {
+    for (const char* f : fields) {
+        if (!s[f].isNull()) return f;
+    }
+    return *fields.begin();
+}
+
 static HaValidation haValidateSettings(JsonObjectConst s) {
     static const char* const allowed[] = {
         "temp_swing", "auto_temp_swing", "stage1_min_runtime", "stage2_temp_delta", "fan_minutes_per_hour",
-        "shower_duration", "display_brightness", "hydronic_temp_low", "hydronic_temp_high", "eu_humidity_setpoint"};
+        "shower_duration", "display_brightness", "hydronic_temp_low", "hydronic_temp_high", "eu_humidity_setpoint",
+        "stage2_heat_enabled", "stage2_cool_enabled", "heat_pump_enabled", "fan_with_heat", "fan_with_cool",
+        "backup_heat_enabled", "backup_heat_relay", "backup_heat_delay_min", "backup_heat_min_rise",
+        "backup_heat_max_drop", "hydronic_heat_enabled", "eu_humidity_enabled", "eu_humidity_relay",
+        "eu_humidity_deadband", "shower_mode_enabled", "temp_offset", "humidity_offset", "temperature_unit",
+        "region", "time_zone"};
+    static const char* const units[] = {"F", "C"};
+    static const char* const regions[] = {"US", "EU"};
     HaValidation result;
     if (!haCheckKeys(result, s, allowed, sizeof(allowed) / sizeof(allowed[0]))) return result;
 
@@ -347,18 +384,77 @@ static HaValidation haValidateSettings(JsonObjectConst s) {
     if (!s["shower_duration"].isNull()) haCheckInteger(result, s["shower_duration"], "shower_duration", 5, 120);
     if (!s["display_brightness"].isNull()) haCheckInteger(result, s["display_brightness"], "display_brightness", MIN_BRIGHTNESS, MAX_BRIGHTNESS);
     if (!s["eu_humidity_setpoint"].isNull()) haCheckNumber(result, s["eu_humidity_setpoint"], "eu_humidity_setpoint", 30.0f, 90.0f);
+    if (!s["backup_heat_delay_min"].isNull()) haCheckInteger(result, s["backup_heat_delay_min"], "backup_heat_delay_min", 5, 180);
+    if (!s["backup_heat_min_rise"].isNull()) haCheckNumber(result, s["backup_heat_min_rise"], "backup_heat_min_rise", 0.1f, 5.0f);
+    if (!s["backup_heat_max_drop"].isNull()) haCheckNumber(result, s["backup_heat_max_drop"], "backup_heat_max_drop", 0.1f, 10.0f);
+    if (!s["eu_humidity_deadband"].isNull()) haCheckNumber(result, s["eu_humidity_deadband"], "eu_humidity_deadband", 1.0f, 20.0f);
+    if (!s["temp_offset"].isNull()) haCheckNumber(result, s["temp_offset"], "temp_offset", -10.0f, 10.0f);
+    if (!s["humidity_offset"].isNull()) haCheckNumber(result, s["humidity_offset"], "humidity_offset", -50.0f, 50.0f);
+    if (!s["fan_with_heat"].isNull()) haCheckBool(result, s["fan_with_heat"], "fan_with_heat");
+    if (!s["fan_with_cool"].isNull()) haCheckBool(result, s["fan_with_cool"], "fan_with_cool");
+    if (!s["hydronic_heat_enabled"].isNull()) haCheckBool(result, s["hydronic_heat_enabled"], "hydronic_heat_enabled");
+    if (!s["shower_mode_enabled"].isNull()) haCheckBool(result, s["shower_mode_enabled"], "shower_mode_enabled");
+    if (!s["region"].isNull()) haCheckEnum(result, s["region"], "region", regions, 2);
+    if (!s["time_zone"].isNull()) {
+        const char* tz = s["time_zone"].is<const char*>() ? s["time_zone"].as<const char*>() : nullptr;
+        bool ok = tz && strlen(tz) >= 1 && strlen(tz) <= 63;
+        for (const char* c = tz; ok && *c; c++) ok = *c >= 0x21 && *c <= 0x7E;
+        if (!ok) result.fail(400, "time_zone", "must be a POSIX TZ string (1-63 printable characters)");
+    }
 
-    float low = hydronicTempLow;
-    float high = hydronicTempHigh;
-    if (!s["hydronic_temp_low"].isNull() && haCheckNumber(result, s["hydronic_temp_low"], "hydronic_temp_low", 50.0f, 200.0f)) {
+    bool fahrenheit = useFahrenheit;
+    if (!s["temperature_unit"].isNull()) {
+        int unitIndex = 0;
+        if (haCheckEnum(result, s["temperature_unit"], "temperature_unit", units, 2, &unitIndex)) {
+            fahrenheit = unitIndex == 0;
+        }
+    }
+
+    // Hydronic thresholds are absolute temperatures in the (possibly new) device unit.
+    float hydMin = fahrenheit ? 50.0f : 10.0f;
+    float hydMax = fahrenheit ? 200.0f : 95.0f;
+    auto toUnit = [&](float v) {
+        if (fahrenheit == useFahrenheit) return v;
+        return fahrenheit ? roundf(v * 9.0f / 5.0f + 32.0f) : roundf((v - 32.0f) * 5.0f / 9.0f);
+    };
+    float low = toUnit(hydronicTempLow);
+    float high = toUnit(hydronicTempHigh);
+    if (!s["hydronic_temp_low"].isNull() && haCheckNumber(result, s["hydronic_temp_low"], "hydronic_temp_low", hydMin, hydMax)) {
         low = s["hydronic_temp_low"].as<float>();
     }
-    if (!s["hydronic_temp_high"].isNull() && haCheckNumber(result, s["hydronic_temp_high"], "hydronic_temp_high", 50.0f, 200.0f)) {
+    if (!s["hydronic_temp_high"].isNull() && haCheckNumber(result, s["hydronic_temp_high"], "hydronic_temp_high", hydMin, hydMax)) {
         high = s["hydronic_temp_high"].as<float>();
     }
     if (result.ok() && high <= low) {
         result.fail(400, s["hydronic_temp_high"].isNull() ? "hydronic_temp_low" : "hydronic_temp_high",
                     "hydronic_temp_high must be greater than hydronic_temp_low");
+    }
+    if (!result.ok()) return result;
+
+    // Relay / feature conflicts, evaluated on the merged configuration.
+    bool stage2Heat = haEffectiveBool(result, s, "stage2_heat_enabled", stage2HeatingEnabled);
+    bool stage2Cool = haEffectiveBool(result, s, "stage2_cool_enabled", stage2CoolingEnabled);
+    bool heatPump = haEffectiveBool(result, s, "heat_pump_enabled", reversingValveEnabled);
+    bool backup = haEffectiveBool(result, s, "backup_heat_enabled", backupHeatEnabled);
+    bool euHumidity = haEffectiveBool(result, s, "eu_humidity_enabled", euHumidityControlEnabled);
+    int backupRelay = backupHeatRelaySelection;
+    int euRelay = euHumidityRelaySelection;
+    if (!s["backup_heat_relay"].isNull()) haCheckEnum(result, s["backup_heat_relay"], "backup_heat_relay", BACKUP_HEAT_RELAY_NAMES, 3, &backupRelay);
+    if (!s["eu_humidity_relay"].isNull()) haCheckEnum(result, s["eu_humidity_relay"], "eu_humidity_relay", EU_HUMIDITY_RELAY_NAMES, 3, &euRelay);
+    if (!result.ok()) return result;
+
+    if (stage2Heat && heatPump) {
+        result.fail(409, haFirstPresent(s, {"heat_pump_enabled", "stage2_heat_enabled"}),
+                    "stage 2 heat and heat pump share the H2 relay; disable one first");
+    } else if (backup && backupRelay == 1 && (stage2Heat || heatPump)) {
+        result.fail(409, haFirstPresent(s, {"backup_heat_relay", "backup_heat_enabled", "stage2_heat_enabled", "heat_pump_enabled"}),
+                    "backup heat on the H2 relay conflicts with stage 2 heat / heat pump");
+    } else if (backup && backupRelay == 2 && stage2Cool) {
+        result.fail(409, haFirstPresent(s, {"backup_heat_relay", "backup_heat_enabled", "stage2_cool_enabled"}),
+                    "backup heat on the C2 relay conflicts with stage 2 cool");
+    } else if (euHumidity && euRelay == 1 && stage2Cool) {
+        result.fail(409, haFirstPresent(s, {"eu_humidity_relay", "eu_humidity_enabled", "stage2_cool_enabled"}),
+                    "EU humidity control on the C2 relay conflicts with stage 2 cool");
     }
     return result;
 }
@@ -532,6 +628,10 @@ static bool haApplyCommand(JsonObjectConst cmd) {
 }
 
 static bool haApplySettings(JsonObjectConst s) {
+    // Unit first: other temperatures in the same request are already in the new unit.
+    if (!s["temperature_unit"].isNull()) {
+        applyTemperatureUnit(strcmp(s["temperature_unit"].as<const char*>(), "F") == 0);
+    }
     if (!s["temp_swing"].isNull()) tempSwing = s["temp_swing"].as<float>();
     if (!s["auto_temp_swing"].isNull()) autoTempSwing = s["auto_temp_swing"].as<float>();
     if (!s["stage1_min_runtime"].isNull()) stage1MinRuntime = s["stage1_min_runtime"].as<unsigned long>();
@@ -545,9 +645,52 @@ static bool haApplySettings(JsonObjectConst s) {
         currentBrightness = s["display_brightness"].as<int>();
         setBrightness(currentBrightness);
     }
+    if (!s["stage2_heat_enabled"].isNull()) stage2HeatingEnabled = s["stage2_heat_enabled"].as<bool>();
+    if (!s["stage2_cool_enabled"].isNull()) stage2CoolingEnabled = s["stage2_cool_enabled"].as<bool>();
+    if (!s["heat_pump_enabled"].isNull()) reversingValveEnabled = s["heat_pump_enabled"].as<bool>();
+    if (!s["fan_with_heat"].isNull()) fanRelayNeededHeat = s["fan_with_heat"].as<bool>();
+    if (!s["fan_with_cool"].isNull()) fanRelayNeededCool = s["fan_with_cool"].as<bool>();
+    if (!s["backup_heat_enabled"].isNull()) {
+        backupHeatEnabled = s["backup_heat_enabled"].as<bool>();
+        if (!backupHeatEnabled) clearBackupHeatState("disabled via local API");
+    }
+    if (!s["backup_heat_relay"].isNull()) {
+        int index = relayNameIndex(BACKUP_HEAT_RELAY_NAMES, s["backup_heat_relay"].as<const char*>());
+        if (index >= 0 && index != backupHeatRelaySelection) {
+            clearBackupHeatState("relay changed via local API");
+            backupHeatRelaySelection = index;
+        }
+    }
+    if (!s["backup_heat_delay_min"].isNull()) backupHeatDelayMinutes = s["backup_heat_delay_min"].as<int>();
+    if (!s["backup_heat_min_rise"].isNull()) backupHeatMinTempRise = s["backup_heat_min_rise"].as<float>();
+    if (!s["backup_heat_max_drop"].isNull()) backupHeatMaxTempDrop = s["backup_heat_max_drop"].as<float>();
+    if (!s["hydronic_heat_enabled"].isNull()) hydronicHeatingEnabled = s["hydronic_heat_enabled"].as<bool>();
+    if (!s["eu_humidity_enabled"].isNull()) euHumidityControlEnabled = s["eu_humidity_enabled"].as<bool>();
+    if (!s["eu_humidity_relay"].isNull()) {
+        int index = relayNameIndex(EU_HUMIDITY_RELAY_NAMES, s["eu_humidity_relay"].as<const char*>());
+        if (index >= 0) euHumidityRelaySelection = index;
+    }
+    if (!s["eu_humidity_deadband"].isNull()) euHumidityDeadband = s["eu_humidity_deadband"].as<float>();
+    if (!s["shower_mode_enabled"].isNull()) {
+        showerModeEnabled = s["shower_mode_enabled"].as<bool>();
+        if (!showerModeEnabled) applyShowerMode(false);
+    }
+    if (!s["temp_offset"].isNull()) tempOffset = s["temp_offset"].as<float>();
+    if (!s["humidity_offset"].isNull()) humidityOffset = s["humidity_offset"].as<float>();
+    if (!s["region"].isNull()) thermostatRegion = s["region"].as<String>();
+    if (!s["time_zone"].isNull()) {
+        timeZone = s["time_zone"].as<String>();
+        setenv("TZ", timeZone.c_str(), 1);
+        tzset();
+    }
+    // Validation already rejected conflicts; these keep the relay rules authoritative.
+    if (stage2HeatingEnabled && reversingValveEnabled) stage2HeatingEnabled = false;
+    enforceBackupHeatRelayConflicts();
+    enforceEUHumidityRelayConflicts();
     controlRelays(currentTemp);
     setDisplayUpdateFlag();
     haRequestSave();
+    publishHomeAssistantDiscovery(); // keep MQTT discovery (if enabled) in step with features/unit, as /set does
     return true;
 }
 
@@ -657,15 +800,22 @@ static void haPublishState() {
     bool includeSlow = (now - lastSlowSend) >= HA_API_SLOW_KEY_INTERVAL_MS;
     if (includeSlow) lastSlowSend = now;
 
-    JsonDocument state;
-    buildStateJson(state);
-    String full;
-    serializeJson(state, full);
-
     JsonDocument info;
     buildInfoJson(info);
     String infoText;
     serializeJson(info, infoText);
+
+    // FNV-1a of /info: stable across reboots, changes whenever features/unit/limits change.
+    uint32_t infoRev = 2166136261u;
+    for (size_t i = 0; i < infoText.length(); i++) {
+        infoRev = (infoRev ^ (uint8_t)infoText[i]) * 16777619u;
+    }
+
+    JsonDocument state;
+    buildStateJson(state);
+    state["info_rev"] = infoRev;
+    String full;
+    serializeJson(state, full);
 
     if (haCacheMutex && xSemaphoreTake(haCacheMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
         haCachedState = full;

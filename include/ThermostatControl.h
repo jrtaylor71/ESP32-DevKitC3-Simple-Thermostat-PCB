@@ -166,6 +166,58 @@ bool applyShowerMode(bool active) {
     return true;
 }
 
+static float roundToStep(float value, float step) {
+    return roundf(value / step) * step;
+}
+
+// Switches the display/control unit and converts every stored temperature so behaviour is unchanged.
+bool applyTemperatureUnit(bool fahrenheit) {
+    if (fahrenheit == useFahrenheit) return false;
+    auto absolute = [fahrenheit](float v) { return fahrenheit ? v * 9.0f / 5.0f + 32.0f : (v - 32.0f) * 5.0f / 9.0f; };
+    auto delta = [fahrenheit](float v) { return fahrenheit ? v * 9.0f / 5.0f : v * 5.0f / 9.0f; };
+    useFahrenheit = fahrenheit;
+
+    setTempHeat = clampSetpoint(roundToStep(absolute(setTempHeat), 0.5f));
+    setTempCool = clampSetpoint(roundToStep(absolute(setTempCool), 0.5f));
+    setTempAuto = clampSetpoint(roundToStep(absolute(setTempAuto), 0.5f));
+    for (int day = 0; day < 7; day++) {
+        SchedulePeriod* periods[2] = {&weekSchedule[day].day, &weekSchedule[day].night};
+        for (SchedulePeriod* p : periods) {
+            p->heatTemp = clampSetpoint(roundToStep(absolute(p->heatTemp), 0.5f));
+            p->coolTemp = clampSetpoint(roundToStep(absolute(p->coolTemp), 0.5f));
+            p->autoTemp = clampSetpoint(roundToStep(absolute(p->autoTemp), 0.5f));
+        }
+    }
+    hydronicTempLow = roundf(absolute(hydronicTempLow));
+    hydronicTempHigh = roundf(absolute(hydronicTempHigh));
+    tempSwing = constrain(roundToStep(delta(tempSwing), 0.1f), 0.2f, 3.0f);
+    autoTempSwing = constrain(roundToStep(delta(autoTempSwing), 0.1f), 0.2f, 5.0f);
+    stage2TempDelta = constrain(roundToStep(delta(stage2TempDelta), 0.1f), 0.5f, 5.0f);
+    backupHeatMinTempRise = constrain(roundToStep(delta(backupHeatMinTempRise), 0.1f), 0.1f, 5.0f);
+    backupHeatMaxTempDrop = constrain(roundToStep(delta(backupHeatMaxTempDrop), 0.1f), 0.1f, 10.0f);
+    backupHeatLastReferenceTemp = NAN;
+
+    // Sensor task converts on its next reading; convert now so control logic never mixes units.
+    if (!isnan(currentTemp)) currentTemp = absolute(currentTemp);
+    if (!isnan(hydronicTemp)) hydronicTemp = absolute(hydronicTemp);
+    if (!isnan(hydronicReturnTemp)) hydronicReturnTemp = absolute(hydronicReturnTemp);
+    weather.setUseFahrenheit(fahrenheit);
+    forceFullDisplayRefresh = true;
+
+    debugLog("[SETTINGS] Temperature unit changed to %s\n", fahrenheit ? "F" : "C");
+    return true;
+}
+
+static const char* const BACKUP_HEAT_RELAY_NAMES[3] = {"pump", "heat2", "cool2"};
+static const char* const EU_HUMIDITY_RELAY_NAMES[3] = {"cool1", "cool2", "pump"};
+
+static int relayNameIndex(const char* const names[3], const char* value) {
+    for (int i = 0; i < 3; i++) {
+        if (strcmp(names[i], value) == 0) return i;
+    }
+    return -1;
+}
+
 // ---------------------------------------------------------------------------
 // State snapshot (shared by the local API, SSE and future consumers)
 // ---------------------------------------------------------------------------
@@ -289,6 +341,41 @@ void buildStateJson(JsonDocument& doc) {
     settings["hydronic_temp_low"] = serialized(String(hydronicTempLow, 1));
     settings["hydronic_temp_high"] = serialized(String(hydronicTempHigh, 1));
     settings["eu_humidity_setpoint"] = serialized(String(euHumiditySetpoint, 0));
+    settings["stage2_heat_enabled"] = stage2HeatingEnabled;
+    settings["stage2_cool_enabled"] = stage2CoolingEnabled;
+    settings["heat_pump_enabled"] = reversingValveEnabled;
+    settings["fan_with_heat"] = fanRelayNeededHeat;
+    settings["fan_with_cool"] = fanRelayNeededCool;
+    settings["backup_heat_enabled"] = backupHeatEnabled;
+    settings["backup_heat_relay"] = BACKUP_HEAT_RELAY_NAMES[constrain(backupHeatRelaySelection, 0, 2)];
+    settings["backup_heat_delay_min"] = backupHeatDelayMinutes;
+    settings["backup_heat_min_rise"] = serialized(String(backupHeatMinTempRise, 1));
+    settings["backup_heat_max_drop"] = serialized(String(backupHeatMaxTempDrop, 1));
+    settings["hydronic_heat_enabled"] = hydronicHeatingEnabled;
+    settings["eu_humidity_enabled"] = euHumidityControlEnabled;
+    settings["eu_humidity_relay"] = EU_HUMIDITY_RELAY_NAMES[constrain(euHumidityRelaySelection, 0, 2)];
+    settings["eu_humidity_deadband"] = serialized(String(euHumidityDeadband, 1));
+    settings["shower_mode_enabled"] = showerModeEnabled;
+    settings["temp_offset"] = serialized(String(tempOffset, 1));
+    settings["humidity_offset"] = serialized(String(humidityOffset, 1));
+    settings["temperature_unit"] = useFahrenheit ? "F" : "C";
+    settings["region"] = thermostatRegion;
+    settings["time_zone"] = timeZone;
+
+    WeatherData wx = weather.getData();
+    if (weatherSource != 0 && wx.valid) {
+        JsonObject w = root["weather"].to<JsonObject>();
+        w["temperature"] = serialized(String(wx.temperature, 1));
+        w["temp_high"] = serialized(String(wx.tempHigh, 1));
+        w["temp_low"] = serialized(String(wx.tempLow, 1));
+        w["humidity"] = wx.humidity;
+        w["condition"] = wx.condition;
+        w["description"] = wx.description;
+        w["icon"] = wx.iconCode;
+        w["wind_speed"] = serialized(String(wx.windSpeed, 1));
+    } else {
+        root["weather"] = nullptr;
+    }
 
     root["wifi_rssi"] = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
     root["uptime_s"] = millis() / 1000UL;

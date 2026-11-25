@@ -105,6 +105,12 @@
       "hydronic_return_temperature": {
         "name": "Hydronic return temperature"
       },
+      "outdoor_temperature": {
+        "name": "Outdoor temperature"
+      },
+      "outdoor_condition": {
+        "name": "Outdoor condition"
+      },
       "shower_remaining": {
         "name": "Shower mode remaining"
       },
@@ -196,6 +202,80 @@
       },
       "schedule_saturday": {
         "name": "Schedule Saturday"
+      },
+      "stage2_heat_enabled": {
+        "name": "Stage 2 heating"
+      },
+      "stage2_cool_enabled": {
+        "name": "Stage 2 cooling"
+      },
+      "heat_pump_enabled": {
+        "name": "Heat pump"
+      },
+      "fan_with_heat": {
+        "name": "Fan with heat"
+      },
+      "fan_with_cool": {
+        "name": "Fan with cool"
+      },
+      "backup_heat_enabled": {
+        "name": "Backup heat"
+      },
+      "hydronic_heat_enabled": {
+        "name": "Hydronic heat"
+      },
+      "eu_humidity_enabled": {
+        "name": "EU humidity control"
+      },
+      "shower_mode_enabled": {
+        "name": "Shower mode feature"
+      }
+    },
+    "select": {
+      "backup_heat_relay": {
+        "name": "Backup heat relay",
+        "state": {
+          "pump": "Pump relay",
+          "heat2": "Heat stage 2 relay",
+          "cool2": "Cool stage 2 relay"
+        }
+      },
+      "eu_humidity_relay": {
+        "name": "EU humidity relay",
+        "state": {
+          "cool1": "Cool stage 1 relay",
+          "cool2": "Cool stage 2 relay",
+          "pump": "Pump relay"
+        }
+      },
+      "temperature_unit": {
+        "name": "Temperature unit",
+        "state": {
+          "fahrenheit": "Fahrenheit (°F)",
+          "celsius": "Celsius (°C)"
+        }
+      },
+      "region": {
+        "name": "Region",
+        "state": {
+          "us": "US",
+          "eu": "EU"
+        }
+      },
+      "time_zone": {
+        "name": "Time zone",
+        "state": {
+          "eastern": "Eastern",
+          "central": "Central",
+          "mountain": "Mountain",
+          "pacific": "Pacific",
+          "alaska": "Alaska",
+          "hawaii": "Hawaii",
+          "uk": "UK",
+          "central_europe": "Central Europe",
+          "japan": "Japan",
+          "australia_east": "Australia East"
+        }
       }
     },
     "number": {
@@ -228,6 +308,24 @@
       },
       "eu_humidity_setpoint": {
         "name": "Humidity setpoint"
+      },
+      "backup_heat_delay_min": {
+        "name": "Backup heat delay"
+      },
+      "backup_heat_min_rise": {
+        "name": "Backup heat minimum rise"
+      },
+      "backup_heat_max_drop": {
+        "name": "Backup heat maximum drop"
+      },
+      "eu_humidity_deadband": {
+        "name": "EU humidity deadband"
+      },
+      "temp_offset": {
+        "name": "Temperature offset"
+      },
+      "humidity_offset": {
+        "name": "Humidity offset"
       }
     },
     "button": {

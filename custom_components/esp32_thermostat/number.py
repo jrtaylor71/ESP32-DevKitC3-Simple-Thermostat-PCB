@@ -11,7 +11,12 @@ from homeassistant.components.number import (
     NumberEntityDescription,
     NumberMode,
 )
-from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTime
+from homeassistant.const import (
+    PERCENTAGE,
+    EntityCategory,
+    UnitOfTemperature,
+    UnitOfTime,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -28,6 +33,8 @@ class ThermostatNumberEntityDescription(NumberEntityDescription):
     exists_fn: Callable[[ThermostatCoordinator], bool] = lambda _: True
     integer: bool = False
     device_temperature: bool = False
+    # (min, max) used instead of native_min/max_value when the device unit is °C.
+    celsius_range: tuple[float, float] | None = None
 
 
 def _stage2(coordinator: ThermostatCoordinator) -> bool:
@@ -116,6 +123,7 @@ NUMBERS: tuple[ThermostatNumberEntityDescription, ...] = (
         native_step=0.5,
         mode=NumberMode.BOX,
         device_temperature=True,
+        celsius_range=(10, 95),
         exists_fn=lambda c: c.has_feature("hydronic_heat"),
     ),
     ThermostatNumberEntityDescription(
@@ -127,6 +135,7 @@ NUMBERS: tuple[ThermostatNumberEntityDescription, ...] = (
         native_step=0.5,
         mode=NumberMode.BOX,
         device_temperature=True,
+        celsius_range=(10, 95),
         exists_fn=lambda c: c.has_feature("hydronic_heat"),
     ),
     ThermostatNumberEntityDescription(
@@ -139,6 +148,63 @@ NUMBERS: tuple[ThermostatNumberEntityDescription, ...] = (
         native_step=1,
         mode=NumberMode.SLIDER,
         exists_fn=lambda c: c.has_feature("eu_humidity_control"),
+    ),
+    ThermostatNumberEntityDescription(
+        key="backup_heat_delay_min",
+        translation_key="backup_heat_delay_min",
+        device_class=NumberDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        native_min_value=5,
+        native_max_value=180,
+        native_step=1,
+        mode=NumberMode.BOX,
+        integer=True,
+    ),
+    ThermostatNumberEntityDescription(
+        key="backup_heat_min_rise",
+        translation_key="backup_heat_min_rise",
+        native_min_value=0.1,
+        native_max_value=5.0,
+        native_step=0.1,
+        mode=NumberMode.BOX,
+        device_temperature=True,
+    ),
+    ThermostatNumberEntityDescription(
+        key="backup_heat_max_drop",
+        translation_key="backup_heat_max_drop",
+        native_min_value=0.1,
+        native_max_value=10.0,
+        native_step=0.1,
+        mode=NumberMode.BOX,
+        device_temperature=True,
+    ),
+    ThermostatNumberEntityDescription(
+        key="eu_humidity_deadband",
+        translation_key="eu_humidity_deadband",
+        native_unit_of_measurement=PERCENTAGE,
+        native_min_value=1,
+        native_max_value=20,
+        native_step=0.5,
+        mode=NumberMode.BOX,
+    ),
+    ThermostatNumberEntityDescription(
+        key="temp_offset",
+        translation_key="temp_offset",
+        # Offset is a temperature difference that the device always stores in °C.
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        native_min_value=-10.0,
+        native_max_value=10.0,
+        native_step=0.1,
+        mode=NumberMode.BOX,
+    ),
+    ThermostatNumberEntityDescription(
+        key="humidity_offset",
+        translation_key="humidity_offset",
+        native_unit_of_measurement=PERCENTAGE,
+        native_min_value=-50.0,
+        native_max_value=50.0,
+        native_step=0.5,
+        mode=NumberMode.BOX,
     ),
 )
 
@@ -176,6 +242,13 @@ class ThermostatNumber(ThermostatEntity, NumberEntity):
             # temperatures get the TEMPERATURE device class (and conversion).
             self._attr_native_unit_of_measurement = device_temperature_unit(
                 coordinator
+            )
+        if (
+            description.celsius_range is not None
+            and device_temperature_unit(coordinator) == UnitOfTemperature.CELSIUS
+        ):
+            self._attr_native_min_value, self._attr_native_max_value = (
+                description.celsius_range
             )
 
     @property

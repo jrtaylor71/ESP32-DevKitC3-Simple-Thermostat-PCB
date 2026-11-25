@@ -10,6 +10,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from .api import ThermostatApiClient, ThermostatAuthError, ThermostatError
+from .card import async_register_card
 from .const import CONF_TOKEN, DOMAIN
 from .coordinator import ThermostatConfigEntry, ThermostatCoordinator
 from .services import async_setup_services
@@ -19,6 +20,7 @@ PLATFORMS: list[Platform] = [
     Platform.BUTTON,
     Platform.CLIMATE,
     Platform.NUMBER,
+    Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
 ]
@@ -27,8 +29,9 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the integration (register services)."""
+    """Set up the integration (register services and the Lovelace card)."""
     async_setup_services(hass)
+    await async_register_card(hass)
     return True
 
 
@@ -63,6 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThermostatConfigEntry) -
     coordinator = ThermostatCoordinator(hass, entry, api, info)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
+    entry.async_on_unload(coordinator.async_cancel_reload)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     coordinator.async_start_event_stream()

@@ -18,6 +18,9 @@ All notable firmware changes are documented in this file.
 - Started native Home Assistant integration (local JSON API, mDNS discovery, and custom integration) as an alternative to MQTT.
 - Added a token-protected local API (`/api/v1`) with live Server-Sent Events updates and `_esp32thermostat._tcp` mDNS discovery, disabled by default and controlled from the web settings page or the touch screen (System Info > HA API).
 - Added the `esp32_thermostat` Home Assistant custom integration (HACS-installable) with climate, sensor, switch, number, and button entities plus schedule services.
+- Exposed HVAC hardware, backup heat, hydronic, EU humidity, shower mode, sensor offsets, temperature unit, region, and time zone settings through the local API and Home Assistant, with conflicting relay combinations rejected instead of silently changed.
+- Changing the temperature unit through the local API now converts setpoints, schedule temperatures, and temperature-difference settings to the new unit.
+- Added outdoor weather sensors to the Home Assistant integration and a bundled `custom:esp32-thermostat-card` dashboard card with a temperature dial, mode/fan/shower controls, live status, schedule status/resume, and a weekly schedule editor.
 - Unified mode, fan, setpoint, schedule, and shower-mode changes from touch, web, MQTT, and the local API through shared control functions.
 - Fixed setpoint limits so Celsius uses 10–35 °C instead of the Fahrenheit 50–95 range.
 - Fixed MQTT schedule edits comparing the wrong day index, MQTT fan mode not being validated, and schedule resume not restoring scheduled temperatures.

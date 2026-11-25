@@ -10,8 +10,9 @@ import time
 from typing import Any, TypeVar
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, HassJob, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import (
@@ -23,6 +24,7 @@ from .api import (
 from .const import (
     DAYS,
     DOMAIN,
+    INFO_REV_RELOAD_DELAY,
     SSE_BACKOFF_INITIAL,
     SSE_BACKOFF_MAX,
     SSE_STALE_SECONDS,
@@ -61,6 +63,8 @@ class ThermostatCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.sse_connected = False
         self.last_event: float | None = None
         self._sse_task: asyncio.Task[None] | None = None
+        self.info_rev: Any = None
+        self._cancel_reload: CALLBACK_TYPE | None = None
 
     @property
     def device_id(self) -> str:
@@ -88,11 +92,50 @@ class ThermostatCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.data is not None and self._sse_fresh():
             return self.data
         try:
-            return await self.api.async_get_state()
+            data = await self.api.async_get_state()
         except ThermostatAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except ThermostatError as err:
             raise UpdateFailed(f"Error fetching thermostat state: {err}") from err
+        self._check_info_rev(data)
+        return data
+
+    # ----------------------------------------------------------- info_rev
+    @callback
+    def _check_info_rev(self, data: dict[str, Any]) -> None:
+        """Schedule a reload when the device's /info document changed."""
+        rev = data.get("info_rev")
+        if rev is None:
+            return
+        if self.info_rev is None:
+            self.info_rev = rev
+            return
+        if rev == self.info_rev or self._cancel_reload is not None:
+            return
+        _LOGGER.debug(
+            "Device info of %s changed (info_rev %s -> %s); reloading in %ss",
+            self.api.host,
+            self.info_rev,
+            rev,
+            INFO_REV_RELOAD_DELAY,
+        )
+        self._cancel_reload = async_call_later(
+            self.hass,
+            INFO_REV_RELOAD_DELAY,
+            HassJob(self._async_reload_entry, cancel_on_shutdown=True),
+        )
+
+    @callback
+    def _async_reload_entry(self, _now: Any) -> None:
+        self._cancel_reload = None
+        self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
+
+    @callback
+    def async_cancel_reload(self) -> None:
+        """Cancel a pending info_rev reload."""
+        if self._cancel_reload is not None:
+            self._cancel_reload()
+            self._cancel_reload = None
 
     # ---------------------------------------------------------------- SSE
     def async_start_event_stream(self) -> None:
@@ -124,10 +167,12 @@ class ThermostatCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     if event.event == "state":
                         self.sse_connected = True
                         backoff = SSE_BACKOFF_INITIAL
+                        self._check_info_rev(event.data)
                         self.async_set_updated_data(event.data)
                     elif event.event == "update":
                         if self.data is None:
                             continue
+                        self._check_info_rev(event.data)
                         self.async_set_updated_data({**self.data, **event.data})
                 _LOGGER.debug("Event stream from %s closed", self.api.host)
             except ThermostatAuthError as err:

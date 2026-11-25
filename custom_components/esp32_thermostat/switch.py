@@ -46,6 +46,29 @@ def _set_day(day: str) -> Callable[[ThermostatCoordinator, bool], Awaitable[None
     return setter
 
 
+def _setting(key: str) -> ThermostatSwitchEntityDescription:
+    """Describe a boolean device setting written through POST /settings."""
+    return ThermostatSwitchEntityDescription(
+        key=key,
+        translation_key=key,
+        entity_category=EntityCategory.CONFIG,
+        value_fn=nested("settings", key),
+        set_fn=lambda c, v: c.async_send_settings(**{key: v}),
+    )
+
+
+SETTING_SWITCHES = (
+    "stage2_heat_enabled",
+    "stage2_cool_enabled",
+    "heat_pump_enabled",
+    "fan_with_heat",
+    "fan_with_cool",
+    "backup_heat_enabled",
+    "hydronic_heat_enabled",
+    "eu_humidity_enabled",
+    "shower_mode_enabled",
+)
+
 SWITCHES: tuple[ThermostatSwitchEntityDescription, ...] = (
     ThermostatSwitchEntityDescription(
         key="schedule_enabled",
@@ -70,6 +93,7 @@ SWITCHES: tuple[ThermostatSwitchEntityDescription, ...] = (
         )
         for index, day in enumerate(DAYS)
     ),
+    *(_setting(key) for key in SETTING_SWITCHES),
 )
 
 

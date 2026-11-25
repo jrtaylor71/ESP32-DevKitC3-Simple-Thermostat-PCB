@@ -35,7 +35,12 @@ class ThermostatSensorEntityDescription(SensorEntityDescription):
 
     value_fn: Callable[[dict[str, Any]], Any]
     exists_fn: Callable[[ThermostatCoordinator], bool] = lambda _: True
+    available_fn: Callable[[dict[str, Any]], bool] = lambda _: True
     device_temperature: bool = False
+
+
+def _has_weather(data: dict[str, Any]) -> bool:
+    return isinstance(data.get("weather"), dict)
 
 
 SENSORS: tuple[ThermostatSensorEntityDescription, ...] = (
@@ -99,6 +104,23 @@ SENSORS: tuple[ThermostatSensorEntityDescription, ...] = (
         device_temperature=True,
         value_fn=nested("hydronic_return_temperature"),
         exists_fn=lambda c: c.has_feature("hydronic_return_sensor"),
+    ),
+    ThermostatSensorEntityDescription(
+        key="outdoor_temperature",
+        translation_key="outdoor_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        device_temperature=True,
+        value_fn=nested("weather", "temperature"),
+        exists_fn=lambda c: c.has_feature("weather"),
+        available_fn=_has_weather,
+    ),
+    ThermostatSensorEntityDescription(
+        key="outdoor_condition",
+        translation_key="outdoor_condition",
+        value_fn=nested("weather", "condition"),
+        exists_fn=lambda c: c.has_feature("weather"),
+        available_fn=_has_weather,
     ),
     ThermostatSensorEntityDescription(
         key="shower_remaining",
@@ -188,6 +210,13 @@ class ThermostatSensor(ThermostatEntity, SensorEntity):
             self._attr_native_unit_of_measurement = device_temperature_unit(
                 coordinator
             )
+
+    @property
+    def available(self) -> bool:
+        """Return availability."""
+        return super().available and self.entity_description.available_fn(
+            self.state_data
+        )
 
     @property
     def native_value(self) -> Any:
