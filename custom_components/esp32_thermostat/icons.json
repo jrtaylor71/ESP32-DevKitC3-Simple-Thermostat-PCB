@@ -264,6 +264,15 @@
       "temp_offset": {
         "default": "mdi:thermometer-plus"
       },
+      "target_temp_heat": {
+        "default": "mdi:fire"
+      },
+      "target_temp_cool": {
+        "default": "mdi:snowflake"
+      },
+      "target_temp_auto": {
+        "default": "mdi:thermostat-auto"
+      },
       "humidity_offset": {
         "default": "mdi:water-plus"
       }

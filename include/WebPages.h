@@ -583,8 +583,8 @@ String generateStatusPage(float currentTemp, float currentHumidity, float hydron
     html += "<div style='display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;'>";
     
     html += "<div class='form-group'>";
-    html += "<label class='form-label'>Temperature Offset (°F)</label>";
-    html += "<input type='number' name='tempOffset' value='" + String(tempOffset, 1) + "' step='0.1' class='form-input'>";
+    html += "<label class='form-label'>Temperature Offset (&deg;" + String(useFahrenheit ? "F" : "C") + ")</label>";
+    html += "<input type='number' name='tempOffset' value='" + String(useFahrenheit ? tempOffset * 1.8f : tempOffset, 1) + "' step='0.1' class='form-input'>";
     html += "</div>";
     
     html += "<div class='form-group'>";
@@ -1380,8 +1380,8 @@ String generateSettingsPage(String thermostatMode, String fanMode, float setTemp
     html += "<div style='display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;'>";
     
     html += "<div class='form-group'>";
-    html += "<label class='form-label'>Temperature Offset (°F)</label>";
-    html += "<input type='number' name='tempOffset' value='" + String(tempOffset, 1) + "' step='0.1' class='form-input'>";
+    html += "<label class='form-label'>Temperature Offset (&deg;" + String(useFahrenheit ? "F" : "C") + ")</label>";
+    html += "<input type='number' name='tempOffset' value='" + String(useFahrenheit ? tempOffset * 1.8f : tempOffset, 1) + "' step='0.1' class='form-input'>";
     html += "</div>";
     
     html += "<div class='form-group'>";

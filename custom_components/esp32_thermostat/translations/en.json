@@ -324,6 +324,15 @@
       "temp_offset": {
         "name": "Temperature offset"
       },
+      "target_temp_heat": {
+        "name": "Heat setpoint"
+      },
+      "target_temp_cool": {
+        "name": "Cool setpoint"
+      },
+      "target_temp_auto": {
+        "name": "Auto setpoint"
+      },
       "humidity_offset": {
         "name": "Humidity offset"
       }

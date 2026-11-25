@@ -24,7 +24,15 @@ const ROLES = {
   schedule: ["switch", "schedule_enabled"],
   resume: ["button", "cancel_override"],
   backup_heat: ["binary_sensor", "backup_heat_active"],
+  sp_heat: ["number", "target_temp_heat"],
+  sp_cool: ["number", "target_temp_cool"],
+  sp_auto: ["number", "target_temp_auto"],
 };
+const SETPOINTS = [
+  ["sp_heat", "heat", "Heat", "mdi:fire"],
+  ["sp_cool", "cool", "Cool", "mdi:snowflake"],
+  ["sp_auto", "auto", "Auto", "mdi:thermostat-auto"],
+];
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MODE_LABELS = { off: "Off", heat: "Heat", cool: "Cool", auto: "Auto", heat_cool: "Auto" };
@@ -138,6 +146,20 @@ const STYLE = `
   .schedule { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 8px 10px; border-radius: 12px;
     background: var(--secondary-background-color, rgba(127,127,127,.08)); font-size: .9em; }
   .schedule .grow { flex: 1 1 auto; }
+  .setpoints { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; margin-top: 12px; }
+  .sp { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; border-radius: 12px;
+    border: 1px solid var(--divider-color, rgba(127,127,127,.3)); }
+  .sp.current { border-color: transparent; background: var(--secondary-background-color, rgba(127,127,127,.12)); }
+  .sp[data-mode="heat"] ha-icon { color: var(--heat); }
+  .sp[data-mode="cool"] ha-icon { color: var(--cool); }
+  .sp .sp-name { font-size: .8em; color: var(--secondary-text-color); display: flex; align-items: center; gap: 2px; }
+  .sp .sp-ctl { display: flex; align-items: center; gap: 6px; }
+  .sp .sp-val { font-size: 1.15em; min-width: 3.2em; text-align: center; }
+  .sp .sp-val.pending { opacity: .65; font-style: italic; }
+  .sp button { width: 30px; height: 30px; min-height: 30px; border-radius: 50%; padding: 0; }
+  .sched-edit-row { margin-top: 8px; }
+  .sched-edit-row button { width: 100%; }
+  .dialog .hint { font-size: .85em; color: var(--secondary-text-color); padding: 8px 16px 0; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 12px; }
   .chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 16px; font-size: .85em;
     border: 1px solid var(--divider-color, rgba(127,127,127,.3)); }
@@ -203,6 +225,7 @@ class Esp32ThermostatCard extends HTMLElement {
     }
     this._config = {
       show_status: true,
+      show_setpoints: true,
       show_schedule: true,
       show_sensors: true,
       show_weather: true,
@@ -340,6 +363,7 @@ class Esp32ThermostatCard extends HTMLElement {
         <div class="row modes" id="modes"></div>
         <div class="row fans" id="fans"></div>
         <div class="row" id="shower-row"><button class="shower" id="shower"><ha-icon icon="mdi:shower-head"></ha-icon><span id="shower-text">Shower</span></button></div>
+        <div class="setpoints" id="setpoints"></div>
         <div class="status" id="status">
           <span id="st-action"></span><span id="st-stage"></span><span id="st-supply"></span><span id="st-return"></span>
         </div>
@@ -348,7 +372,9 @@ class Esp32ThermostatCard extends HTMLElement {
           <span class="grow" id="sched-text"></span>
           <button id="sched-toggle"></button>
           <button id="sched-resume"><ha-icon icon="mdi:calendar-sync"></ha-icon>Resume</button>
-          <button id="sched-edit"><ha-icon icon="mdi:calendar-edit"></ha-icon><span>Edit</span></button>
+        </div>
+        <div class="sched-edit-row" id="sched-edit-row">
+          <button id="sched-edit"><ha-icon icon="mdi:calendar-edit"></ha-icon><span>Edit weekly schedule</span></button>
         </div>
         <div class="chips" id="chips">
           <span class="chip" id="chip-humidity"><ha-icon icon="mdi:water-percent"></ha-icon><span></span></span>
@@ -362,7 +388,7 @@ class Esp32ThermostatCard extends HTMLElement {
     this._el = {};
     for (const id of ["title", "warn", "dial", "track", "arc", "cur", "handle", "action", "target", "current", "minus", "plus",
       "modes", "fans", "shower-row", "shower", "shower-text", "status", "st-action", "st-stage", "st-supply", "st-return",
-      "schedule", "sched-text", "sched-toggle", "sched-resume", "sched-edit", "chips", "chip-humidity", "chip-aq",
+      "schedule", "sched-text", "sched-toggle", "sched-resume", "sched-edit", "sched-edit-row", "setpoints", "chips", "chip-humidity", "chip-aq",
       "chip-pressure", "chip-weather"]) {
       this._el[id] = $(id);
     }
@@ -373,6 +399,13 @@ class Esp32ThermostatCard extends HTMLElement {
     this._el["sched-toggle"].addEventListener("click", () => this._toggleSchedule());
     this._el["sched-resume"].addEventListener("click", () => this._resume());
     this._el["sched-edit"].addEventListener("click", () => this._openEditor());
+    this._el.setpoints.addEventListener("click", (ev) => {
+      const btn = ev.target.closest && ev.target.closest("button[data-sp]");
+      if (btn && !btn.disabled) this._nudgeSetpoint(btn.dataset.sp, Number(btn.dataset.dir));
+    });
+    this._spPending = {};
+    this._spTimers = {};
+    this._spSig = "";
     this._el.modes.addEventListener("click", (ev) => {
       const btn = ev.target.closest && ev.target.closest("button[data-mode]");
       if (btn && !btn.disabled) this._call("climate", "set_hvac_mode", { entity_id: this._config.entity, hvac_mode: btn.dataset.mode });
@@ -500,8 +533,10 @@ class Esp32ThermostatCard extends HTMLElement {
       el["sched-toggle"].textContent = schedEnabled === false ? "Enable" : "Disable";
       el["sched-toggle"].disabled = schedEnabled === undefined;
       el["sched-resume"].hidden = !(schedEnabled && overrideType && overrideType !== "none");
-      el["sched-edit"].hidden = !this._deviceId();
     }
+    el["sched-edit-row"].hidden = !cfg.show_schedule || unavailable || !this._deviceId();
+
+    this._renderSetpoints(mode, unavailable);
 
     // chips
     el.chips.hidden = !(cfg.show_sensors || cfg.show_weather);
@@ -668,6 +703,60 @@ class Esp32ThermostatCard extends HTMLElement {
     this._call("switch", s.state === "on" ? "turn_off" : "turn_on", { entity_id: id });
   }
 
+  // --------------------------------------------------- per-mode setpoints
+  _renderSetpoints(mode, unavailable) {
+    const el = this._el.setpoints;
+    const shown = SETPOINTS.filter(([role]) => !isUnavailable(this._state(role)));
+    el.hidden = !this._config.show_setpoints || unavailable || shown.length === 0;
+    if (el.hidden) return;
+    const sig = shown.map(([role]) => role).join(",");
+    if (sig !== this._spSig) {
+      this._spSig = sig;
+      el.innerHTML = shown.map(([role, m, label, icon]) => `
+        <div class="sp" data-role="${role}" data-mode="${m}">
+          <span class="sp-name"><ha-icon icon="${icon}"></ha-icon>${label}</span>
+          <span class="sp-ctl">
+            <button data-sp="${role}" data-dir="-1" aria-label="Lower ${label} setpoint">−</button>
+            <span class="sp-val"></span>
+            <button data-sp="${role}" data-dir="1" aria-label="Raise ${label} setpoint">+</button>
+          </span>
+        </div>`).join("");
+    }
+    const activeMode = mode === "heat_cool" ? "auto" : mode;
+    for (const box of el.querySelectorAll(".sp")) {
+      const role = box.dataset.role;
+      const st = this._state(role);
+      const pending = this._spPending[role];
+      if (pending !== undefined && !this._spTimers[role] && Math.abs(Number(st.state) - pending) < 0.01) delete this._spPending[role];
+      const value = this._spPending[role] ?? Number(st.state);
+      const unit = st.attributes.unit_of_measurement || "";
+      const val = box.querySelector(".sp-val");
+      val.textContent = `${fmt(value, decimals(Number(st.attributes.step) || 0.5))}${unit}`;
+      val.classList.toggle("pending", this._spPending[role] !== undefined);
+      box.classList.toggle("current", box.dataset.mode === activeMode);
+      const [minus, plus] = box.querySelectorAll("button");
+      minus.disabled = value <= Number(st.attributes.min);
+      plus.disabled = value >= Number(st.attributes.max);
+    }
+  }
+
+  _nudgeSetpoint(role, dir) {
+    const st = this._state(role);
+    if (isUnavailable(st)) return;
+    const step = Number(st.attributes.step) || 0.5;
+    const base = this._spPending[role] ?? Number(st.state);
+    const next = Math.min(Number(st.attributes.max), Math.max(Number(st.attributes.min), Math.round((base + dir * step) / step) * step));
+    this._spPending[role] = next;
+    clearTimeout(this._spTimers[role]);
+    this._spTimers[role] = setTimeout(() => {
+      this._spTimers[role] = null;
+      this._call("number", "set_value", { entity_id: this._roles[role], value: this._spPending[role] });
+      // Drop the pending value if the device never confirms it.
+      setTimeout(() => { if (!this._spTimers[role]) { delete this._spPending[role]; this._refresh(true); } }, PENDING_TIMEOUT_MS);
+    }, SET_TEMP_DEBOUNCE_MS);
+    this._refresh(true);
+  }
+
   _toggleSchedule() {
     const attrs = (this._state("climate") || {}).attributes || {};
     const sw = this._state("schedule");
@@ -697,6 +786,7 @@ class Esp32ThermostatCard extends HTMLElement {
     overlay.innerHTML = `
       <div class="dialog" role="dialog" aria-modal="true" aria-label="Weekly schedule">
         <header><span>Weekly schedule</span><label><input type="checkbox" id="dlg-enabled"> Schedule enabled</label></header>
+        <div class="hint">Each day has a Day and a Night period. The start time applies to every mode; Heat, Cool and Auto each have their own temperature for that period.</div>
         <div class="body" id="dlg-body">Loading…</div>
         <footer><span class="dlg-error" id="dlg-error" hidden></span>
           <button id="dlg-cancel">Cancel</button><button class="primary" id="dlg-save" disabled>Save</button></footer>
@@ -861,6 +951,7 @@ const EDITOR_SCHEMA = [
   {
     type: "grid", name: "", schema: [
       { name: "show_status", selector: { boolean: {} } },
+      { name: "show_setpoints", selector: { boolean: {} } },
       { name: "show_schedule", selector: { boolean: {} } },
       { name: "show_sensors", selector: { boolean: {} } },
       { name: "show_weather", selector: { boolean: {} } },
@@ -869,9 +960,9 @@ const EDITOR_SCHEMA = [
 ];
 const EDITOR_LABELS = {
   entity: "Thermostat (climate entity)", name: "Name (optional)", show_status: "Show status",
-  show_schedule: "Show schedule", show_sensors: "Show sensor chips", show_weather: "Show weather",
+  show_setpoints: "Show heat/cool/auto setpoints", show_schedule: "Show schedule", show_sensors: "Show sensor chips", show_weather: "Show weather",
 };
-const BOOL_KEYS = ["show_status", "show_schedule", "show_sensors", "show_weather"];
+const BOOL_KEYS = ["show_status", "show_setpoints", "show_schedule", "show_sensors", "show_weather"];
 
 class Esp32ThermostatCardEditor extends HTMLElement {
   constructor() {

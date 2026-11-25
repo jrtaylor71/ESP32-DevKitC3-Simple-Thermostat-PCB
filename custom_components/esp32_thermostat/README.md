@@ -48,9 +48,10 @@ the thermostat and shown as an error.
 |---|---|
 | Switch | Stage 2 heating, Stage 2 cooling, Heat pump, Fan with heat, Fan with cool, Backup heat, Hydronic heat, EU humidity control, Shower mode feature |
 | Select | Backup heat relay (pump / heat stage 2 / cool stage 2), EU humidity relay, Temperature unit (°F/°C), Region (US/EU), Time zone (US, UK, Central Europe, Japan, Australia East presets) |
-| Number | Backup heat delay (min), Backup heat minimum rise, Backup heat maximum drop, EU humidity deadband (%), Temperature offset (always °C), Humidity offset (%) |
+| Number | Backup heat delay (min), Backup heat minimum rise, Backup heat maximum drop, EU humidity deadband (%), Temperature offset, Humidity offset (%) |
+| Number (controls) | Heat setpoint, Cool setpoint, Auto setpoint — each mode's target, editable in any mode (the climate entity only shows the active mode's target) |
 
-Temperature-difference settings (swing, stage 2 delta, backup heat rise/drop) are in
+Temperature-difference settings (swing, stage 2 delta, backup heat rise/drop, temperature offset) are in
 the thermostat's own unit and are not converted by Home Assistant. If the thermostat
 uses a time zone that is not one of the presets, the *Time zone* select shows *unknown*.
 
@@ -70,6 +71,7 @@ entity: climate.shop_thermostat
 # optional
 name: Shop
 show_status: true    # action, active stage, hydronic supply/return
+show_setpoints: true # heat/cool/auto setpoints with −/+
 show_schedule: true  # schedule state, hold, Resume, weekly editor
 show_sensors: true   # humidity, air quality, pressure chips
 show_weather: true   # outdoor temperature/condition chip
@@ -79,10 +81,12 @@ Features:
 - Dial with current and target temperature; drag the arc or use **−/+** (sent ~1 s after
   the last change). Colour follows the HVAC action (heating, cooling, fan, idle).
 - Mode buttons (off/heat/cool/auto), fan mode buttons and a shower-mode button.
+- Heat, Cool and Auto setpoints with their own **−/+** (the active mode is highlighted).
 - Status row with HVAC action, active stage (stage 1/2, backup heat) and hydronic temps.
 - Schedule strip: enable/disable, active period, hold type and remaining time, *Resume*,
-  and **Edit** which opens a weekly schedule editor (7 days, day/night start time,
-  heat/cool/auto temperatures, active flags, copy a day to all days).
+  and an **Edit weekly schedule** button. The editor shows 7 days with a Day and a Night
+  period each; a period has one start time shared by all modes plus separate heat, cool
+  and auto temperatures, an active flag, and *Copy to all* per day.
 - Chips for humidity, air quality, pressure and outdoor weather when available.
 
 The card finds the thermostat's other entities through the device, so renaming

@@ -190,12 +190,13 @@ NUMBERS: tuple[ThermostatNumberEntityDescription, ...] = (
     ThermostatNumberEntityDescription(
         key="temp_offset",
         translation_key="temp_offset",
-        # Offset is a temperature difference that the device always stores in °C.
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        native_min_value=-10.0,
-        native_max_value=10.0,
+        # Temperature difference in the device unit (firmware stores ±10 °C).
+        native_min_value=-18.0,
+        native_max_value=18.0,
         native_step=0.1,
         mode=NumberMode.BOX,
+        device_temperature=True,
+        celsius_range=(-10.0, 10.0),
     ),
     ThermostatNumberEntityDescription(
         key="humidity_offset",
@@ -209,6 +210,10 @@ NUMBERS: tuple[ThermostatNumberEntityDescription, ...] = (
 )
 
 
+# Per-mode setpoints; the climate entity only exposes the active mode's target.
+SETPOINT_KEYS = ("target_temp_heat", "target_temp_cool", "target_temp_auto")
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ThermostatConfigEntry,
@@ -216,11 +221,15 @@ async def async_setup_entry(
 ) -> None:
     """Set up number entities."""
     coordinator = entry.runtime_data
-    async_add_entities(
+    entities: list[NumberEntity] = [
         ThermostatNumber(coordinator, description)
         for description in NUMBERS
         if description.exists_fn(coordinator)
+    ]
+    entities.extend(
+        ThermostatSetpoint(coordinator, key) for key in SETPOINT_KEYS
     )
+    async_add_entities(entities)
 
 
 class ThermostatNumber(ThermostatEntity, NumberEntity):
@@ -265,3 +274,31 @@ class ThermostatNumber(ThermostatEntity, NumberEntity):
         await self.coordinator.async_send_settings(
             **{self.entity_description.key: payload}
         )
+
+
+class ThermostatSetpoint(ThermostatEntity, NumberEntity):
+    """The heat, cool, or auto setpoint, editable regardless of the current mode."""
+
+    _attr_device_class = NumberDeviceClass.TEMPERATURE
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: ThermostatCoordinator, key: str) -> None:
+        """Initialize the setpoint entity."""
+        super().__init__(coordinator, key)
+        self._key = key
+        self._attr_translation_key = key
+        info = coordinator.info
+        self._attr_native_unit_of_measurement = device_temperature_unit(coordinator)
+        self._attr_native_min_value = float(info.get("min_temp", 50))
+        self._attr_native_max_value = float(info.get("max_temp", 95))
+        self._attr_native_step = float(info.get("temp_step", 0.5))
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the setpoint."""
+        value = self.state_data.get(self._key)
+        return None if value is None else float(value)
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Change the setpoint (starts a temporary override while the schedule runs)."""
+        await self.coordinator.async_send_command(**{self._key: value})

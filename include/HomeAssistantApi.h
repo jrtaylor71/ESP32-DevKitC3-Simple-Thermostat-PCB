@@ -388,7 +388,6 @@ static HaValidation haValidateSettings(JsonObjectConst s) {
     if (!s["backup_heat_min_rise"].isNull()) haCheckNumber(result, s["backup_heat_min_rise"], "backup_heat_min_rise", 0.1f, 5.0f);
     if (!s["backup_heat_max_drop"].isNull()) haCheckNumber(result, s["backup_heat_max_drop"], "backup_heat_max_drop", 0.1f, 10.0f);
     if (!s["eu_humidity_deadband"].isNull()) haCheckNumber(result, s["eu_humidity_deadband"], "eu_humidity_deadband", 1.0f, 20.0f);
-    if (!s["temp_offset"].isNull()) haCheckNumber(result, s["temp_offset"], "temp_offset", -10.0f, 10.0f);
     if (!s["humidity_offset"].isNull()) haCheckNumber(result, s["humidity_offset"], "humidity_offset", -50.0f, 50.0f);
     if (!s["fan_with_heat"].isNull()) haCheckBool(result, s["fan_with_heat"], "fan_with_heat");
     if (!s["fan_with_cool"].isNull()) haCheckBool(result, s["fan_with_cool"], "fan_with_cool");
@@ -417,6 +416,11 @@ static HaValidation haValidateSettings(JsonObjectConst s) {
         if (fahrenheit == useFahrenheit) return v;
         return fahrenheit ? roundf(v * 9.0f / 5.0f + 32.0f) : roundf((v - 32.0f) * 5.0f / 9.0f);
     };
+    // temp_offset is a difference in the (possibly new) device unit; stored as ±10 °C.
+    if (!s["temp_offset"].isNull()) {
+        float offsetLimit = fahrenheit ? 18.0f : 10.0f;
+        haCheckNumber(result, s["temp_offset"], "temp_offset", -offsetLimit, offsetLimit);
+    }
     float low = toUnit(hydronicTempLow);
     float high = toUnit(hydronicTempHigh);
     if (!s["hydronic_temp_low"].isNull() && haCheckNumber(result, s["hydronic_temp_low"], "hydronic_temp_low", hydMin, hydMax)) {
@@ -675,7 +679,10 @@ static bool haApplySettings(JsonObjectConst s) {
         showerModeEnabled = s["shower_mode_enabled"].as<bool>();
         if (!showerModeEnabled) applyShowerMode(false);
     }
-    if (!s["temp_offset"].isNull()) tempOffset = s["temp_offset"].as<float>();
+    if (!s["temp_offset"].isNull()) {
+        float offset = s["temp_offset"].as<float>();
+        tempOffset = constrain(useFahrenheit ? offset / 1.8f : offset, -10.0f, 10.0f);
+    }
     if (!s["humidity_offset"].isNull()) humidityOffset = s["humidity_offset"].as<float>();
     if (!s["region"].isNull()) thermostatRegion = s["region"].as<String>();
     if (!s["time_zone"].isNull()) {

@@ -4792,6 +4792,8 @@ void handleWebRequests()
             fanRelayNeededHeat = false;
             fanRelayNeededCool = false;
         }
+        // The offset field was rendered in the unit in effect before this submit.
+        const bool offsetFormInFahrenheit = useFahrenheit;
         if (request->hasParam("useFahrenheit", true)) {
             useFahrenheit = request->getParam("useFahrenheit", true)->value() == "on";
         }
@@ -4946,7 +4948,8 @@ void handleWebRequests()
         
         if (request->hasParam("tempOffset", true)) {
             tempOffset = request->getParam("tempOffset", true)->value().toFloat();
-            // Constrain to reasonable range (-10°C to +10°C)
+            // Stored in °C (applied to the raw sensor reading); the form shows the display unit.
+            if (offsetFormInFahrenheit) tempOffset /= 1.8f;
             tempOffset = constrain(tempOffset, -10.0, 10.0);
         }
         if (request->hasParam("humidityOffset", true)) {

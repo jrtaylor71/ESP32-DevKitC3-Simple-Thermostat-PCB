@@ -356,7 +356,7 @@ void buildStateJson(JsonDocument& doc) {
     settings["eu_humidity_relay"] = EU_HUMIDITY_RELAY_NAMES[constrain(euHumidityRelaySelection, 0, 2)];
     settings["eu_humidity_deadband"] = serialized(String(euHumidityDeadband, 1));
     settings["shower_mode_enabled"] = showerModeEnabled;
-    settings["temp_offset"] = serialized(String(tempOffset, 1));
+    settings["temp_offset"] = serialized(String(useFahrenheit ? tempOffset * 1.8f : tempOffset, 1)); // display unit; stored in °C
     settings["humidity_offset"] = serialized(String(humidityOffset, 1));
     settings["temperature_unit"] = useFahrenheit ? "F" : "C";
     settings["region"] = thermostatRegion;
