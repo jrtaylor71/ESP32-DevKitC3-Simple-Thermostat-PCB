@@ -15,7 +15,6 @@
             "default": "mdi:fan",
             "state": {
               "auto": "mdi:fan-auto",
-              "on": "mdi:fan",
               "cycle": "mdi:fan-clock"
             }
           }
