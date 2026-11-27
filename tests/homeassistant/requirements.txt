@@ -1,1 +1,4 @@
 pytest-homeassistant-custom-component==0.13.205
+# Not pulled in by the test plugin, but needed by test_zeroconf and HA 2025.1.4
+zeroconf==0.136.2
+pycares==4.8.0

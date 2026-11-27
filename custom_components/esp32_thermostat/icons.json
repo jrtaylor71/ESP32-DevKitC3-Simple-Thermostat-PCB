@@ -7,7 +7,6 @@
             "default": "mdi:calendar-clock",
             "state": {
               "none": "mdi:hand-back-right",
-              "schedule": "mdi:calendar-clock",
               "temporary_hold": "mdi:timer-pause-outline",
               "permanent_hold": "mdi:pause-circle-outline"
             }
