@@ -71,10 +71,11 @@ for VARIANT_INFO in "${VARIANTS[@]}"; do
     mkdir -p "$VERSION_DIR"
 
     FILE_STAMP="v${SAFE_VERSION}_${BUILD_TIMESTAMP}"
-    BOOTLOADER_FILE="bootloader_${FILE_STAMP}.bin"
-    FIRMWARE_FILE="firmware_${FILE_STAMP}.bin"
-    PARTITIONS_FILE="partitions_${FILE_STAMP}.bin"
-    ELF_FILE="firmware_${FILE_STAMP}.elf"
+    FILE_PREFIX="esp32-s3-"
+    BOOTLOADER_FILE="${FILE_PREFIX}bootloader_${FILE_STAMP}.bin"
+    FIRMWARE_FILE="${FILE_PREFIX}firmware_${FILE_STAMP}.bin"
+    PARTITIONS_FILE="${FILE_PREFIX}partitions_${FILE_STAMP}.bin"
+    ELF_FILE="${FILE_PREFIX}firmware_${FILE_STAMP}.elf"
     
     echo "[POST-BUILD] Processing $VARIANT ($FLASH_SIZE)..."
     

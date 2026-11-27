@@ -14,7 +14,14 @@ All notable firmware changes are documented in this file.
 
 ## [Unreleased]
 
-## [2.0.000] - In Development
+## [2.0.001] - 2026-11-27
+- First release of the 2.0 native Home Assistant integration; includes all 2.0.000 development changes below.
+- Fixed the room temperature offset: raw Celsius readings are now smoothed before the offset and unit conversion are applied, so offset or unit changes take effect immediately and are not blended into the filter.
+- Removed the fabricated 72° startup temperature; the room temperature stays unavailable until the first valid sensor reading.
+- Added a 30-second sustained-demand delay before temperature-driven heating or cooling starts in Heat, Cool, and Auto, so brief drafts do not start a cycle. Stops, safety shutdowns, and humidity-driven cooling remain immediate.
+- Prefixed organized firmware file names with `esp32-s3-`.
+
+## [2.0.000] - Development (not released separately)
 - Started native Home Assistant integration (local JSON API, mDNS discovery, and custom integration) as an alternative to MQTT.
 - Added a token-protected local API (`/api/v1`) with live Server-Sent Events updates and `_esp32thermostat._tcp` mDNS discovery, disabled by default and controlled from the web settings page or the touch screen (System Info > HA API).
 - Added the `esp32_thermostat` Home Assistant custom integration (HACS-installable) with climate, sensor, switch, number, and button entities plus schedule services.

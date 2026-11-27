@@ -41,6 +41,7 @@
 #include <PubSubClient.h> // Include the MQTT library
 #include <esp_task_wdt.h> // Watchdog reset API used in main loop
 #include <esp_system.h>
+#include <atomic>
 #include <memory>
 #include <utility>
 #include <time.h>
@@ -63,7 +64,7 @@
 #include "SettingsUI.h"
 
 // Version control information
-const String sw_version = "2.0.000";
+const String sw_version = "2.0.001";
 const String build_date = __DATE__;  // Compile date
 const String build_time = __TIME__;  // Compile time
 String version_info = sw_version + " (" + build_date + " " + build_time + ")";
@@ -369,7 +370,7 @@ bool ds18b20ReturnSensorPresent = false;
 
 // Function prototypes
 void setupWiFi();
-void controlRelays(float currentTemp);
+void controlRelays(float currentTemp, bool freshRoomSample = false);
 void handleWebRequests();
 void updateDisplay(float currentTemp, float currentHumidity);
 void saveSettings();
@@ -407,7 +408,6 @@ void loadScheduleSettings();
 String getCurrentPeriod();
 int getCurrentDayOfWeek();
 void setBrightness(int brightness);
-float getCalibratedTemperature(float rawTemp);
 float getCalibratedHumidity(float rawHumidity);
 void checkDisplaySleep();
 void wakeDisplay();
@@ -423,8 +423,8 @@ void buzzerBeep(int duration = 125);
 void buzzerStartupTone();
 void publishHomeAssistantDiscovery();
 void turnOffAllRelays();
-void activateHeating();
-void activateCooling();
+void activateHeating(float currentTemp);
+void activateCooling(float currentTemp);
 void handleFanControl();
 void enforceBackupHeatRelayConflicts();
 void enforceEUHumidityRelayConflicts();
@@ -467,8 +467,7 @@ struct DisplayIndicators {
 
 uint16_t calibrationData[5] = { 300, 3700, 300, 3700, 7 }; // Example calibration data
 
-float currentTemp = 0.0;
-float currentHumidity = 0.0;
+float currentHumidity = NAN;
 bool isUpperCaseKeyboard = true;
 float previousTemp = 0.0;
 float previousHumidity = 0.0;
@@ -495,11 +494,24 @@ String mqttLastFanMode = "";
 String mqttLastAction = "";
 
 // Temperature and humidity filtering (exponential moving average)
-float filteredTemp = 0.0;              // EMA-filtered temperature
-float filteredHumidity = 0.0;          // EMA-filtered humidity
+static std::atomic<float> filteredRawTempC{NAN};
 const float tempEMAAlpha = 0.1;        // Temperature smoothing factor (0.1 = 10% new, 90% previous)
 const float humidityEMAAlpha = 0.15;   // Humidity smoothing factor (0.15 = 15% new, 85% previous)
-bool firstSensorReading = true;        // Flag to initialize filters on first read
+
+float currentRoomTemperature() {
+    const float calibratedC = filteredRawTempC.load() + tempOffset;
+    return useFahrenheit ? calibratedC * 1.8f + 32.0f : calibratedC;
+}
+
+static bool updateRoomReadings(float rawTempC, float rawHumidity) {
+    if (!isfinite(rawTempC) || !isfinite(rawHumidity)) return false;
+    const float priorC = filteredRawTempC.load();
+    filteredRawTempC.store(isnan(priorC) ? rawTempC : priorC + tempEMAAlpha * (rawTempC - priorC));
+    const float humidity = getCalibratedHumidity(rawHumidity);
+    currentHumidity = isnan(currentHumidity) ? humidity
+        : currentHumidity + humidityEMAAlpha * (humidity - currentHumidity);
+    return true;
+}
 
 // OTA progress tracking (server-side fallback)
 volatile size_t otaBytesWritten = 0;      // Bytes written so far during current OTA
@@ -520,13 +532,12 @@ void sensorTaskFunction(void *parameter) {
     const unsigned long SENSOR_ERROR_COOLDOWN = 30000; // 30 second cooldown between reinits
     
     for (;;) {
-        // Read sensor every 60 seconds to minimize processing load
         float tempReading, humidityReading, pressureReading;
         
         // Try to read sensor using abstraction layer
         bool readSuccess = readTemperatureHumidity(tempReading, humidityReading, pressureReading);
         
-        if (!readSuccess) {
+        if (!readSuccess || !updateRoomReadings(tempReading, humidityReading)) {
             debugLog("[SENSOR] Read failed!\n");
             
             // Try to reinitialize if cooldown has passed
@@ -544,33 +555,8 @@ void sensorTaskFunction(void *parameter) {
             continue;
         }
         
-        // Apply calibration offsets
-        float calibratedTemp = getCalibratedTemperature(tempReading);
-        float calibratedHumidity = getCalibratedHumidity(humidityReading);
-        
-        float newTemp = useFahrenheit ? (calibratedTemp * 9.0 / 5.0 + 32.0) : calibratedTemp;
-        float newHumidity = calibratedHumidity;
-        
-        // Update globals if valid
-        if (!isnan(newTemp) && !isnan(newHumidity)) {
-            // Apply exponential moving average filtering for smoother readings
-            if (firstSensorReading) {
-                filteredTemp = newTemp;
-                filteredHumidity = newHumidity;
-                firstSensorReading = false;
-            } else {
-                // EMA filter: smoothed_value = alpha * new_value + (1 - alpha) * previous_value
-                filteredTemp = (tempEMAAlpha * newTemp) + ((1.0 - tempEMAAlpha) * filteredTemp);
-                filteredHumidity = (humidityEMAAlpha * newHumidity) + ((1.0 - humidityEMAAlpha) * filteredHumidity);
-            }
-            
-            currentTemp = filteredTemp;
-            currentHumidity = filteredHumidity;
-            
-            // Update pressure if BME280/BME680 sensor and valid reading
-            if ((activeSensor == SENSOR_BME280 || activeSensor == SENSOR_BME680) && !isnan(pressureReading)) {
-                currentPressure = pressureReading;
-            }
+        if ((activeSensor == SENSOR_BME280 || activeSensor == SENSOR_BME680) && !isnan(pressureReading)) {
+            currentPressure = pressureReading;
         }
         
         // Read DS18B20 hydronic temperature sensors if present
@@ -600,7 +586,7 @@ void sensorTaskFunction(void *parameter) {
         }
         
         // Control HVAC relays
-        controlRelays(currentTemp);
+        controlRelays(currentRoomTemperature(), true);
         sensorTaskLastAlive = millis(); // Heartbeat: sensor task is alive
         
         // 5 second delay for responsive control while minimizing CPU load
@@ -1067,7 +1053,7 @@ void applySchedule(int dayOfWeek, bool isDayPeriod) {
     }
     
     // Update TFT display to show new scheduled temperature
-    updateDisplay(currentTemp, currentHumidity);
+    updateDisplay(currentRoomTemperature(), currentHumidity);
     
     // Request display update for LED indicators
     setDisplayUpdateFlag();
@@ -1642,37 +1628,22 @@ void setup()
         }
     }
 
-    // Read initial temperature and humidity
-    // Read initial temperature and humidity from AHT20
-    // Get initial sensor reading to initialize temperature and humidity values
     float tempReading, humidityReading, pressureReading;
-    if (readTemperatureHumidity(tempReading, humidityReading, pressureReading)) {
-        float calibratedTemp = getCalibratedTemperature(tempReading);
-        float calibratedHumidity = getCalibratedHumidity(humidityReading);
-        currentTemp = useFahrenheit ? (calibratedTemp * 9.0 / 5.0 + 32.0) : calibratedTemp;
-        currentHumidity = calibratedHumidity;
-        
+    if (readTemperatureHumidity(tempReading, humidityReading, pressureReading) &&
+        updateRoomReadings(tempReading, humidityReading)) {
         // Store pressure if BME280 detected
         if (activeSensor == SENSOR_BME280 && !isnan(pressureReading)) {
             currentPressure = pressureReading;
             debugLog("Initial pressure reading: %.1f hPa\n", currentPressure);
         }
         
-        debugLog("Initial readings - Temp: %.1f, Humidity: %.1f%%\n", currentTemp, currentHumidity);
+        debugLog("Initial readings - Temp: %.1f, Humidity: %.1f%%\n", currentRoomTemperature(), currentHumidity);
     } else {
         debugLog("WARNING: Failed to get initial sensor reading\n");
-        // Use fallback values
-        currentTemp = 72.0;
-        currentHumidity = 50.0;
     }
     
-    // Initialize filters with first reading
-    filteredTemp = currentTemp;
-    filteredHumidity = currentHumidity;
-    firstSensorReading = false;
-
     // Initial display update
-    updateDisplay(currentTemp, currentHumidity);
+    updateDisplay(currentRoomTemperature(), currentHumidity);
 
     // Initialize display sleep timing
     lastInteractionTime = millis();
@@ -1812,7 +1783,7 @@ void setup()
              (unsigned int)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
              activeDisplay == DISPLAY_ST7789 ? "ST7789" : activeDisplay == DISPLAY_ST7796 ? "ST7796" :
                  activeDisplay == DISPLAY_ILI9488 ? "ILI9488" : "ILI9341",
-             dispW(), dispH(), sensorName.c_str(), currentTemp, currentHumidity,
+             dispW(), dispH(), sensorName.c_str(), currentRoomTemperature(), currentHumidity,
              ld2410Connected, (int)WiFi.status(), mqttEnabled, mqttClient.connected(), weatherSource, weather.isDataValid(),
              ONEWIRE_PIN, pinStateAfterConfig, pinStateAfterOneWire, presence,
              oneWireResetResults[0], oneWireResetResults[1], oneWireResetResults[2], oneWireResetResults[3], oneWireResetResults[4],
@@ -2122,13 +2093,13 @@ void loop()
     if (currentTime - lastDebugOutput > 5000) {
         lastDebugOutput = currentTime;
         debugLog("[DEBUG] Temp=%.1f H=%.1f Sleep=%d SleepTime=%lu\n",
-                 currentTemp, currentHumidity, displayIsAsleep,
+                 currentRoomTemperature(), currentHumidity, displayIsAsleep,
                  currentTime - lastInteractionTime);
     }
     // Periodic display updates - now called from main loop for thread safety with TFT library
     if (currentTime - lastDisplayUpdateTime > displayUpdateInterval)
     {
-        updateDisplay(currentTemp, currentHumidity);
+        updateDisplay(currentRoomTemperature(), currentHumidity);
         lastDisplayUpdateTime = currentTime;
     }
 
@@ -2177,7 +2148,7 @@ void loop()
     // Control relays more frequently for immediate response to setting changes
     static unsigned long lastRelayControlTime = 0;
     if (currentTime - lastRelayControlTime > 1000) { // Control relays every 1 second
-        controlRelays(currentTemp);
+        controlRelays(currentRoomTemperature());
         lastRelayControlTime = currentTime;
     }
 
@@ -2714,7 +2685,7 @@ void handleButtonPress(uint16_t x, uint16_t y)
     debugLog("[DEBUG] Touch: x=%d, y=%d, showerModeEnabled=%d\n", x, y, showerModeEnabled);
     if (showerModeEnabled && x > 60 && x < 260 && y > 100 && y < 140) {
         applyShowerMode(!showerModeActive);
-        updateDisplay(currentTemp, currentHumidity);
+        updateDisplay(currentRoomTemperature(), currentHumidity);
         sendMQTTData();
         return;
     }
@@ -2734,7 +2705,7 @@ void handleButtonPress(uint16_t x, uint16_t y)
         if (!showSetTempOnMainDisplay || millis() >= showSetTempUntil) {
             showSetTempOnMainDisplay = true;
             showSetTempUntil = millis() + SETPOINT_DISPLAY_TIMEOUT_MS;
-            updateDisplay(currentTemp, currentHumidity);
+            updateDisplay(currentRoomTemperature(), currentHumidity);
             return;
         }
 
@@ -2749,14 +2720,14 @@ void handleButtonPress(uint16_t x, uint16_t y)
             sendMQTTData();
         }
         // Update display immediately for better responsiveness
-        updateDisplay(currentTemp, currentHumidity);
+        updateDisplay(currentRoomTemperature(), currentHumidity);
     }
     else if (x > 0 && x < 45 && y > 195 && y < 245) // "-" button with slightly increased touch area
     {
         if (!showSetTempOnMainDisplay || millis() >= showSetTempUntil) {
             showSetTempOnMainDisplay = true;
             showSetTempUntil = millis() + SETPOINT_DISPLAY_TIMEOUT_MS;
-            updateDisplay(currentTemp, currentHumidity);
+            updateDisplay(currentRoomTemperature(), currentHumidity);
             return;
         }
 
@@ -2771,7 +2742,7 @@ void handleButtonPress(uint16_t x, uint16_t y)
             sendMQTTData();
         }
         // Update display immediately for better responsiveness
-        updateDisplay(currentTemp, currentHumidity);
+        updateDisplay(currentRoomTemperature(), currentHumidity);
     }
     else if (x > 125 && x < 195 && y > 195 && y < 245) // Mode button with slightly increased touch area
     {
@@ -2797,7 +2768,7 @@ void handleButtonPress(uint16_t x, uint16_t y)
             saveSettings();
             sendMQTTData();
             // Update display after relays for accurate indicators
-            updateDisplay(currentTemp, currentHumidity);
+            updateDisplay(currentRoomTemperature(), currentHumidity);
         } else {
             debugLog("[DEBUG] Mode switch blocked: %s (too soon, need to wait %lu ms)\n", newMode.c_str(), MODE_SWITCH_DELAY_MS - (currentTime - lastModeSwitchTime));
         }
@@ -2814,7 +2785,7 @@ void handleButtonPress(uint16_t x, uint16_t y)
         saveSettings();
         sendMQTTData();
         // Update display after relays for accurate indicators
-        updateDisplay(currentTemp, currentHumidity);
+        updateDisplay(currentRoomTemperature(), currentHumidity);
     }
 }
 
@@ -3364,7 +3335,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
     {
         bool requested = (message == "ON" || message == "on");
         if ((requested || message == "OFF" || message == "off") && applyShowerMode(requested)) {
-            updateDisplay(currentTemp, currentHumidity);
+            updateDisplay(currentRoomTemperature(), currentHumidity);
             sendMQTTData(); // Publish state back to HA
         }
     }
@@ -3484,7 +3455,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
         debugLog("Saving settings changed via MQTT\n");
         saveSettings();
         // Update display immediately when settings change via MQTT
-        updateDisplay(currentTemp, currentHumidity);
+        updateDisplay(currentRoomTemperature(), currentHumidity);
         
         // Set flag for immediate MQTT feedback to Home Assistant
         mqttFeedbackNeeded = true;
@@ -3504,6 +3475,7 @@ void sendMQTTData()
     if (mqttClient.connected())
     {
         // Publish current temperature
+        const float currentTemp = currentRoomTemperature();
         if (!isnan(currentTemp) && currentTemp != mqttLastTemp)
         {
             String currentTempTopic = hostname + "/current_temperature";
@@ -3902,7 +3874,30 @@ void updateBackupHeatState(bool heatDemandActive, float currentTemp)
     }
 }
 
-void controlRelays(float currentTemp)
+enum class TemperatureDemand { None, Heat, Cool };
+
+struct TemperatureStartDelay {
+    TemperatureDemand pending = TemperatureDemand::None;
+    uint32_t since = 0;
+    uint32_t lastSample = 0;
+
+    bool ready(TemperatureDemand demand, uint32_t now, bool freshSample) {
+        constexpr uint32_t delayMs = 30000;
+        // The one-second relay check can cancel demand, but a cached reading
+        // must not confirm a start while the sensor task is stalled or retrying.
+        if (demand != pending || now - lastSample >= delayMs)
+            pending = TemperatureDemand::None;
+        if (demand == TemperatureDemand::None || !freshSample) return false;
+        lastSample = now;
+        if (pending == TemperatureDemand::None) {
+            pending = demand;
+            since = now;
+        }
+        return now - since >= delayMs;
+    }
+};
+
+void controlRelays(float currentTemp, bool freshRoomSample)
 {
     // Take mutex to prevent concurrent access from multiple cores
     if (xSemaphoreTake(controlRelaysMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
@@ -3951,6 +3946,19 @@ void controlRelays(float currentTemp)
     static String prevThermostatMode = "";
     static float prevTemp = 0.0;
     
+    static TemperatureStartDelay startDelay;
+    const bool autoMode = thermostatMode == "auto";
+    const bool heatDemand = (autoMode || thermostatMode == "heat") &&
+        currentTemp < (autoMode ? setTempAuto - autoTempSwing : setTempHeat - tempSwing);
+    const bool coolDemand = (autoMode || thermostatMode == "cool") &&
+        currentTemp > (autoMode ? setTempAuto + autoTempSwing : setTempCool + tempSwing);
+    TemperatureDemand startDemand = TemperatureDemand::None;
+    if (heatDemand && !heatingOn && !(autoMode && coolingOn) && !(thermostatMode == "heat" && showerModeActive))
+        startDemand = TemperatureDemand::Heat;
+    else if (coolDemand && !coolingOn && !(autoMode && heatingOn))
+        startDemand = TemperatureDemand::Cool;
+    const bool startReady = startDelay.ready(startDemand, millis(), freshRoomSample);
+
     // Check if temperature reading is valid
     if (isnan(currentTemp)) {
         debugLog("WARNING: Invalid temperature reading, skipping relay control\n");
@@ -4035,7 +4043,7 @@ void controlRelays(float currentTemp)
             debugLog("[DEBUG] Heat check: %.1f < %.1f? %s\n", 
                          currentTemp, (setTempHeat - tempSwing), 
                          (currentTemp < (setTempHeat - tempSwing)) ? "YES" : "NO");
-            if (currentTemp < (setTempHeat - tempSwing))
+            if (heatDemand && (heatingOn || startReady))
             {
                 // Call activateHeating on every pass so stage 2 escalation can fire
                 // after stage1MinRuntime elapses (guarded internally by !stage1Active /
@@ -4044,7 +4052,7 @@ void controlRelays(float currentTemp)
                     debugLog("[HVAC] HEAT ACTIVATED: %.1f < %.1f (setpoint-swing)\n", 
                              currentTemp, (setTempHeat - tempSwing));
                 }
-                activateHeating();
+                activateHeating(currentTemp);
             }
             // Only turn off if above setpoint (hysteresis)
             else if (currentTemp >= setTempHeat)
@@ -4085,7 +4093,7 @@ void controlRelays(float currentTemp)
         bool humidityDrivenCooling = false;
         
         // Temperature-based cooling (primary)
-        if (currentTemp > (setTempCool + tempSwing)) {
+        if (coolDemand && (coolingOn || startReady)) {
             shouldCool = true;
             debugLog("[DEBUG] Temperature trigger: %.1f > %.1f\n", currentTemp, (setTempCool + tempSwing));
         }
@@ -4107,7 +4115,7 @@ void controlRelays(float currentTemp)
             if (!coolingOn) {
                 debugLog("[HVAC] COOL ACTIVATED: temperature or humidity override\n");
             }
-            activateCooling();
+            activateCooling(currentTemp);
         }
         // Only turn off if below setpoint (hysteresis) AND not in EU humidity dehumidification
         else if ((currentTemp < setTempCool) && 
@@ -4149,7 +4157,7 @@ void controlRelays(float currentTemp)
             } else {
                 debugLog("[DEBUG] Auto cooling HOLD: temp=%.1f, setpoint=%.1f, humidityDemand=%d\n",
                          currentTemp, setTempAuto, humidityDemand ? 1 : 0);
-                activateCooling();
+                activateCooling(currentTemp);
             }
         }
         else if (heatingOn) {
@@ -4159,27 +4167,27 @@ void controlRelays(float currentTemp)
                 turnOffAllRelays();
             } else {
                 debugLog("[DEBUG] Auto heating HOLD: temp=%.1f, setpoint=%.1f\n", currentTemp, setTempAuto);
-                activateHeating();
+                activateHeating(currentTemp);
             }
         }
-        else if (currentTemp > autoCoolOnThreshold) {
+        else if (coolDemand && startReady) {
             euHumidityDemandActive = false;
             debugLog("[DEBUG] Auto cooling ON threshold crossed: %.1f > %.1f\n",
                      currentTemp, autoCoolOnThreshold);
-            activateCooling();
+            activateCooling(currentTemp);
         }
-        else if (currentTemp < autoHeatOnThreshold) {
+        else if (heatDemand && startReady) {
             euHumidityDemandActive = false;
             debugLog("[DEBUG] Auto heating ON threshold crossed: %.1f < %.1f\n",
                      currentTemp, autoHeatOnThreshold);
-            activateHeating();
+            activateHeating(currentTemp);
         }
         // EU Humidity-based dehumidification (supplementary in auto mode while idle)
         else if (thermostatRegion == "EU" && euHumidityControlEnabled && currentHumidity > euHumiditySetpoint) {
             euHumidityDemandActive = true;
             debugLog("[DEBUG] Auto mode EU humidity dehumidification: %.1f%% > %.1f%%\n",
                      currentHumidity, euHumiditySetpoint);
-            activateCooling();
+            activateCooling(currentTemp);
         }
         else {
             euHumidityDemandActive = false;
@@ -4300,7 +4308,7 @@ void turnOffAllRelays()
     setDisplayUpdateFlag();
 }
 
-void activateHeating() {
+void activateHeating(float currentTemp) {
     debugLog("[DEBUG] activateHeating() ENTRY: stage1Active=%d, stage2Active=%d\n", stage1Active, stage2Active);
     
     // Hydronic boiler safety interlock - prevent heating if boiler water is too cold
@@ -4429,7 +4437,7 @@ void activateHeating() {
     setDisplayUpdateFlag(); // Option C: Request display update
 }
 
-void activateCooling()
+void activateCooling(float currentTemp)
 {
     debugLog("[DEBUG] activateCooling() ENTRY: stage1Active=%d, stage2Active=%d\n", stage1Active, stage2Active);
     bool euHumidityRelayMode = (thermostatRegion == "EU" && euHumidityControlEnabled && euHumidityDemandActive);
@@ -4676,7 +4684,7 @@ void handleWebRequests()
         debugLog("[WEB PAGE] Before generation: free=%u largest=%u\n",
                  (unsigned int)heap_caps_get_free_size(MALLOC_CAP_8BIT),
                  (unsigned int)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
-        String html = generateStatusPage(currentTemp, currentHumidity, hydronicTemp, hydronicReturnTemp,
+        String html = generateStatusPage(currentRoomTemperature(), currentHumidity, hydronicTemp, hydronicReturnTemp,
                                        thermostatMode, fanMode, version_info, hostname, 
                                        useFahrenheit, hydronicHeatingEnabled,
                                        HEAT_RELAY_1_PIN, HEAT_RELAY_2_PIN, COOL_RELAY_1_PIN, 
@@ -4947,10 +4955,8 @@ void handleWebRequests()
         enforceEUHumidityRelayConflicts();
         
         if (request->hasParam("tempOffset", true)) {
-            tempOffset = request->getParam("tempOffset", true)->value().toFloat();
-            // Stored in °C (applied to the raw sensor reading); the form shows the display unit.
-            if (offsetFormInFahrenheit) tempOffset /= 1.8f;
-            tempOffset = constrain(tempOffset, -10.0, 10.0);
+            const float offset = request->getParam("tempOffset", true)->value().toFloat();
+            tempOffset = constrain(offsetFormInFahrenheit ? offset / 1.8f : offset, -10.0f, 10.0f);
         }
         if (request->hasParam("humidityOffset", true)) {
             humidityOffset = request->getParam("humidityOffset", true)->value().toFloat();
@@ -5089,7 +5095,7 @@ void handleWebRequests()
     server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest *request)
               {
         // Use filtered temperature from sensor task instead of raw reading
-        String response = "{\"temperature\": \"" + String(currentTemp) + "\"}";
+        String response = "{\"temperature\": \"" + String(currentRoomTemperature()) + "\"}";
         request->send(200, "application/json", response); });
 
     server.on("/humidity", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -5102,7 +5108,7 @@ void handleWebRequests()
 
     server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request)
               {
-        String response = "{\"currentTemp\": \"" + String(currentTemp) + "\",";
+        String response = "{\"currentTemp\": \"" + String(currentRoomTemperature()) + "\",";
         response += "\"currentHumidity\": \"" + String(currentHumidity) + "\",";
         response += "\"setTempHeat\": \"" + String(setTempHeat) + "\",";
         response += "\"setTempCool\": \"" + String(setTempCool) + "\",";
@@ -6654,11 +6660,6 @@ void updateDisplayBrightness() {
         ledcWrite(PWM_CHANNEL, targetBrightness);
         lastAppliedBrightness = targetBrightness;
     }
-}
-
-// AHT20 sensor calibration functions
-float getCalibratedTemperature(float rawTemp) {
-    return rawTemp + tempOffset;
 }
 
 float getCalibratedHumidity(float rawHumidity) {

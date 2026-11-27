@@ -65,7 +65,7 @@ bool applyThermostatMode(const String& mode) {
     debugLog("[CONTROL] Mode %s -> %s\n", thermostatMode.c_str(), mode.c_str());
     thermostatMode = mode;
     lastModeSwitchTime = millis();
-    controlRelays(currentTemp);
+    controlRelays(currentRoomTemperature());
     setDisplayUpdateFlag();
     return true;
 }
@@ -74,7 +74,7 @@ bool applyFanMode(const String& mode) {
     if (!isValidFanMode(mode) || mode == fanMode) return false;
     debugLog("[CONTROL] Fan mode %s -> %s\n", fanMode.c_str(), mode.c_str());
     fanMode = mode;
-    controlRelays(currentTemp);
+    controlRelays(currentRoomTemperature());
     setDisplayUpdateFlag();
     return true;
 }
@@ -88,7 +88,7 @@ bool applySetpoint(SetpointTarget target, float value) {
     debugLog("[CONTROL] Setpoint %s = %.1f\n",
              target == SETPOINT_HEAT ? "heat" : (target == SETPOINT_COOL ? "cool" : "auto"), value);
     startTemporaryOverrideIfScheduled();
-    controlRelays(currentTemp);
+    controlRelays(currentRoomTemperature());
     setDisplayUpdateFlag();
     return true;
 }
@@ -198,7 +198,6 @@ bool applyTemperatureUnit(bool fahrenheit) {
     backupHeatLastReferenceTemp = NAN;
 
     // Sensor task converts on its next reading; convert now so control logic never mixes units.
-    if (!isnan(currentTemp)) currentTemp = absolute(currentTemp);
     if (!isnan(hydronicTemp)) hydronicTemp = absolute(hydronicTemp);
     if (!isnan(hydronicReturnTemp)) hydronicReturnTemp = absolute(hydronicReturnTemp);
     weather.setUseFahrenheit(fahrenheit);
@@ -266,7 +265,7 @@ void buildStateJson(JsonDocument& doc) {
     JsonObject root = doc.to<JsonObject>();
     bool sensorOk = activeSensor != SENSOR_NONE;
 
-    setFixedOrNull(root, "current_temperature", sensorOk, currentTemp);
+    setFixedOrNull(root, "current_temperature", sensorOk, currentRoomTemperature());
     setFixedOrNull(root, "current_humidity", sensorHasHumidity(), currentHumidity);
     setFixedOrNull(root, "pressure_hpa", sensorHasPressure(), currentPressure);
     setFixedOrNull(root, "air_quality", sensorHasAirQuality(), currentAirQuality, 0);

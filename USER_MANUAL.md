@@ -169,6 +169,11 @@ Access the web interface by navigating to your thermostat's IP address in any br
 - **Temperature Swing**: Hysteresis setting (0.5° - 3.0°)
 - **Auto Mode Swing**: Additional swing for Auto mode (1.0° - 5.0°)
 
+In Heat, Cool, and Auto, the filtered room temperature must remain beyond the start
+threshold for 30 seconds. The cycle starts on the first fresh reading that confirms
+the full delay. Returning to the threshold cancels the timer. Normal stops, safety
+shutdowns, and humidity-driven cooling do not wait for this timer.
+
 **Shower Mode Settings**:
 - **Enable Shower Mode**: Master enable/disable checkbox
 - **Duration**: Set pause time from 5 to 120 minutes (default 30)
@@ -203,7 +208,7 @@ Access the web interface by navigating to your thermostat's IP address in any br
 - Requires DS18B20 sensor connected to GPIO 4
 
 **Sensor Calibration**:
-- **Temperature Offset**: Correct sensor bias (-10° to +10°)
+- **Temperature Offset**: Correct the room reading by up to ±10 °C or ±18 °F. The correction applies after smoothing, without waiting for new samples. It does not affect the hydronic probes.
 - **Humidity Offset**: Correct humidity sensor bias (-20% to +20%)
 
 **Display Settings**:
@@ -1199,7 +1204,7 @@ Contact via GitHub Issues if you experience:
 - Display Brightness: 64
 - Display Sleep: Enabled
 - Sleep Timeout: 5 minutes
-- Temperature Offset: 0.0°
+- Temperature Offset: -4.0 °C (-7.2 °F)
 - Humidity Offset: 0%
 - Use 24-Hour Clock: Yes
 

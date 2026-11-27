@@ -36,7 +36,7 @@ extern float stage2TempDelta;
 extern bool stage2HeatingEnabled;
 extern bool stage2CoolingEnabled;
 extern String hostname;
-extern float currentTemp;
+extern float currentRoomTemperature();
 extern float currentHumidity;
 extern bool forceFullDisplayRefresh;
 extern bool inSettingsMenu;
@@ -209,7 +209,7 @@ void exitSettingsToMain() {
     inSettingsMenu = false;
     forceFullDisplayRefresh = true; // Ensure main UI fully redraws after exiting settings
     tft.fillScreen(COLOR_BACKGROUND);
-    updateDisplay(currentTemp, currentHumidity);
+    updateDisplay(currentRoomTemperature(), currentHumidity);
     drawButtons();
 }
 

@@ -152,7 +152,7 @@ async def test_setup_and_control(hass, dev):
 
     # Integration services
     device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, "a1b2c3d4e5f6")})
-    assert device.name == "Shop-Thermostat" and device.sw_version == "2.0.000"
+    assert device.name == "Shop-Thermostat" and device.sw_version == "2.0.001"
     sched = await hass.services.async_call(DOMAIN, "get_schedule", {"device_id": device.id},
                                            blocking=True, return_response=True)
     assert len(sched["days"]) == 7

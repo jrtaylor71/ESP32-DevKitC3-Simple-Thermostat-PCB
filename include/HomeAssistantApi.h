@@ -694,7 +694,7 @@ static bool haApplySettings(JsonObjectConst s) {
     if (stage2HeatingEnabled && reversingValveEnabled) stage2HeatingEnabled = false;
     enforceBackupHeatRelayConflicts();
     enforceEUHumidityRelayConflicts();
-    controlRelays(currentTemp);
+    controlRelays(currentRoomTemperature());
     setDisplayUpdateFlag();
     haRequestSave();
     publishHomeAssistantDiscovery(); // keep MQTT discovery (if enabled) in step with features/unit, as /set does
@@ -786,7 +786,7 @@ static void haProcessQueue() {
         }
     }
     if (anyChanged) {
-        updateDisplay(currentTemp, currentHumidity);
+        updateDisplay(currentRoomTemperature(), currentHumidity);
         mqttFeedbackNeeded = true;
         haStateDirty = true;
     }

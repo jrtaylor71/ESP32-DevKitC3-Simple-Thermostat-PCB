@@ -6,7 +6,7 @@ TOKEN = "0123456789abcdef0123456789abcdef"
 INFO = {
     "api_version": 1, "device_id": "a1b2c3d4e5f6", "mac": "A1:B2:C3:D4:E5:F6",
     "hostname": "Shop-Thermostat", "manufacturer": "TDC", "model": "ESP32-S3 Simple Thermostat",
-    "firmware_version": "2.0.000", "build": "Nov 24 2026 10:00:00", "temperature_unit": "F",
+    "firmware_version": "2.0.001", "build": "Nov 24 2026 10:00:00", "temperature_unit": "F",
     "min_temp": 50.0, "max_temp": 95.0, "temp_step": 0.5, "region": "US", "mqtt_enabled": False,
     "features": {"sensor": "BME280", "humidity": True, "pressure": True, "air_quality": False,
         "hydronic_heat": False, "hydronic_supply_sensor": False, "hydronic_return_sensor": False,
