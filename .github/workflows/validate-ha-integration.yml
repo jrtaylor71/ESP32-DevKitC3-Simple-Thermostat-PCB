@@ -4,11 +4,19 @@ on:
   push:
     paths:
       - "custom_components/**"
+      - "tests/homeassistant/**"
+      - "pytest.ini"
+      - "docs/home-assistant-api-v1.md"
+      - "README.md"
       - "hacs.json"
       - ".github/workflows/validate-ha-integration.yml"
   pull_request:
     paths:
       - "custom_components/**"
+      - "tests/homeassistant/**"
+      - "pytest.ini"
+      - "docs/home-assistant-api-v1.md"
+      - "README.md"
       - "hacs.json"
       - ".github/workflows/validate-ha-integration.yml"
   workflow_dispatch:
@@ -33,3 +41,27 @@ jobs:
         with:
           category: integration
           ignore: brands
+
+  tests:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tests/homeassistant/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install test dependencies
+        run: python -m pip install -r tests/homeassistant/requirements.txt
+      - name: Check integration metadata and translations
+        run: python tests/homeassistant/static_check.py
+      - name: Run Home Assistant tests
+        run: python -m pytest -q
+      - name: Check dashboard card syntax
+        run: node --check custom_components/esp32_thermostat/frontend/esp32-thermostat-card.js
+      - name: Smoke-test dashboard card
+        run: node tests/homeassistant/card_smoke.mjs

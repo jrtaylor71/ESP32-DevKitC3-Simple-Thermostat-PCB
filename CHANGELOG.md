@@ -30,6 +30,8 @@ All notable firmware changes are documented in this file.
 - Changed the web `/control` endpoint to validate modes and apply changes on the main loop.
 - Reduced home-page memory usage by avoiding a second page copy and serving shared CSS and JavaScript separately.
 - Redacted WiFi and MQTT passwords from startup logs and the OpenWeatherMap API key from serial output.
+- Added repository-owned tests for the local API, Home Assistant config flow/entities/services, and dashboard card; run them in CI with Hassfest and HACS validation.
+- Documented the local API v1 contract, authentication, settings, schedule, and network security requirements.
 
 ## [1.5.010] - 2026-11-14
 - Added a pinned startup diagnostic summary and persistent current and previous boot logs with one-time filesystem initialization.

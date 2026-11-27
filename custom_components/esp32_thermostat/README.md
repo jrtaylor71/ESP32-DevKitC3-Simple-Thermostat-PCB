@@ -20,6 +20,11 @@ Copy `custom_components/esp32_thermostat` into `<config>/custom_components/` and
 2. Note the **API token** (32 hex characters). It is shown on the device under
    *System Info → HA API* and in the web UI *Settings* tab.
 
+The API uses plain HTTP on the local network and is not encrypted with TLS. Do not
+forward port 80 to the internet. Anyone with LAN access to the thermostat's web UI
+can view its token. See the [API v1 reference](../../docs/home-assistant-api-v1.md)
+for authentication, endpoints, settings, and event-stream details.
+
 ## Setup
 
 - **Discovery:** thermostats with the API enabled advertise `_esp32thermostat._tcp`
@@ -141,3 +146,16 @@ script:
 ```
 
 Device IDs are shown in the URL of the device page or selectable in the UI editor.
+
+## Developer tests
+
+The integration test suite uses a fake thermostat and runs against Home Assistant
+2025.1.4. From the repository root:
+
+```sh
+python -m pip install -r tests/homeassistant/requirements.txt
+python tests/homeassistant/static_check.py
+python -m pytest -q
+node --check custom_components/esp32_thermostat/frontend/esp32-thermostat-card.js
+node tests/homeassistant/card_smoke.mjs
+```

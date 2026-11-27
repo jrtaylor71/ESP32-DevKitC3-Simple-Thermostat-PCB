@@ -212,8 +212,30 @@ For complete usage instructions, see [USER_MANUAL.md](USER_MANUAL.md)
 
 ## 🏠 Home Assistant Integration
 
-### Automatic Discovery & Control
-Automatic discovery and integration with Home Assistant:
+The thermostat supports both the native Home Assistant API and the existing MQTT
+integration. These are separate connection methods; enabling both can create
+duplicate thermostat entities.
+
+### Native integration (no MQTT)
+
+The built-in local HTTP API and HACS integration provide native discovery, live
+updates, configuration entities, schedule controls, weather sensors, and a
+dashboard card without an MQTT broker:
+
+1. Enable **Home Assistant API** in the thermostat's touch-screen or web settings.
+2. In HACS, add this repository as a custom **Integration**, install **ESP32 Simple
+   Thermostat**, and restart Home Assistant.
+3. Configure the discovered thermostat with its API token, or add it manually using
+   its host/IP and token.
+
+See the [integration instructions](custom_components/esp32_thermostat/README.md)
+and [local API reference](docs/home-assistant-api-v1.md) for details. The API uses
+unencrypted HTTP on the LAN: do not expose its port to the internet, and treat its
+token as a secret.
+
+### MQTT auto-discovery & control
+
+For users who prefer MQTT, automatic discovery and integration works as follows:
 
 1. Enable MQTT in thermostat settings
 2. Configure MQTT broker details
@@ -222,7 +244,7 @@ Automatic discovery and integration with Home Assistant:
 5. Supports climate entity with heating, cooling, auto, and off modes
 6. Publishes relay, mode, target, schedule override, and hydronic state for automation use
 
-### Bidirectional Schedule Sync 🔄
+### MQTT bidirectional schedule sync 🔄
 Full synchronization between thermostat and Home Assistant:
 
 **Device → HA (Inbound)**: 
