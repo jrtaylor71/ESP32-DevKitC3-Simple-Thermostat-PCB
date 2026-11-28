@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # Changelog
 
 All notable firmware changes are documented in this file.

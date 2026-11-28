@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 # Build wrapper script - builds and organizes firmware for all ESP32-S3 variants
 # Usage: 
 #   ./build.sh              - Interactive mode (prompts for variant)

@@ -1,4 +1,5 @@
 /*
+ * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
  * HomeAssistantApi - token-protected local JSON API for the native
  * Home Assistant integration (custom_components/esp32_thermostat).
  * Copyright (c) 2025 Jonn Taylor

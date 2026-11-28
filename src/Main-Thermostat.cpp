@@ -1,4 +1,5 @@
 /* 
+ * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
  * Firmware Implementation
  * Copyright (c) 2025 Jonn Taylor (jrtaylor@taylordatacom.com)
  * 
@@ -10,18 +11,8 @@
  * - Web-based configuration interface
  * - Professional dual-core architecture for ESP32-S3
  *
- * ESP32-S3 Simple Thermostat Firmware is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * ESP32-S3 Simple Thermostat Firmware is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Licensed under the PolyForm Noncommercial License 1.0.0.
+ * See LICENSE in the project root for the full license text.
  */
 
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 # FreeCAD script to build front case shell with edge-only fillet at face/wall junction
 # Run with: freecadcmd case/freecad_front_case.py
 

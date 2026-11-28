@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 #include <Arduino.h>
 #include "TFT_Setup_ESP32_S3_Thermostat.h"
 

@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # Documentation Update Summary
 
 ## Addendum - May 13, 2026 (v1.5.001)

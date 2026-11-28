@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 /*
  * ESP32 Simple Thermostat card for Home Assistant.
  * Bundled with the esp32_thermostat integration; no build step, no external imports.

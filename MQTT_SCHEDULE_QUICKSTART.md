@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # MQTT Schedule Quick Start
 
 Get your thermostat schedule syncing with Home Assistant in 5 minutes.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: CC-BY-NC-SA-4.0
 # Home Assistant Schedule Configuration for ESP32 Thermostat
 # Add this to your configuration.yaml or split into packages/shop_thermostat_schedule.yaml
 # 

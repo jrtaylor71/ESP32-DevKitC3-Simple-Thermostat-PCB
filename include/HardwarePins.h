@@ -1,4 +1,5 @@
 /**
+ * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
  * HardwarePins.h
  * 
  * Hardware pin definitions for ESP32-S3 Simple Thermostat

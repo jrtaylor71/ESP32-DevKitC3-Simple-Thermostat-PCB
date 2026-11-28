@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # Windows Setup
 
 This guide covers the required installs for Windows users to build and flash the ESP32-S3 thermostat firmware.

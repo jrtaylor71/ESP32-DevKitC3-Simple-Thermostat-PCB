@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # Home Assistant local API v1
 
 The thermostat exposes a local HTTP API for its native Home Assistant integration.

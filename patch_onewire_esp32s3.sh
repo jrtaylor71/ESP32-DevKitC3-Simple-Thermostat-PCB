@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 # Patch OneWire library for ESP32-S3 GPIO41 support
 # 
 # Issue: OneWire library v2.3.7 has hardcoded pin <= 33 check for output mode

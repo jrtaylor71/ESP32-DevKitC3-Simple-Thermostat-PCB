@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # ESP32-S3-Simple-Thermostat
 
 A comprehensive, feature-rich simple thermostat system built on the ESP32 platform with professional PCB design. Perfect for DIY smart home automation with full Home Assistant integration.
@@ -385,7 +386,11 @@ Press and hold the boot button for more than 10 seconds while the thermostat is 
 
 ## 📄 License
 
-This project is released under the GNU General Public License v3.0. Free to use, modify, and distribute. NOT for commercial use.
+Software in this project, including firmware, the Home Assistant integration, and the dashboard card, is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+
+Original hardware-design files and documentation are licensed under [CC BY-NC-SA 4.0](LICENSE-HARDWARE-AND-DOCUMENTATION). Retain applicable creator attributions, including the PCB designer attribution. Third-party components, libraries, and other materials remain under their own licenses and are not relicensed here.
+
+Previously distributed versions remain subject to the licenses that applied when they were distributed.
 
 ## 🤝 Contributing
 

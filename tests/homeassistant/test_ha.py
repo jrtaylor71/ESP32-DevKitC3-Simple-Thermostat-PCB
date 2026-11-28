@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 import asyncio
 import pytest
 from homeassistant import config_entries

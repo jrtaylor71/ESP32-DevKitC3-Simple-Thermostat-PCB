@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # Smart Thermostat Session Notes
 
 ## Session: May 13, 2026 - Regional HVAC + Documentation Refresh

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 set -euo pipefail
 
 # Generate a Home Assistant schedule package YAML and matching dashboard card for a given thermostat hostname.

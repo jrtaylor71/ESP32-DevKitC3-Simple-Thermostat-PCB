@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # ESP32-DevKitC3-Simple-Thermostat-PCB - Project Structure
 
 This document provides an overview of the project structure and organization for the ESP32-S3 based thermostat firmware project.

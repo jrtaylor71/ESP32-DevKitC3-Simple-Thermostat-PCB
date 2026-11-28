@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # Weather Module Updates - v1.3.6
 
 Compatibility note (May 2026): These weather module update details remain applicable through firmware v1.5.001.

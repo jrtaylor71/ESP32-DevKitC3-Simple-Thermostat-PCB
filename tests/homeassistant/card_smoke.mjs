@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Minimal DOM-stub smoke test for the bundled Lovelace card (no jsdom).
 import assert from "node:assert/strict";
 import { fileURLToPath, pathToFileURL } from "node:url";

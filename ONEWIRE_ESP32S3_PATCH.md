@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # OneWire Library ESP32-S3 GPIO41 Patch
 
 Compatibility note (May 2026): This patch guidance remains applicable for firmware v1.5.001 builds using OneWire on ESP32-S3 GPIO pins above 33.

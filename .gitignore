@@ -48,3 +48,4 @@ mobile_app_private/
 
 # Local-only Zigbee planning and experiments
 zigbee_private/
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0

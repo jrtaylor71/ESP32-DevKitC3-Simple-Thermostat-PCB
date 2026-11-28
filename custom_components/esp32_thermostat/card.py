@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 """Serve and register the bundled Lovelace card."""
 
 from __future__ import annotations

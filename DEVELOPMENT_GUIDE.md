@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # Smart Thermostat Alt Firmware - Development Guide
 
 This guide helps developers understand, modify, and extend the Smart Thermostat Alt Firmware project.

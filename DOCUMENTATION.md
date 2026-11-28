@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # Firmware - Complete Documentation
 
 ## Project Overview
@@ -710,10 +711,10 @@ Located in `ESP32-Simple-Thermostat-PCB/jlcpcb/`:
 
 ## License
 
-This project is released under the GNU General Public License v3.0. You are free to use, modify, and distribute this software according to the terms of the GPL v3.0 license.
+Documentation and original hardware-design files are licensed under [CC BY-NC-SA 4.0](LICENSE-HARDWARE-AND-DOCUMENTATION). Software is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Third-party materials remain under their own licenses.
 
 ## Conclusion
 
 The Firmware represents a complete, professional-grade smart thermostat solution. With its combination of local control, smart home integration, and advanced HVAC features, it provides a cost-effective alternative to commercial smart thermostats while offering superior customization and control options.
 
-The addition of the custom PCB elevates this from a prototype to a production-ready solution suitable for permanent installation in residential and commercial environments.
+The addition of the custom PCB elevates this from a prototype to a production-ready solution suitable for permanent residential installations and other noncommercial settings.

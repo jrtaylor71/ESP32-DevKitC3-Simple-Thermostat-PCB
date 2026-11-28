@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 """Throwaway fake ESP32 thermostat implementing API v1."""
 import asyncio, copy, json
 from aiohttp import web

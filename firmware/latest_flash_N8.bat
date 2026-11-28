@@ -1,4 +1,5 @@
 @echo off
+REM SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 REM Flash script for ESP32-S3 Simple Thermostat - N8 (8MB) - Latest Build
 REM Usage: latest_flash_N8.bat [port]
 REM Default port: COM3

@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 # Post-build firmware organization script
 # Organizes firmware for all ESP32-S3 variants
 

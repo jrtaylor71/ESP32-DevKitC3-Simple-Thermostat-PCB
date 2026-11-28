@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # MQTT Schedule Synchronization Guide
 
 **Version 1.5.001 | May 2026**
@@ -568,4 +569,4 @@ mosquitto_sub -h broker.ip -t "+/schedule/set" -v
 
 **Last Updated**: January 2026  
 **Author**: Thermostat Development Team  
-**License**: GNU General Public License v3.0
+**License**: [CC BY-NC-SA 4.0](LICENSE-HARDWARE-AND-DOCUMENTATION)

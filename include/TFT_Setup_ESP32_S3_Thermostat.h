@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 #pragma once
 
 // LovyanGFX display/touch configuration for ESP32-S3 Thermostat PCB

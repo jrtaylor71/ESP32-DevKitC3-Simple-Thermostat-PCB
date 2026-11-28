@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # ESP32-S3 Simple Thermostat - User Manual
 
 **Version 1.5.001 | May 2026**

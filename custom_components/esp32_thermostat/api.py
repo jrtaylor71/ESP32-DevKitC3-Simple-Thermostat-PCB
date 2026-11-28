@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 """Async client for the ESP32 Simple Thermostat local API (v1)."""
 
 from __future__ import annotations

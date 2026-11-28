@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 """
 ESP32-S3 Smart Thermostat - BACK CASE (Wall-mounting side)
 FreeCAD Python script to generate back case geometry

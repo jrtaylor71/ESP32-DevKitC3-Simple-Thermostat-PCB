@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 """Binary sensor platform for the ESP32 Simple Thermostat integration."""
 
 from __future__ import annotations

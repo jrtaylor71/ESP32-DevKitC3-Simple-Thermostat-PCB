@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 # Flash script for ESP32-S3 Simple Thermostat - esp32-s3-wroom-1-n16 (16MB)
 # Firmware version: 2.0.001
 # Usage: ./flash.sh [port]

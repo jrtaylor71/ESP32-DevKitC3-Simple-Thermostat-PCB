@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # Schedule Sync Documentation Index
 
 **Version 1.5.001** | Complete bidirectional MQTT schedule synchronization  

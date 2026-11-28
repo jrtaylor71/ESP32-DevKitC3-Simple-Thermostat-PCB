@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 """The ESP32 Simple Thermostat integration."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
 # ESP32 Simple Thermostat – Home Assistant integration
 
 Native Home Assistant integration for the ESP32 Simple Thermostat. It talks to the
