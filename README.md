@@ -8,6 +8,9 @@ A comprehensive, feature-rich simple thermostat system built on the ESP32 platfo
 ![Settings2](img/settings2.png)
 ![Settings3](img/settings3.png)
 ![Settings4](img/settings4.png)
+![dash1](img/haas_card1.png)
+![dash2](img/haas_card2.png)
+
 
 ## 🌟 Key Features
 
